@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DONAS CONDITIONS</title>
+    
+    <style>
+        body {
+            font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+            background-color: #f4f7f9;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+            padding-bottom: 0;
+            margin-bottom: 0; 
+        }
+        
+        .reset-button {
+            background-color: #f0ad4e;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            margin-bottom: 0; 
+            display: inline-block; 
+            height: 30px;
+            line-height: 20px;
+        }
+
+        .reset-button:hover {
+            background-color: #ec971f;
+        }
+
+        h2 {
+            font-size: 1.2em;
+            color: #555;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .description {
+            background-color: #eef7ff;
+            border-left: 5px solid #007bff;
+            padding: 10px 15px;
+            margin-bottom: 25px;
+            color: #333;
+        }
+
+        .section-box {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #fff;
+        }
+
+        .radio-group input[type="radio"] {
+            margin-right: 5px;
+        }
+        .radio-group label {
+            margin-right: 20px;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+        .checkbox-group label {
+            margin-right: 20px;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 5px;
+        }
+
+
+        .pattern-area header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center; 
+            margin-bottom: 15px;
+        }
+
+        .pattern-area header h2 {
+            margin: 0;
+        }
+        
+        .format-selection-group {
+            padding: 10px;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        
+        .add-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 0 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+            height: 30px;
+            line-height: 30px; 
+            flex-shrink: 0;
+        }
+        
+        .add-button:hover {
+            background-color: #1e7e34;
+        }
+
+        .delete-selected-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 0 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+            height: 30px;
+            line-height: 30px;
+            flex-shrink: 0;
+        }
+
+        .delete-selected-btn:hover {
+            background-color: #c82333;
+        }
+
+        .icon {
+            font-weight: bold;
+            margin-right: 3px;
+        }
+
+        .move-buttons {
+            display: flex;
+            flex-direction: column; 
+            gap: 2px;
+            width: 30px; 
+            height: 30px;
+            justify-content: space-between;
+            margin-left: 5px;
+        }
+        
+        .move-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            line-height: 1; 
+            height: 14px;
+        }
+
+        .move-btn:hover {
+            background-color: #0056b3;
+        }
+
+        .meta-data-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .meta-item {
+            display: flex;
+            gap: 10px;
+            align-items: center; 
+            padding: 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer; 
+            transition: box-shadow 0.1s, background-color 0.1s;
+        }
+
+        .meta-item:not(.template) {
+            background-color: #f8f8f8;
+        }
+
+        .meta-item.template {
+            display: none; 
+        }
+        
+        .select-box {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ccc;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: transparent; 
+            margin-right: 5px;
+            flex-shrink: 0;
+            transition: border-color 0.1s;
+        }
+        
+        .meta-item.selected-for-move {
+            border: 2px solid #007bff;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+            background-color: #eef7ff;
+            padding: 7px; 
+        }
+        
+        .meta-item.selected-for-move .select-box {
+            border-color: #007bff;
+            background-color: #007bff;
+            color: white; 
+        }
+
+        .meta-name, .meta-value {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            flex: 1; 
+            min-width: 150px;
+        }
+        
+        .meta-name {
+            min-width: 100px;
+            max-width: 25%;
+            flex: 0 0 auto;
+        }
+        .meta-value {
+            flex: 1;
+        }
+        
+        /* API 모드: Meta Name이 전체 너비를 사용하고 Meta Value 숨김 */
+        .meta-item.api-param-item .meta-name { 
+            flex: 1; 
+            max-width: none !important;
+        }
+        .meta-item.api-param-item .meta-value { 
+            display: none !important; 
+        }
+
+        .generate-button {
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            margin-bottom: 0; 
+            margin-top: 20px;
+        }
+
+        .generate-button:hover {
+            background-color: #0056b3;
+        }
+
+        .output-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .copy-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+
+        .copy-button:hover {
+            background-color: #5a6268;
+        }
+
+        .output-box {
+            margin-top: 0;
+            background-color: #f1f1f1;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            overflow-x: auto; 
+            font-family: monospace;
+            color: #000;
+            line-height: 1.5; 
+        }
+        
+        #toast_message {
+            display: none;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 16px;
+            position: fixed; 
+            z-index: 1000; 
+            left: 50%;
+            top: 30px; 
+            transform: translateX(-50%);
+            opacity: 0; 
+            transition: opacity 0.5s ease-in-out; 
+            cursor: default; 
+        }
+
+        #toast_message.show {
+            opacity: 1; 
+        }
+        
+        /* 🔥 로그인 입력 필드 정렬 */
+        #login_input_area {
+            display: flex; 
+            flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
+            gap: 15px; /* 필드 간 간격 */
+            align-items: center;
+        }
+        
+        .login-field-group {
+            display: flex;
+            align-items: center;
+            flex: 1; /* 가용 공간을 균등하게 차지 */
+            min-width: 250px; /* 최소 너비 설정 (너무 작아지지 않게) */
+        }
+
+        .login-field-group label {
+            width: 30px; /* 레이블 너비 고정 */
+            flex-shrink: 0;
+            font-weight: 500;
+            text-align: right;
+            padding-right: 5px;
+        }
+
+        .login-field-group input[type="text"],
+        .login-field-group input[type="password"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            flex-grow: 1;
+        }
+        
+        /* 🔥 페이지 유형 메인 그룹 정렬 */
+        #page_type_main_group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* 양쪽 끝 정렬 */
+            flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
+            gap: 15px; /* 내부 요소 간 간격 */
+        }
+
+        /* 🔥 [추가] Steps 입력 필드 화살표 항상 표시 */
+        #step_input {
+            -moz-appearance: textfield; /* Firefox (default visible) */
+        }
+        #step_input::-webkit-outer-spin-button,
+        #step_input::-webkit-inner-spin-button {
+            -webkit-appearance: inner-spin-button; /* Chrome/Safari: 화살표를 항상 표시하도록 설정 */
+            opacity: 1; 
+            margin: 0; /* Ensures consistent layout */
+        }
+    </style>
+</head>
+<body>
+    <div id="toast_message"></div> 
+    
+    <div class="container">
+        <div class="header-container">
+            <h1>DONAS CONDITIONS</h1>
+            <button type="button" id="reset_all_btn" class="reset-button">
+                <span class="icon">🔄</span> RESET
+            </button>
+        </div>
+
+        <p class="description">
+            스크래핑 조건을 설정하고 **최상위 레벨의 JSON 객체**로 출력합니다. **Meta Name 및 Meta Value 입력 시 앞뒤 공백은 자동으로 제거됩니다.** **(Meta Name만 필수)**
+        </p>
+
+        <div class="section-box pattern-input-section">
+            <h2>⭐ 조건 입력 </h2>
+            <div style="display: flex; gap: 10px; align-items: stretch;">
+                <textarea id="pattern_input_area" rows="4" placeholder='JSON 형태로 입력하세요. (단일 객체 또는 최상위 배열)' style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; font-family: monospace;"></textarea>
+                <button type="button" id="load_pattern_btn" class="generate-button" style="width: 120px; flex-shrink: 0; margin-bottom: 0; margin-top: 0;">
+                    실행
+                </button>
+            </div>
+        </div>
+        
+        <div class="section-box source-selection-section">
+            <h2>⭐ 수집 방식</h2> 
+            <div class="radio-group" id="source_selection_radios">
+                <input type="radio" id="source_crawl" name="source_type" value="CRAWL" checked>
+                <label for="source_crawl">크롤링</label>
+                <input type="radio" id="source_api" name="source_type" value="API">
+                <label for="source_api">API</label>
+            </div>
+        </div>
+
+        <div class="section-box pattern-area" id="pattern_area">
+            <h2>⭐ 수집 대상 조건 정의</h2>
+            
+            <div class="format-selection-group">
+                
+                <div id="method_group">
+                    <h3 style="font-size: 1em; color: #777; margin-top: 0; margin-bottom: 10px;">⚙️ Request Method</h3>
+                    <div class="radio-group" id="request_method_radios" style="margin-bottom: 5px;"> 
+                        <input type="radio" id="method_get" name="request_method" value="GET" checked>
+                        <label for="method_get">GET</label>
+                        <span id="method_post_group">
+                            <input type="radio" id="method_post" name="request_method" value="POST">
+                            <label for="method_post">POST</label>
+                        </span>
+                    </div>
+
+                    <div class="checkbox-group" id="payload_option_group" style="margin-bottom: 15px; padding-left: 20px; display: none;"> 
+                        <input type="checkbox" id="option_payload" name="payload_option" value="true">
+                        <label for="option_payload" style="font-weight: 500; color: #333;">📄 Payload 형식 사용</label>
+                    </div>
+                    <h3 style="font-size: 1em; color: #777; margin-top: 1; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ Redirect Option</h3>
+                    <div class="checkbox-group" id="redirect_option_group" style="margin-bottom: 15px;">
+                        <input type="checkbox" id="option_redirect" name="redirect_option" value="true" checked>
+                        <label for="option_redirect" style="font-weight: 500; color: #333;">🔗 리다이렉트 허용 (redirect: True/False)</label>
+                    </div>
+                    
+                    <h3 style="font-size: 1em; color: #777; margin-top: 0; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ Header Option</h3>
+                    <div class="checkbox-group" id="header_option_group" style="margin-bottom: 15px;">
+                        <input type="checkbox" id="option_header" name="header_option" value="true">
+                        <label for="option_header" style="font-weight: 500; color: #333;">✉️ HTTP Header 포함</label>
+                    </div>
+                    
+                    <div id="header_input_area" style="display: none; padding-left: 20px; padding-top: 10px; border-top: 1px dotted #999;">
+                        <div id="header_management_header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="font-size: 0.9em; color: #555; margin: 0;">HTTP Header 파라미터 정의 (Key: Value)</h4>
+                            <div class="header-buttons" id="header_management_buttons">
+                                <button type="button" id="add_header_btn" class="add-button">
+                                    <span class="icon">+</span> Header 추가
+                                </button>
+                                <button type="button" id="delete_selected_header_btn" class="delete-selected-btn">
+                                    선택 삭제
+                                </button>
+                                <button type="button" id="delete_all_header_btn" class="delete-selected-btn">
+                                    전체 삭제
+                                </button>
+                                <div class="move-buttons">
+                                    <button type="button" id="move_up_header_btn" class="move-btn move-up" title="선택 항목 위로 이동">▲</button>
+                                    <button type="button" id="move_down_header_btn" class="move-btn move-down" title="선택 항목 아래로 이동">▼</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="header_data_list" class="meta-data-list" style="margin-bottom: 0;">
+                        </div>
+                    </div>
+                </div>
+                
+                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 로그인 옵션</h3>
+                <div class="checkbox-group" id="login_option_group" style="margin-bottom: 15px;">
+                    <input type="checkbox" id="option_login" name="login_option" value="true">
+                    <label for="option_login" style="font-weight: 500; color: #333;">🔑 로그인 허용 (login: True/False)</label>
+                </div>
+                
+                <div id="login_input_area" style="display: none; padding-left: 20px; padding-top: 10px; border-top: 1px dotted #999;">
+                    <h4 style="font-size: 0.9em; color: #555; margin: 0 0 10px 0;">로그인 정보 입력</h4>
+                    
+                    <div class="login-field-group">
+                        <label for="login_id">ID:</label>
+                        <input type="text" id="login_id" placeholder="사용자 ID">
+                    </div>
+                    <div class="login-field-group">
+                        <label for="login_password">PW:</label>
+                        <input type="password" id="login_password" placeholder="비밀번호">
+                    </div>
+                </div>
+                
+                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 페이지 유형</h3>
+                <div class="section-box" id="page_type_section" style="padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9; margin-bottom: 20px; border: none; padding: 0;">
+                    
+                    <div id="page_type_main_group" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; gap: 15px; flex-wrap: wrap;">
+                        <div class="radio-group" id="page_type_radios" style="flex-shrink: 0;">
+                            <input type="radio" id="page_single" name="page_type" value="SINGLE" checked>
+                            <label for="page_single">단일 페이지</label>
+                            <input type="radio" id="page_detail" name="page_type" value="DETAIL">
+                            <label for="page_detail">상세 페이지</label>				
+                            <label for="step_input" style="font-weight: 500; color: #333; flex-shrink: 0;">🎢 Steps (단계):</label> <input type="number" id="step_input" value="1" min="1" style="width: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
+                        </div>
+                    </div>
+                    <div id="detail_options" style="display: none; padding-top: 10px; border-top: 1px dotted #999;">
+                        <div style="margin-bottom: 10px;">
+                            <label for="detail_url_input" style="font-weight: 500; color: #333; display: block; margin-bottom: 5px;">상세 URL (도메인 포함):</label>
+                            <input type="text" id="detail_url_input" placeholder='예: https://example.com/{detail_kwd} 또는 https://example.com?{{"a":{{"b":"{detail_kwd}"}}}}' style="width: 98%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        </div>
+                        
+                        <h4 style="font-size: 0.9em; color: #555; margin: 0 0 5px 0;">메인 페이지 포맷:</h4>
+                        <div class="radio-group" id="main_format_radios">
+                            <input type="radio" id="main_format_html" name="main_format" value="html" checked>
+                            <label for="main_format_html">HTML</label>
+                            <input type="radio" id="main_format_json" name="main_format" value="json">
+                            <label for="main_format_json">JSON</label>
+                        </div>
+                    </div>
+                </div>
+                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 데이터 포맷</h3>
+                <div class="radio-group" id="data_format_radios" style="margin-bottom: 10px;">
+                    <span id="format_html_group">
+                        <input type="radio" id="format_html" name="data_format" value="html" checked>
+                        <label for="format_html">HTML (XPath 권장)</label>
+                    </span>
+                    <input type="radio" id="format_json" name="data_format" value="json">
+                    <label for="format_json">JSON</label> 
+                    <input type="radio" id="format_xml" name="data_format" value="xml">
+                    <label for="format_xml">XML</label>
+                </div>
+                <div id="html_options_group" style="padding-top: 1px; padding-left: 20px; display: block;">
+                    <input type="checkbox" id="option_rendering" name="rendering_option" value="true">
+                    <label for="option_rendering" style="font-weight: 500; color: #007bff;">✅ 랜더링 (JavaScript 실행 필요 시 체크)</label>
+                </div>
+                
+                <div id="condition_input_area" style="padding-top: 10px; border-top: 1px dotted #999; margin-top: 15px;">
+                    <div id="condition_management_header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 id="condition_title" style="font-size: 0.9em; color: #555; margin: 0;">✅ 수집 조건 파라미터 정의 (Meta Name: Meta Value)</h4>
+                        <div class="header-buttons" id="condition_management_buttons">
+                            <button type="button" id="add_meta_btn" class="add-button">
+                                <span class="icon">+</span> <span id="add_meta_text">조건 추가</span>
+                            </button>
+                            <button type="button" id="delete_selected_condition_btn" class="delete-selected-btn">
+                                선택 삭제
+                            </button>
+                            <button type="button" id="delete_all_condition_btn" class="delete-selected-btn">
+                                전체 삭제
+                            </button>
+                            <div class="move-buttons">
+                                <button type="button" id="move_up_condition_btn" class="move-btn move-up" title="선택 항목 위로 이동">▲</button>
+                                <button type="button" id="move_down_condition_btn" class="move-btn move-down" title="선택 항목 아래로 이동">▼</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="meta_data_list" class="meta-data-list" style="margin-bottom: 0;">
+                        <div class="meta-item template">
+                            <div class="select-box">V</div>
+                            <input type="text" class="meta-name" placeholder="Meta Name (예: name)">
+                            <input type="text" class="meta-value" placeholder="Meta Value (예: //div[@class='name'], $.data.name)">
+                        </div>
+                    </div>
+                </div>
+            </div> 
+            
+            <button type="button" id="generate_pattern_btn" class="generate-button">
+                ✨ 조건 생성
+            </button>
+        </div>
+        
+        <div class="section-box generate-area">
+            <h2>⭐ 생성 조건 출력</h2>
+            
+            <div class="output-controls" id="output_controls" style="display:none;">
+                <p style="margin: 0; font-weight: bold;">생성된 조건 (최상위 레벨 객체)</p>
+                <button type="button" id="copy_pattern_btn" class="copy-button">
+                    📋 조건 복사
+                </button>
+            </div>
+            
+            <pre id="output" class="output-box" style="display:none;" data-unmasked=""></pre>
+        </div>
+    </div>
+    
+    <script>
+        let currentPlaceholder = "Meta Value (예: //div[@class='name'], XPath)"; 
+        let selectedItems = []; 
+        let lastNonPayloadFormat = 'html'; 
+        let previousSourceType = 'CRAWL'; 
+
+        function trimOnBlur(event) {
+            event.target.value = event.target.value.trim();
+        }
+
+        // listId에 따라 API mode의 처리 방식을 분리
+        function collectListItems(listId) {
+            const listElement = document.getElementById(listId);
+            const items = listElement.querySelectorAll('.meta-item:not(.template)');
+            const results = [];
+            
+            const currentSource = document.querySelector('input[name="source_type"]:checked').value;
+            // 'meta_data_list' 이고, 출처가 'API'일 때만 단일 파라미터(쿼리 스트링)로 처리
+            const isAPIParamMode = currentSource === 'API' && listId === 'meta_data_list'; 
+
+            for (const item of items) {
+                const name = item.querySelector('.meta-name').value.trim();
+                const value = item.querySelector('.meta-value').value.trim();
+
+                if (isAPIParamMode) {
+                     if (name !== '') { // API Mode: name 필드에 전체 파라미터 문자열이 저장됨
+                        results.push(name); 
+                     }
+                } else {
+                    if (name !== '') {
+                        results.push({
+                            name: name,
+                            value: value
+                        });
+                    }
+                }
+            }
+            return results;
+        }
+
+        /**
+         * [수정됨] 단일 선택만 가능하도록 로직 변경
+         * @param {Event} event 
+         */
+        function handleItemClick(event) {
+            const clickedItem = event.currentTarget;
+            if (event.target.tagName === 'INPUT') {
+                return;
+            }
+            const isSelected = clickedItem.classList.contains('selected-for-move');
+            
+            if (isSelected) {
+                // 이미 선택된 항목을 클릭하면 선택 해제 (토글)
+                clickedItem.classList.remove('selected-for-move');
+                selectedItems = selectedItems.filter(item => item !== clickedItem);
+            } else {
+                // 새로 항목을 선택할 때, 기존에 선택된 모든 항목을 해제 (단일 선택 강제)
+                // 1. 기존에 선택된 항목의 선택 해제
+                selectedItems.forEach(item => {
+                    item.classList.remove('selected-for-move');
+                });
+                
+                // 2. selectedItems 배열 초기화
+                selectedItems = [];
+
+                // 3. 새로 클릭된 항목 선택
+                clickedItem.classList.add('selected-for-move');
+                selectedItems.push(clickedItem);
+            }
+        }
+
+        function moveSelectedItem(direction) {
+            if (selectedItems.length === 0) {
+                alert('이동할 항목을 먼저 선택해주세요.');
+                return;
+            }
+            // 단일 선택 모드로 변경되었으므로, selectedItems[0]만 처리하면 됨
+            const selectedItem = selectedItems[0];
+            const parentList = selectedItem.parentNode;
+            
+            if (direction === 'up') {
+                const targetSibling = selectedItem.previousElementSibling;
+                
+                if (!targetSibling || targetSibling.classList.contains('template')) {
+                    return;
+                }
+                
+                parentList.insertBefore(selectedItem, targetSibling);
+
+            } else if (direction === 'down') {
+                const targetSibling = selectedItem.nextElementSibling;
+                
+                if (!targetSibling || targetSibling.classList.contains('template')) {
+                    return;
+                }
+                
+                const afterTargetSibling = targetSibling.nextElementSibling;
+                parentList.insertBefore(selectedItem, afterTargetSibling);
+            }
+        }
+
+        function deleteSelectedItems() {
+            if (selectedItems.length === 0) {
+                alert('삭제할 항목을 먼저 선택해주세요.');
+                return;
+            }
+            // 단일 선택 모드로 변경되었으므로, selectedItems[0]만 삭제
+            const itemToDelete = selectedItems[0];
+
+            if (!confirm(`선택된 항목 1개를 삭제하시겠습니까?`)) {
+                return;
+            }
+            itemToDelete.remove();
+            selectedItems = [];
+        }
+
+        function clearListItems(listId) {
+            const metaList = document.getElementById(listId);
+            if (metaList) {
+                metaList.querySelectorAll('.meta-item:not(.template)').forEach(item => {
+                    item.remove();
+                });
+                // 선택된 항목 목록에서도 제거
+                selectedItems = selectedItems.filter(item => item.closest(`#${listId}`) === null);
+            }
+        }
+
+        function clearAllConditionAndHeaderItems() {
+            clearListItems('meta_data_list');
+            clearListItems('header_data_list');
+        }
+
+        function deleteAllListItems(listId, name) {
+            const listElement = document.getElementById(listId);
+            const count = listElement.querySelectorAll('.meta-item:not(.template)').length;
+            if (count === 0) {
+                alert(`삭제할 ${name} 항목이 없습니다.`);
+                return;
+            }
+            if (!confirm(`현재 모든 ${name} 항목 ${count}개를 삭제하시겠습니까?`)) {
+                return;
+            }
+            clearListItems(listId);
+        }
+        
+        function toggleLoginInput() {
+            const isChecked = document.getElementById('option_login').checked;
+            const loginArea = document.getElementById('login_input_area');
+            loginArea.style.display = isChecked ? 'flex' : 'none';
+        }
+
+        // 🔥 [수정] 페이지 유형 변경에 따른 UI 업데이트 및 Step 값 조정 (상세 페이지 선택 시 2부터 시작)
+        function handlePageTypeChange(event) {
+            const pageType = event.target.value;
+            const isDetail = pageType === 'DETAIL';
+            const stepInput = document.getElementById('step_input');
+            const detailOptions = document.getElementById('detail_options');
+            
+            if (pageType === 'SINGLE') {
+                stepInput.value = 1; 
+                stepInput.readOnly = true; 
+            } else { // DETAIL
+                stepInput.value = 2; // 💡 상세 페이지 선택 시 Step을 2로 설정
+                stepInput.readOnly = false;
+            }
+            
+            detailOptions.style.display = isDetail ? 'block' : 'none';
+        }
+
+        // 🔥 [추가된 함수] Step 입력 값 유효성 검사 및 정수화
+        function stepValidation(event) {
+            let value = parseInt(event.target.value);
+            if (isNaN(value) || value < 1) {
+                value = 1;
+            }
+            event.target.value = value;
+        }
+
+        function resetAll() {
+            if (!confirm('모든 입력 필드와 조건 항목을 초기 상태로 되돌리시겠습니까?')) {
+                return;
+            }
+            document.getElementById('pattern_input_area').value = '';
+            
+            document.getElementById('source_crawl').checked = true;
+            
+            clearAllConditionAndHeaderItems();
+            
+            document.getElementById('method_get').checked = true;
+            document.getElementById('option_payload').checked = false; 
+            handleRequestMethodChange({ target: { value: 'GET' } });
+            
+            document.getElementById('option_redirect').checked = true;
+            
+            // ✨ [수정] login 옵션 초기화 및 ID/PW 필드 초기화
+            document.getElementById('option_login').checked = false;
+            document.getElementById('login_id').value = '';
+            document.getElementById('login_password').value = '';
+            toggleLoginInput(); // 입력 필드 숨김
+            
+            document.getElementById('option_header').checked = false;
+            toggleHeaderInput();
+
+            // 🔥 [추가] 페이지 유형 초기화
+            document.getElementById('page_single').checked = true;
+            document.getElementById('step_input').value = 1;
+            document.getElementById('step_input').readOnly = true;
+            document.getElementById('detail_url_input').value = '';
+            document.getElementById('main_format_html').checked = true; // [수정] ID 변경
+            document.getElementById('detail_options').style.display = 'none';
+            
+            document.getElementById('format_html').checked = true;
+            lastNonPayloadFormat = 'html';
+            updatePlaceholder({ target: { value: 'html' } });
+            document.getElementById('option_rendering').checked = false;
+            
+            document.getElementById('output').textContent = '';
+            document.getElementById('output').style.display = 'none';
+            document.getElementById('output_controls').style.display = 'none';
+            document.getElementById('output').dataset.unmasked = ''; // 복사 데이터 초기화
+
+            previousSourceType = 'CRAWL';
+            handleSourceChange({ target: { value: 'CRAWL' } });
+
+            showToast('🔄 모든 설정이 초기화되었습니다.');
+        }
+
+        function addMetaItem(key = '', value = '') {
+            const metaList = document.getElementById('meta_data_list');
+            const template = metaList.querySelector('.meta-item.template');
+            const newItem = template.cloneNode(true);
+            
+            newItem.classList.remove('template');
+            
+            const metaNameInput = newItem.querySelector('.meta-name');
+            const metaValueInput = newItem.querySelector('.meta-value');
+            
+            metaNameInput.value = key;
+            metaValueInput.value = value;
+            
+            metaNameInput.placeholder = 'Meta Name (예: name)';
+            metaValueInput.placeholder = currentPlaceholder;
+            
+            metaNameInput.addEventListener('blur', trimOnBlur);
+            metaValueInput.addEventListener('blur', trimOnBlur);
+            newItem.addEventListener('click', handleItemClick);
+            
+            // API Mode 적용
+            const currentSource = document.querySelector('input[name="source_type"]:checked').value;
+            if (currentSource === 'API') {
+                newItem.classList.add('api-param-item');
+                metaNameInput.placeholder = "요청 파라미터 (예: key=value&start=1)";
+            } else {
+                newItem.classList.remove('api-param-item');
+            }
+            
+            metaList.appendChild(newItem);
+        }
+
+        function updatePlaceholder(event) {
+            const format = event.target.value;
+            const isHtml = format === 'html' || format === 'xml';
+            
+            if (isHtml) {
+                currentPlaceholder = 'Meta Value (예: //div[@class="name"], XPath)';
+            } else if (format === 'json') {
+                currentPlaceholder = 'Meta Value (예: $.data.name, JSONPath)';
+            }
+            
+            // 모든 현재 항목의 placeholder 업데이트
+            const metaList = document.getElementById('meta_data_list');
+            metaList.querySelectorAll('.meta-item:not(.template) .meta-value').forEach(input => {
+                input.placeholder = currentPlaceholder;
+            });
+            
+            // [추가] HTML/XML 포맷이 아니면 랜더링 옵션을 강제로 해제합니다.
+            const renderingCheckbox = document.getElementById('option_rendering');
+            if (!isHtml) {
+                renderingCheckbox.checked = false;
+            }
+        }
+
+        function addHeaderItem(key = '', value = '') {
+            const headerList = document.getElementById('header_data_list');
+            const template = document.getElementById('meta_data_list').querySelector('.meta-item.template');
+            const newItem = template.cloneNode(true);
+
+            newItem.classList.remove('template');
+            // Header는 항상 Meta Name: Meta Value 형식 유지
+            newItem.classList.remove('api-param-item');
+            
+            const metaNameInput = newItem.querySelector('.meta-name');
+            const metaValueInput = newItem.querySelector('.meta-value');
+
+            metaNameInput.value = key;
+            metaNameInput.placeholder = "Header Key (예: User-Agent)";
+            
+            metaValueInput.value = value;
+            metaValueInput.placeholder = "Header Value (예: Mozilla/5.0)";
+            
+            metaNameInput.addEventListener('blur', trimOnBlur);
+            metaValueInput.addEventListener('blur', trimOnBlur);
+            newItem.addEventListener('click', handleItemClick);
+            
+            headerList.appendChild(newItem);
+        }
+
+        function toggleHeaderInput() {
+            const isChecked = document.getElementById('option_header').checked;
+            const headerArea = document.getElementById('header_input_area');
+            headerArea.style.display = isChecked ? 'block' : 'none';
+        }
+
+        // 헤더 존재 여부를 확인하는 헬퍼 함수
+        function headerExists(key) {
+            const headerList = document.getElementById('header_data_list');
+            const items = headerList.querySelectorAll('.meta-item:not(.template)');
+            const normalizedKey = key.trim().toLowerCase();
+            for (const item of items) {
+                const itemKey = item.querySelector('.meta-name').value.trim().toLowerCase();
+                if (itemKey === normalizedKey) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 헤더가 없으면 추가하는 헬퍼 함수
+        function checkAndAddDefaultHeader(key, value) {
+            if (!headerExists(key)) {
+                addHeaderItem(key, value);
+            }
+        }
+
+
+        // Payload 체크박스 상태를 기반으로 data_format을 설정하고, 헤더를 자동 추가하며, HTML 옵션 유지
+        function handlePayloadOptionChange(event) {
+            const isChecked = event.target.checked;
+            const headerOptionCheckbox = document.getElementById('option_header');
+            
+            if (isChecked) {
+                // Payload 체크 시: Header 옵션 강제 체크 및 기본 헤더 삽입
+                headerOptionCheckbox.checked = true;
+                toggleHeaderInput();
+                checkAndAddDefaultHeader("Accept", "application/json");
+                checkAndAddDefaultHeader("Content-Type", "application/json");
+
+            } else {
+                // Payload 체크 해제 시:
+                // 2. Header Option을 기본값(체크 해제)으로 되돌립니다.
+                headerOptionCheckbox.checked = false;
+                toggleHeaderInput(); // 헤더 입력 영역 숨김
+            }
+        }
+
+        // Request Method 변경 시 Payload 체크박스 표시 및 포맷 전환 로직 반영
+        function handleRequestMethodChange(event) {
+            const method = event.target.value;
+            const payloadGroup = document.getElementById('payload_option_group');
+            const payloadCheckbox = document.getElementById('option_payload');
+            
+            if (method === 'POST') {
+                payloadGroup.style.display = 'block';
+            } else { // GET
+                payloadGroup.style.display = 'none'; 
+                // GET으로 전환 시 Payload 옵션을 해제
+                if (payloadCheckbox.checked) {
+                    payloadCheckbox.checked = false; 
+                    // Payload 해제 로직 실행하여 Header 및 Format 기본값 복원
+                    handlePayloadOptionChange({ target: payloadCheckbox });
+                }
+            }
+        }
+
+        // 수집 출처 변경 시 '수집 대상 조건 정의' 영역 초기화 기능 추가
+        function handleSourceChange(event) {
+            const newSourceType = event.target.value;
+            const isCrawl = newSourceType === 'CRAWL';
+            
+            const conditionItemsCount = document.getElementById('meta_data_list').querySelectorAll('.meta-item:not(.template)').length;
+            const headerItemsCount = document.getElementById('header_data_list').querySelectorAll('.meta-item:not(.template)').length;
+            
+            // 1. Reset Confirmation Logic
+            if ((conditionItemsCount > 0 || headerItemsCount > 0) && newSourceType !== previousSourceType) {
+                if (!confirm(`'수집 방식'을 "${isCrawl ? '크롤링' : 'API'}"(으)로 변경 시 '수집 대상 조건 정의' 영역의 모든 설정(Method, Format, 조건, 헤더)이 초기화됩니다.\n계속하시겠습니까?`)) {
+                    // 사용자 취소 시, 라디오 버튼을 이전 상태로 되돌립니다.
+                    document.getElementById(`source_${previousSourceType.toLowerCase()}`).checked = true;
+                    return;
+                }
+            }
+
+            // 2. Clear UI and set default
+            clearAllConditionAndHeaderItems();
+            document.getElementById('method_get').checked = true; // 기본값 GET
+            document.getElementById('option_payload').checked = false; // Payload 해제
+            document.getElementById('option_header').checked = false; // Header 해제
+            document.getElementById('page_single').checked = true; // 페이지 유형 단일
+            document.getElementById('step_input').value = 1;
+            document.getElementById('step_input').readOnly = true;
+            document.getElementById('detail_url_input').value = '';
+            document.getElementById('main_format_html').checked = true; // [수정] ID 변경
+            document.getElementById('detail_options').style.display = 'none';
+
+            if (isCrawl) {
+                document.getElementById('format_html').checked = true; // 기본값 HTML
+                lastNonPayloadFormat = 'html';
+            } else { // API
+                document.getElementById('format_json').checked = true; // API는 JSON으로 강제
+                lastNonPayloadFormat = 'json';
+            }
+            
+            toggleHeaderInput(); // Header input area hidden
+            document.getElementById('payload_option_group').style.display = 'none'; // Payload 체크박스 영역 숨김
+            
+            // 3. Apply Source-Specific UI Adjustments
+            const postGroup = document.getElementById('method_post_group');
+            const htmlGroup = document.getElementById('format_html_group');
+            const renderingGroup = document.getElementById('html_options_group');
+            const jsonRadio = document.getElementById('format_json');
+            const conditionTitle = document.getElementById('condition_title');
+            const addMetaText = document.getElementById('add_meta_text');
+            const templateItem = document.getElementById('meta_data_list').querySelector('.meta-item.template');
+            
+            if (isCrawl) {
+                postGroup.style.display = 'inline-block'; // POST 사용 가능
+                htmlGroup.style.display = 'inline';
+                renderingGroup.style.display = 'block';
+                conditionTitle.textContent = '✅ 수집 조건 파라미터 정의 (Meta Name: Meta Value)';
+                addMetaText.textContent = '조건 추가';
+                templateItem.classList.remove('api-param-item');
+            } else { // API
+                postGroup.style.display = 'none'; // POST 사용 불가 (GET만)
+                htmlGroup.style.display = 'none'; // HTML 포맷 불가
+                renderingGroup.style.display = 'none';
+                jsonRadio.checked = true; // API는 JSON으로 강제
+                lastNonPayloadFormat = 'json';
+                conditionTitle.textContent = '✅ 요청 파라미터 정의 ( Params )';
+                addMetaText.textContent = '파라미터 추가';
+                templateItem.classList.add('api-param-item');
+            }
+            
+            // 4. Final UI updates
+            updatePlaceholder({ target: { value: document.querySelector('input[name="data_format"]:checked').value } });
+            // Re-call handleRequestMethodChange to finalize payload visibility based on method/source
+            handleRequestMethodChange({ target: { value: document.querySelector('input[name="request_method"]:checked').value } });
+            
+            previousSourceType = newSourceType;
+        }
+
+        function parseAndLoadPattern() {
+            const patternInputArea = document.getElementById('pattern_input_area');
+            const patternString = patternInputArea.value.trim();
+
+            if (patternString === '') {
+                alert('입력된 JSON 패턴이 없습니다.');
+                return;
+            }
+
+            let patternData;
+            try {
+                patternData = JSON.parse(patternString);
+            } catch (e) {
+                alert('🚨 JSON 파싱 오류: 올바른 JSON 형식으로 입력해주세요.');
+                console.error("JSON Parse Error:", e);
+                return;
+            }
+
+            let config = {};
+            let finalConditions = [];
+            let finalHeaders = [];
+            
+            // 최상위 배열을 허용하지만, 로드 시에는 배열의 첫 번째 객체만 사용
+            if (Array.isArray(patternData)) {
+                if (patternData.length > 0) {
+                    patternData = patternData[0];
+                } else {
+                    alert('🚨 최상위 배열에 유효한 객체가 없습니다. 조건 입력 영역을 초기화합니다.');
+                    patternInputArea.value = '';
+                    return;
+                }
+            }
+
+            // 단일 객체 형식 처리
+            if (typeof patternData === 'object' && patternData !== null) {
+                let loadedSource = (patternData.accessType || patternData.sourceType || 'crawl').toLowerCase();
+                let uiSourceType;
+                if (loadedSource === 'api') {
+                    uiSourceType = 'API';
+                } else {
+                    uiSourceType = 'CRAWL';
+                }
+
+                // config.login은 로드된 데이터 그대로 저장 (null, false, {id, pw})
+                let loadedLogin = (patternData.login !== undefined) ? patternData.login : null;
+
+                // 🔥 [수정] pageType 및 step/detailUrl 키를 로딩할 때 새로운 키 이름 ('steps', 'mainUrl')도 지원하도록 수정
+                let loadedPageType = (patternData.pageType || 'SINGLE').toUpperCase(); // 'single' -> 'SINGLE', 'detail' -> 'DETAIL'
+                if (loadedPageType !== 'SINGLE' && loadedPageType !== 'DETAIL') {
+                    loadedPageType = 'SINGLE'; // Fallback
+                }
+                
+                // 🔥 [수정] 'format' 또는 'dataFormat' 키 로드
+                let loadedFormat = patternData.dataFormat || patternData.format || 'html';
+                
+                // [수정] mainFormat 로드 (mainFormat > prevFormat 순으로 로드)
+                const loadedMainFormat = (patternData.mainFormat || patternData.prevFormat || 'html').toLowerCase();
+
+                config = {
+                    sourceType: uiSourceType,
+                    method: patternData.method || 'GET',
+                    redirect: patternData.redirect !== undefined ? patternData.redirect : true,
+                    login: loadedLogin, 
+                    // 🔥 [수정] 페이지 유형 로드
+                    pageType: loadedPageType, 
+                    step: parseInt(patternData.steps || patternData.step) || 1, // 'steps' 또는 'step' 로드
+                    detailUrl: patternData.mainUrl || patternData.detailUrl || null, // 'mainUrl' 또는 'detailUrl' 로드
+                    mainFormat: loadedMainFormat, // [수정] key name to mainFormat
+                    header: patternData.headers && (Array.isArray(patternData.headers) || typeof patternData.headers === 'object'),
+                    dataFormat: loadedFormat.toLowerCase(),
+                    rendering: patternData.rendering !== undefined ? patternData.rendering : false,
+                    payload: patternData.payload !== undefined ? patternData.payload : false,
+                };
+                
+                // Condition/Params 로딩
+                const conditionMap = patternData.items || patternData.params;
+                
+                if (config.sourceType === 'API' && patternData.params) {
+                    // API Mode: Params는 문자열
+                    const paramsString = patternData.params.toString().trim();
+                    if (paramsString !== '') {
+                        // 쿼리 스트링을 &로 분리하여 각 항목을 Meta Name으로 추가
+                        const paramsArray = paramsString.split('&').filter(p => p.trim() !== '');
+                        paramsArray.forEach(param => {
+                            // Meta Name 필드에 전체 파라미터 문자열 저장
+                            finalConditions.push({ name: param, value: '' }); 
+                        });
+                    }
+                } else if (conditionMap) {
+                    // CRAWL Mode 또는 items 객체
+                    if (Array.isArray(conditionMap)) {
+                        finalConditions = conditionMap.map(item => ({ 
+                            name: String(item.name || '').trim(), 
+                            value: String(item.value || '').trim() 
+                        })).filter(item => item.name !== '');
+                    } else if (typeof conditionMap === 'object') {
+                        for (const key in conditionMap) {
+                            if (conditionMap.hasOwnProperty(key)) {
+                                const name = String(key || '').trim();
+                                const value = String(conditionMap[key] || '').trim();
+                                if (name !== '') {
+                                    finalConditions.push({ name: name, value: value });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (config.header && patternData.headers !== null) {
+                    if (Array.isArray(patternData.headers)) {
+                        finalHeaders = patternData.headers.map(item => ({ 
+                            name: String(item.name || '').trim(), 
+                            value: String(item.value || '').trim() 
+                        })).filter(item => item.name !== '');
+                    } else if (typeof patternData.headers === 'object' && patternData.headers !== null) {
+                        for (const key in patternData.headers) {
+                            if (patternData.headers.hasOwnProperty(key)) {
+                                finalHeaders.push({ 
+                                    name: String(key || '').trim(), 
+                                    value: String(patternData.headers[key] || '').trim() 
+                                });
+                            }
+                        }
+                    }
+                }
+
+            } else {
+                alert('🚨 지원하지 않는 JSON 형식입니다. 최상위 배열 또는 단일 객체 형식을 입력해주세요.\n\n조건 입력 영역을 초기화합니다.');
+                patternInputArea.value = '';
+                return;
+            }
+
+            // --- UI 업데이트 시작 --- 
+
+            // 1. Source update
+            document.getElementById(`source_${config.sourceType.toLowerCase()}`).checked = true;
+            const tempPreviousSource = previousSourceType;
+            previousSourceType = config.sourceType;
+            handleSourceChange({ target: { value: config.sourceType } });
+            previousSourceType = tempPreviousSource;
+
+            // 2. Method, Redirect, Header, Format, Rendering, Payload 업데이트
+            const methodRadio = document.getElementById(`method_${config.method.toLowerCase()}`);
+            if (methodRadio) {
+                methodRadio.checked = true;
+            } else {
+                document.getElementById('method_get').checked = true;
+                config.method = 'GET';
+            }
+            
+            const payloadCheckbox = document.getElementById('option_payload');
+            payloadCheckbox.checked = config.payload;
+
+            let formatValue = config.dataFormat.toLowerCase(); // 🔥 [수정] 'config.dataFormat' 사용
+            if (formatValue === 'payload') {
+                formatValue = 'json';
+            }
+            
+            const formatRadio = document.getElementById(`format_${formatValue}`);
+            if (formatRadio) {
+                formatRadio.checked = true;
+                lastNonPayloadFormat = formatValue;
+            } else {
+                if(config.sourceType !== 'API') {
+                    document.getElementById('format_html').checked = true;
+                    formatValue = 'html';
+                    lastNonPayloadFormat = 'html';
+                } else {
+                    document.getElementById('format_json').checked = true;
+                    formatValue = 'json';
+                    lastNonPayloadFormat = 'json';
+                }
+            }
+            
+            updatePlaceholder({ target: { value: formatValue } });
+            handleRequestMethodChange({ target: { value: config.method } });
+            document.getElementById('option_redirect').checked = config.redirect;
+
+            // 🔥 [추가] 페이지 유형 업데이트
+            const pageTypeRadio = document.getElementById(`page_${config.pageType.toLowerCase()}`);
+            if (pageTypeRadio) {
+                pageTypeRadio.checked = true;
+            } else {
+                document.getElementById('page_single').checked = true;
+                config.pageType = 'SINGLE';
+            }
+            handlePageTypeChange({ target: { value: config.pageType } }); // Steps, Detail Options UI 업데이트
+            
+            // Steps 및 Detail URL/Format 업데이트 (UI 업데이트 후 값 재설정)
+            document.getElementById('step_input').value = config.step;
+            document.getElementById('detail_url_input').value = config.detailUrl || '';
+            const mainFormatRadio = document.getElementById(`main_format_${config.mainFormat.toLowerCase()}`);
+            if (mainFormatRadio) {
+                mainFormatRadio.checked = true;
+            } else {
+                document.getElementById('main_format_html').checked = true;
+            }
+            
+            const loginCheckbox = document.getElementById('option_login');
+            loginCheckbox.checked = config.login !== null;
+            const loginIdInput = document.getElementById('login_id');
+            const loginPasswordInput = document.getElementById('login_password');
+            toggleLoginInput();
+            
+            if (config.login && typeof config.login === 'object') {
+                loginIdInput.value = config.login.id || '';
+                const pw = config.login.password || '';
+                // 마스킹된 문자열이 포함되어 있으면 비밀번호는 복원하지 않습니다.
+                if (pw.includes('(Masked for Display)')) {
+                    loginPasswordInput.value = '';
+                    showToast('⚠️ 로드된 비밀번호는 마스킹되어 있었습니다. 보안을 위해 재입력이 필요할 수 있습니다.');
+                } else {
+                    loginPasswordInput.value = pw;
+                }
+            } else {
+                loginIdInput.value = '';
+                loginPasswordInput.value = '';
+            }
+
+            document.getElementById('option_header').checked = finalHeaders.length > 0 || config.payload;
+            toggleHeaderInput();
+            
+            document.getElementById('option_rendering').checked = config.rendering;
+
+            // 3. Conditions/Params 항목 추가 (UI에 수동 추가된 항목만 반영됨. 자동 추가 항목은 삭제되었으므로 추가될 일이 없음)
+            finalConditions.forEach(item => {
+                addMetaItem(item.name, item.value);
+            });
+
+            // 4. Headers 항목 추가
+            finalHeaders.forEach(item => addHeaderItem(item.name, item.value));
+
+            // 5. 로드 후 결과 출력 영역 숨김
+            document.getElementById('output').textContent = '';
+            document.getElementById('output').style.display = 'none';
+            document.getElementById('output_controls').style.display = 'none';
+            document.getElementById('output').dataset.unmasked = ''; // 복사 데이터 초기화
+            
+            showToast('✅ JSON 패턴 로드가 완료되었습니다. "조건 생성"을 클릭하여 결과를 확인하세요.');
+
+        }
+
+        function generatePattern() {
+            const selectedSourceValue = document.querySelector('input[name="source_type"]:checked').value;
+            const isAPI = selectedSourceValue === 'API';
+
+            // --------------------------------------------------------------------------------
+            // 🚨 [START] Mandatory Key Field Validation (필수 키 값 검증)
+            // --------------------------------------------------------------------------------
+            const metaListElement = document.getElementById('meta_data_list');
+            const metaItemsRaw = metaListElement.querySelectorAll('.meta-item:not(.template)');
+            const metaFieldName = isAPI ? '요청 파라미터' : 'Meta Name';
+            
+            for (const item of metaItemsRaw) {
+                const nameInput = item.querySelector('.meta-name');
+                const valueInput = item.querySelector('.meta-value');
+                const name = nameInput.value.trim();
+                const value = isAPI ? '' : valueInput.value.trim();
+                
+                if (name === '') {
+                    // CRAWL 모드에서 Name과 Value가 모두 비어있으면 무시 (추가되지 않음)
+                    if (!isAPI && value === '') continue; 
+                    
+                    showToast(`🚨 수집 조건의 '${metaFieldName}' 필드에 값이 입력되지 않았습니다. 필수 항목입니다.`);
+                    nameInput.focus();
+                    return;
+                }
+            }
+
+            const isHeaderChecked = document.getElementById('option_header').checked;
+            if (isHeaderChecked) {
+                const headerListElement = document.getElementById('header_data_list');
+                const headerItemsRaw = headerListElement.querySelectorAll('.meta-item:not(.template)');
+                
+                for (const item of headerItemsRaw) {
+                    const nameInput = item.querySelector('.meta-name');
+                    const valueInput = item.querySelector('.meta-value');
+                    const name = nameInput.value.trim();
+                    const value = valueInput.value.trim();
+                    
+                    if (name === '' || value === '') {
+                        showToast(`🚨 HTTP Header의 Key 또는 Value 필드가 비어 있습니다.`);
+                        (name === '' ? nameInput : valueInput).focus();
+                        return;
+                    }
+                }
+            }
+            // --------------------------------------------------------------------------------
+            // [END] Mandatory Key Field Validation
+            // --------------------------------------------------------------------------------
+            
+
+            const method = document.querySelector('input[name="request_method"]:checked').value;
+            const redirect = document.getElementById('option_redirect').checked;
+            const payload = document.getElementById('option_payload').checked;
+            
+            const format = document.querySelector('input[name="data_format"]:checked').value;
+            const rendering = document.getElementById('option_rendering').checked;
+            
+            const headerItems = collectListItems('header_data_list');
+            const conditionItems = collectListItems('meta_data_list');
+            
+            const accessTypeOutput = selectedSourceValue.toLowerCase(); // 'CRAWL' -> 'crawl' : 'API' -> 'api'
+            
+            // 🔥 [수정] 페이지 유형 관련 설정 값 수집
+            const pageTypeRaw = document.querySelector('input[name="page_type"]:checked').value;
+            const pageTypeValue = pageTypeRaw.toLowerCase(); // 'SINGLE' -> 'single', 'DETAIL' -> 'detail'로 변환
+            const isDetail = pageTypeRaw === 'DETAIL';
+            const stepValue = parseInt(document.getElementById('step_input').value.trim());
+            // [수정] main_format 라디오 버튼에서 값 가져오기
+            const mainFormat = isDetail ? document.querySelector('input[name="main_format"]:checked').value : null;
+            const detailUrl = isDetail ? document.getElementById('detail_url_input').value.trim() : null;
+
+            // 상세 페이지 URL 유효성 검사
+            if (isDetail && detailUrl === '') {
+                showToast("🚨 '상세 페이지'가 선택되었습니다. '메인 URL'은 필수 항목입니다.");
+                document.getElementById('detail_url_input').focus();
+                return;
+            }
+            
+            // ✨ [수정] 로그인 데이터 처리 로직
+            const loginChecked = document.getElementById('option_login').checked;
+            let loginDataForDisplay = null;
+            let loginDataForCopy = null;
+
+            if (loginChecked) {
+                const loginId = document.getElementById('login_id').value.trim();
+                const loginPassword = document.getElementById('login_password').value;
+                
+                // 유효성 검사 (ID 또는 PW가 비어있을 경우)
+                if (loginId === '' || loginPassword === '') {
+                    showToast("🚨 로그인 옵션이 체크되었습니다. ID와 PW는 필수 항목입니다.");
+                    if(loginId === '') document.getElementById('login_id').focus();
+                    else document.getElementById('login_password').focus();
+                    return;
+                }
+
+                // Copy용 원본 데이터
+                loginDataForCopy = { id: loginId, password: loginPassword };
+                
+                // Display용 마스킹 데이터
+                const maskedPassword = loginPassword.replace(/./g, '*') + (loginPassword.length > 0 ? ' (Masked for Display)' : '');
+                loginDataForDisplay = { id: loginId, password: maskedPassword };
+            } 
+            // else: loginDataForDisplay와 loginDataForCopy는 모두 null (초기값)
+
+
+            let finalObjectForDisplay = {
+                accessType: accessTypeOutput,
+                method: method,
+                redirect: redirect,
+                login: loginDataForDisplay, // Display/Null Output
+                // 🔥 [수정] 페이지 유형 관련 필드
+                pageType: pageTypeValue, // 'SINGLE'/'DETAIL' -> 'single'/'detail'
+                steps: stepValue, // 'step' -> 'steps'로 변경
+                dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
+                payload: payload,
+                rendering: rendering,
+            };
+
+            // Copy용 원본 데이터로 별도 객체 생성 (login 필드만 다름)
+            let finalObjectForCopy = {
+                ...finalObjectForDisplay,
+                login: loginDataForCopy
+            };
+
+
+            // 상세 페이지 URL 및 이전 포맷 추가
+            if (isDetail) {
+                finalObjectForDisplay.mainUrl = detailUrl;
+                finalObjectForCopy.mainUrl = detailUrl;
+                finalObjectForDisplay.mainFormat = mainFormat;
+                finalObjectForCopy.mainFormat = mainFormat;
+            }
+
+
+            // Header items 추가
+            if (headerItems.length > 0 || payload) {
+                let headerOutput = {};
+                headerItems.forEach(item => {
+                    headerOutput[item.name] = item.value;
+                });
+
+                if (payload) {
+                    // Payload 옵션이 켜져있으면 기본 JSON 헤더를 추가 (이미 존재하지 않는 경우만)
+                    if (!headerOutput["Content-Type"] && !headerOutput["content-type"]) {
+                        headerOutput["Content-Type"] = "application/json";
+                    }
+                    if (!headerOutput["Accept"] && !headerOutput["accept"]) {
+                        headerOutput["Accept"] = "application/json";
+                    }
+                }
+                
+                finalObjectForDisplay.headers = headerOutput;
+                finalObjectForCopy.headers = headerOutput;
+            }
+
+
+            // Condition/Params items 추가
+            if (isAPI) {
+                // API Logic: params는 단일 쿼리 스트링 문자열
+                if (conditionItems.length > 0) {
+                    const paramStrings = conditionItems.map(item => {
+                        const name = item;
+                        if (name.includes('=')) {
+                            return name;
+                        } else {
+                            return name + '=';
+                        }
+                    });
+                    const paramsString = paramStrings.join('&');
+                    finalObjectForDisplay.params = paramsString;
+                    finalObjectForCopy.params = paramsString;
+                } else {
+                    finalObjectForDisplay.params = null;
+                    finalObjectForCopy.params = null;
+                }
+            } else {
+                // CRAWL Logic
+                let itemsOutput = {};
+                conditionItems.forEach(item => {
+                    itemsOutput[item.name] = item.value;
+                });
+                
+                if (Object.keys(itemsOutput).length > 0) {
+                    finalObjectForDisplay.items = itemsOutput;
+                    finalObjectForCopy.items = itemsOutput;
+                } else {
+                    finalObjectForDisplay.items = null;
+                    finalObjectForCopy.items = null;
+                }
+            }
+
+            // 모든 필드가 null인 경우 키를 제거 (optional 필드의 경우)
+            for (const key of ['login', 'mainUrl', 'mainFormat', 'headers', 'params', 'items']) {
+                if (finalObjectForDisplay[key] === null) delete finalObjectForDisplay[key];
+                if (finalObjectForCopy[key] === null) delete finalObjectForCopy[key];
+            }
+
+
+            const outputBox = document.getElementById('output');
+            const outputControls = document.getElementById('output_controls');
+            
+            const finalPatternString = JSON.stringify(finalObjectForDisplay, null, 2);
+
+            // Copy용 원본 데이터를 data 속성에 저장합니다.
+            outputBox.dataset.unmasked = JSON.stringify(finalObjectForCopy);
+
+            outputBox.style.display = 'block';
+            outputControls.style.display = 'flex';
+            outputBox.textContent = finalPatternString;
+            outputControls.querySelector('p').textContent = '생성된 조건 (최상위 레벨 객체)';
+            
+            // 🔥 조건 생성 성공 알림 추가
+            showToast('✅ 조건 생성이 완료되었습니다.');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById("toast_message");
+            clearTimeout(toast.timeoutId);
+            clearTimeout(toast.hideTimeoutId);
+            
+            toast.textContent = message;
+            toast.style.display = 'block';
+            void toast.offsetHeight;
+            toast.classList.add("show");
+            
+            toast.timeoutId = setTimeout(function() {
+                toast.classList.remove("show");
+                toast.hideTimeoutId = setTimeout(function() {
+                    toast.style.display = 'none';
+                }, 500);
+            }, 5000);
+        }
+
+        /**
+         * [수정됨] data-unmasked 속성에서 원본 패스워드를 포함한 JSON을 복사합니다.
+         */
+        async function copyPattern() {
+            const outputBox = document.getElementById('output');
+            let textToCopy = outputBox.dataset.unmasked;
+
+            if (!textToCopy || textToCopy.trim() === '') {
+                showToast('🚨 생성된 조건이 없습니다. 먼저 조건을 생성해주세요.');
+                return;
+            }
+
+            // 원본 JSON 문자열을 파싱 후, 다시 minified JSON으로 변환하여 복사
+            try {
+                const unmaskedObject = JSON.parse(textToCopy);
+                textToCopy = JSON.stringify(unmaskedObject); // Minified JSON으로 복사
+            } catch (e) {
+                showToast('🚨 복사할 JSON 데이터를 처리하는 중 오류가 발생했습니다.');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                showToast('📋 조건이 복사되었습니다! (Minified JSON)');
+            } catch (err) {
+                console.error('Copy failed:', err);
+                showToast('🚨 복사 실패! (콘솔 확인)');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('reset_all_btn').addEventListener('click', resetAll);
+            document.getElementById('load_pattern_btn').addEventListener('click', parseAndLoadPattern);
+            
+            document.querySelectorAll('input[name="source_type"]').forEach(radio => {
+                radio.addEventListener('change', handleSourceChange);
+            });
+            
+            document.getElementById('option_header').addEventListener('change', toggleHeaderInput);
+            document.getElementById('option_login').addEventListener('change', toggleLoginInput);
+            
+            // 🔥 [수정] 페이지 유형 변경 이벤트 리스너 추가
+            document.querySelectorAll('input[name="page_type"]').forEach(radio => {
+                radio.addEventListener('change', handlePageTypeChange);
+            });
+            // 상세 페이지 포맷 변경 시 조건 자동 추가 로직 삭제됨
+            
+            // 🔥 [추가] Step 입력 필드 및 URL 입력 필드 리스너 추가
+            document.getElementById('step_input').addEventListener('blur', stepValidation);
+            document.getElementById('detail_url_input').addEventListener('blur', trimOnBlur);
+            
+            document.querySelectorAll('input[name="request_method"]').forEach(radio => {
+                radio.addEventListener('change', handleRequestMethodChange);
+            });
+            document.getElementById('option_payload').addEventListener('change', handlePayloadOptionChange);
+            
+            document.getElementById('add_meta_btn').addEventListener('click', () => addMetaItem('', ''));
+            document.getElementById('delete_selected_condition_btn').addEventListener('click', deleteSelectedItems);
+            document.getElementById('delete_all_condition_btn').addEventListener('click', () => deleteAllListItems('meta_data_list', '조건'));
+            document.getElementById('move_up_condition_btn').addEventListener('click', () => moveSelectedItem('up'));
+            document.getElementById('move_down_condition_btn').addEventListener('click', () => moveSelectedItem('down'));
+
+            document.getElementById('add_header_btn').addEventListener('click', () => addHeaderItem('', ''));
+            document.getElementById('delete_selected_header_btn').addEventListener('click', deleteSelectedItems);
+            document.getElementById('delete_all_header_btn').addEventListener('click', () => deleteAllListItems('header_data_list', 'Header'));
+            document.getElementById('move_up_header_btn').addEventListener('click', () => moveSelectedItem('up'));
+            document.getElementById('move_down_header_btn').addEventListener('click', () => moveSelectedItem('down'));
+
+            document.getElementById('generate_pattern_btn').addEventListener('click', generatePattern);
+            document.getElementById('copy_pattern_btn').addEventListener('click', copyPattern);
+            
+            document.querySelectorAll('input[name="data_format"]').forEach(radio => {
+                radio.addEventListener('change', updatePlaceholder);
+            });
+            
+            // 초기 설정 적용
+            updatePlaceholder({ target: { value: 'html' } });
+            toggleHeaderInput();
+            toggleLoginInput(); 
+            
+            // 🔥 [수정] 초기 페이지 유형 상태 적용: handlePageTypeChange 호출
+            handlePageTypeChange({ target: { value: document.querySelector('input[name="page_type"]:checked').value } }); 
+
+            handleRequestMethodChange({ target: { value: 'GET' } });
+            
+            const allLists = ['meta_data_list', 'header_data_list'];
+            allLists.forEach(listId => {
+                const listElement = document.getElementById(listId);
+                if (listElement) {
+                    listElement.querySelectorAll('.meta-item:not(.template)').forEach(item => {
+                        item.querySelector('.meta-name').addEventListener('blur', trimOnBlur);
+                        item.querySelector('.meta-value').addEventListener('blur', trimOnBlur); 
+                        item.addEventListener('click', handleItemClick);
+                    });
+                }
+            });
+            
+            previousSourceType = document.querySelector('input[name="source_type"]:checked').value;
+        });
+    </script>
+</body>
+</html>

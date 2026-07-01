@@ -1,0 +1,254 @@
+from PyQt6.QtCore import QStandardPaths
+
+def set_desktop_dir():
+
+    try:
+        desktop_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+        if not desktop_dir:
+            default_file_path = './output/'
+        else:
+            default_file_path_slash = desktop_dir.replace('\\', '/')
+            if not default_file_path_slash.endswith('/'):
+                default_file_path = default_file_path_slash + '/'
+            else:
+                default_file_path = default_file_path_slash
+    except Exception:
+        default_file_path = './output/'
+
+    return default_file_path
+
+def get_request_settings():
+    return {
+                'seq_no': None,
+                'title': None,
+                'url':None,
+                'callback_url': None,
+                'conditions': None,
+                'spiders': None,
+                'auth': False,
+            }
+
+def get_task_settings():
+    return {
+        'delay': 0.5,
+        'threads': 8,
+        'timeout': 10,
+        'retry': 3
+    }
+
+def get_session_settings():
+    return {
+        'ua_ra': True,
+        'cookie_ra': True,
+        'proxy': {
+            'enabled': False,
+            'rotate': True,  # IP 자동 로테이션
+            'allow_ip_cnts': 0,  # 분당 ip 허용 갯수
+            'ip_list': []  # ip 리스트
+        }
+    }
+
+
+def get_output_settings():
+    return {
+            'extract': {
+                        'file': {
+                            'enabled': True,
+                            'file_path': QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation),
+                            'file_name': 'untitled0',
+                            'file_format': 'CSV',
+                            'file_encoding': 'UTF-8 BOM',
+                            'file_delimiter': ',',
+                            'is_open_save_path': False
+                        },
+                        'db': {
+                            'enabled': False,
+                            'db_env': "MySQL",
+                            'host': "localhost",
+                            'port': "3306",
+                            'database': None,
+                            'schema': None,
+                            'user': None,
+                            'password': None,
+                            'save_data_nm': None
+                        },
+                        'auto_save': False
+                    }
+            }
+
+def get_schedule_settings():
+
+    task_info = {}
+    task_info.update(get_task_settings())
+    task_info.update(get_output_settings())
+
+    task_info["schedule"] = {
+                                'enabled': False,
+                                'schedule_nm': None,  # 작업명
+                                'interval': None,  # 매일(daily), 주간(weekly), 월간(monthly), 일일(specific)
+                                'run_at': None,  # datetime ( 다음 실행 시각 )
+                                'exec_str': None,  # 사람이 읽기 좋은 실행 주기 문자열
+                                'schedule_save_type': None  # 저장 설정
+                            }
+    return task_info
+
+def auth_settings():
+
+    return {
+        'auth': {
+            # 로그인
+            'login': {
+                'enabled': False,
+                'user_id': None,
+                'pwd': None
+            },
+
+            # 라이선스 키 ( api_key ... )
+            'license': {
+                'enabled': False,
+                'token': None
+
+            }
+        }
+
+    }
+
+
+def get_settting_frame(task_id: str | None = None):
+
+    return {
+                'global':
+                    {
+                        'seq_no': None,
+                        'title': None,
+                        'url':None,
+                        'callback_url': None,
+                        'conditions': None,
+                        'spiders': None,                                                
+                        'auth': {
+                                    # 로그인
+                                    'login': {
+                                        'enabled': False,
+                                        'user_id': None,
+                                        'pwd': None
+                                        },
+
+                                    # 라이선스 키 ( api_key ... )
+                                    'license': {
+                                        'enabled': False,
+                                        'token': None
+
+                                    }
+                                }
+                    },
+                'tasks':[
+                            {
+                                'task_id': task_id,
+                                'delays': 0.0,
+                                'threads': 8,
+                                'timeout': 10,
+                                'retry': 3,
+                                'ua_ra': True,
+                                'cookie_ra': True,
+                                'proxy': {
+                                        'enabled': False,
+                                        'rotate': True,  # IP 자동 로테이션
+                                        'allow_ip_cnts': 0,  # 분당 ip 허용 갯수
+                                        'ip_list': []  # ip 리스트
+                                    },
+                                'extract': {
+                                        'file': {
+                                            'enabled': True,
+                                            'file_path': QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation),
+                                            'file_name': 'untitled0',
+                                            'file_format': 'CSV',
+                                            'file_encoding': 'UTF-8 BOM',
+                                            'file_delimiter': ',',
+                                            'is_open_save_path': True
+                                        },
+                                        'db': {
+                                            'enabled': False,
+                                            'db_env': "MySQL",
+                                            'host': "localhost",
+                                            'port': "3306",
+                                            'database': None,
+                                            'schema': None,
+                                            'user': None,
+                                            'password': None,
+                                            'save_data_nm': None
+                                        },
+                                        'auto_save': True
+                                },
+                                'schedule': {
+                                            'enabled': False,
+                                            'schedule_nm': None,  # 작업명
+                                            'interval': None,  # 매일(daily), 주간(weekly), 월간(monthly), 일일(specific)
+                                            'run_at': None,  # datetime ( 다음 실행 시각 )
+                                            'exec_str': None,  # 사람이 읽기 좋은 실행 주기 문자열
+                                            'schedule_save_type': None  # 저장 설정
+                                }
+                            }
+                        ]
+            }
+
+
+def set_ip_settings(request_info):
+
+    if "proxy" in request_info.keys():
+        if request_info["proxy"]["enabled"] == True:
+            proxy_req_info = {}
+            proxy_req_info["ip_list"] = request_info["proxy"]["ip_list"]
+            proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
+
+            return proxy_req_info
+        elif request_info["proxy"]["enabled"] == False:
+            return None
+        else:
+            return None
+    else:
+        return None
+
+
+def set_downloader_middlewares(request_info):
+
+    downloader_middlewares = {}
+
+    # IP 설정
+    if "proxy" in request_info.keys():
+
+        if request_info["proxy"]["enabled"] == True:
+            # 프록시 IP
+            downloader_middlewares["middlewares.RateLimitedProxyMiddleware"] = 100
+
+        elif request_info["proxy"]["enabled"] == False:
+            downloader_middlewares["scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware"] = 110
+
+    else:
+        downloader_middlewares["scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware"] = 110
+
+    if request_info["user_agent"]:
+        # USER-Agent 설정
+        downloader_middlewares["middlewares.RandomUserAgentMiddleware"] = 400
+    else:
+        downloader_middlewares["middlewares.RandomUserAgentMiddleware"] = None
+
+    if request_info["cookie"]:
+        # 쿠키 랜덤 설정
+        downloader_middlewares["middlewares.RandomCookieMiddleware"] = 650
+    else:
+        downloader_middlewares["middlewares.RandomCookieMiddleware"] = None
+
+    # Latency 설정
+    downloader_middlewares["middlewares.LatencyTrackingMiddleware"] = 743
+
+    return downloader_middlewares
+
+
+def set_item_pipelines():
+
+    item_pipelines = {}
+    item_pipelines["pipelines.LoadItemPipeline"] = 100
+
+    return item_pipelines
+
+
