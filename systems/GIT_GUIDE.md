@@ -23,7 +23,18 @@ git push -u origin main
 ## 3. Commit Strategy When Working with Claude Code
 - **Separate commits before/after AI work**: checkpoint commit → let Claude Code work → review diff → commit, or `git reset --hard HEAD~1` to undo
 - **Commit messages**: Conventional Commits format `<type>[scope]: <description>`
-  - Types: `feat` `fix` `refactor` `style` `docs` `test` `chore` `wip` `ci`
+
+| Type | Description |
+|---|---|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `refactor` | Code restructuring with no behavior change |
+| `style` | Formatting, semicolons, etc. (no logic change) |
+| `docs` | Documentation changes |
+| `test` | Adding/updating tests |
+| `chore` | Build, config, dependency management, etc. |
+| `wip` | Work-in-progress experimental commit (common in vibe coding; clean up before merging to main) |
+| `ci` | CI config/scripts (GitHub Actions, Jenkins, etc.) |
 - You can delegate commit-message writing to Claude Code ("commit the current changes using conventional commits based on the diff") — but review the diff first
 - When multiple features are touched in one session, explicitly ask Claude Code to commit each feature separately
 
