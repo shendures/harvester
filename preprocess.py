@@ -40,7 +40,7 @@ class RefineStats:
     filled:         int  = 0   # null → "—" 치환된 값 수
     deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
     deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "NULL 포함"}
-    modified_cells:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
+    modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
 
     @property
     def refine_rate(self) -> str:
@@ -57,7 +57,7 @@ class RefineStats:
             "filled":         self.filled,
             "refine_rate":    self.refine_rate,
             "deleted_count":  len(self.deleted_indices),
-            "modified_count": len(self.modified_cells),
+            "modified_count": len(self.modified_rows),
         }
 
 
@@ -144,7 +144,7 @@ class DataRefiner:
                     continue
                 refined_val = refined_row[col]
                 if raw_val != refined_val:
-                    stats.modified_cells.setdefault(refined_pos, {})[col] = (raw_val, refined_val)
+                    stats.modified_rows.setdefault(refined_pos, {})[col] = (raw_val, refined_val)
 
         return data, stats
 
