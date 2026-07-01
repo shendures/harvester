@@ -39,7 +39,7 @@ class RefineStats:
     removed:        int  = 0   # 제거된 행 수 (중복 + null 행 합산)
     filled:         int  = 0   # null → "—" 치환된 값 수
     deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
-    deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "NULL 포함"}
+    deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "전체 필드 NULL"}
     modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
 
     @property
@@ -64,7 +64,7 @@ class RefineStats:
 # ── 기본 정제 규칙 ────────────────────────────────────────────────────
 DEFAULT_RULES: dict[str, bool] = {
     "remove_duplicate": True,   # 중복 행 제거
-    "remove_null_row":  True,   # 필수 필드 null 행 제거
+    "remove_null_row":  True,   # 모든 필드 null 행 제거
     "fill_null":        True,   # null → "—" 치환
     "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
     "drop_columns":     False,  # 선택 필드 제외 (기본 비활성)
@@ -81,7 +81,7 @@ class DataRefiner:
 
     규칙 적용 순서 (변경하지 마세요 — 순서가 결과에 영향을 미칩니다):
         ① remove_duplicate  — 중복 행 제거
-        ② remove_null_row   — null 포함 행 제거
+        ② remove_null_row   — 모든 필드 null 행 제거
         ③ fill_null         — 잔존 null → "—" 치환
         ④ trim_whitespace   — 문자열 공백 제거
         ⑤ drop_columns      — 지정 컬럼 제외
@@ -198,7 +198,7 @@ class DataRefiner:
                 stats.deleted_reasons[orig_idx] = "중복"
         return unique, stats, new_indices
 
-    # ── 규칙 ② 필수 필드 null 행 제거 ───────────────────────────────
+    # ── 규칙 ② 모든 필드 null 행 제거 ───────────────────────────────
     def _step_remove_null_row(
         self, data: list[dict], stats: RefineStats, orig_indices: list[int]
     ) -> tuple[list[dict], RefineStats, list[int]]:
@@ -207,14 +207,14 @@ class DataRefiner:
 
         surviving, removed_idxs = [], []
         for row, orig_idx in zip(data, orig_indices):
-            if any(v in _NULL_VALUES for v in row.values()):
+            if all(v in _NULL_VALUES for v in row.values()):
                 removed_idxs.append(orig_idx)
             else:
                 surviving.append((row, orig_idx))
 
         stats.removed += len(removed_idxs)
         for orig_idx in removed_idxs:
-            stats.deleted_reasons[orig_idx] = "NULL 포함"
+            stats.deleted_reasons[orig_idx] = "전체 필드 NULL"
 
         if surviving:
             new_data, new_indices = zip(*surviving)

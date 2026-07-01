@@ -522,7 +522,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {
             "remove_duplicate":  True,   # 중복 행 제거
-            "remove_null_row":   True,   # 필수 필드 null 행 제거
+            "remove_null_row":   True,   # 모든 필드 null 행 제거
             "fill_null":         True,   # null → "—" 치환
             "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
@@ -675,8 +675,8 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         rule_defs = [
             ("remove_duplicate", "중복 행 제거",
              "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
-            ("remove_null_row",  "필수 필드 null 행 제거",
-             "하나 이상의 필드가 null·빈 값인 행 전체를 삭제합니다."),
+            ("remove_null_row",  "모든 필드 null 행 제거",
+             "모든 필드가 null·빈 값인 행만 삭제합니다."),
             ("fill_null",        "null → 기본값 치환",
              "삭제 대상 외 null 값을 '—'으로 대체합니다."),
             ("trim_whitespace",  "문자열 공백 trim",
