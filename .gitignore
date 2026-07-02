@@ -184,3 +184,29 @@ null
 # IDE / Tools
 .idea/
 .claude/
+.vscode/
+*.code-workspace
+
+### 크로스플랫폼 (WSL / Windows) ###
+# Windows 탐색기 관련
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS (협업자가 Mac을 쓸 경우 대비)
+.DS_Store
+
+# 에디터 임시/백업 파일
+*.swp
+*~
+*.orig
+*.bak
+*.tmp
+
+# 환경 변수 / 민감 정보
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

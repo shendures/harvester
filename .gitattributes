@@ -1,0 +1,32 @@
+# 기본: 텍스트 파일은 자동 감지 + 저장소 내부는 LF로 통일
+* text=auto eol=lf
+
+# 스크립트 (WSL에서 실행되므로 반드시 LF)
+*.sh text eol=lf
+
+# Windows 전용 스크립트/실행 파일 (CRLF)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 소스/설정 파일
+*.py    text diff=python
+*.md    text
+*.json  text
+*.yml   text
+*.yaml  text
+*.toml  text
+*.cfg   text
+*.ini   text
+
+# 바이너리 파일 (diff/변환 대상 아님)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.exe  binary
+*.dll  binary
+*.so   binary
