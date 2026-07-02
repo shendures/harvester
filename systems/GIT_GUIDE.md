@@ -1,98 +1,102 @@
-# Core Git Rules (Summary for Claude Code)
+# Core Git Rules (Condensed — for Claude Code)
 
-> A condensed reference for managing Git/GitHub safely and efficiently during "vibe coding" with Claude Code.
+> Safe, efficient Git/GitHub usage during "vibe coding." Keep this short — follow every rule below.
 
-## 1. Three Core Principles
-1. **Commit often, in meaningful units** — one commit per feature/bugfix/refactor. Never dump a whole day's work into one commit.
-2. **Always stay in a revertible state** — commit (checkpoint) before letting Claude Code make any large change.
-3. **Use branches lightly and often** — do experiments and big refactors on a separate branch.
+## 1. Core Principles
+1. Commit often, in meaningful units (one commit = one feature/fix/refactor). Never dump a full day's work into one commit.
+2. Always stay revertible — checkpoint-commit before letting Claude Code make a large change.
+3. Branch off for anything experimental or large.
 
-## 2. Initial Project Setup (only if no git repo exists)
+## 2. First-Time Setup (only if no repo exists)
 ```bash
-git init
-git branch -M main
-```
-- `.gitignore`: use the Python template from gitignore.io (toptal)
-- Draft a README (purpose, how to run, key commands)
-- Connect to GitHub:
-```bash
+git init && git branch -M main
 gh repo create [project-name] --private --source=. --remote=origin
 git push -u origin main
 ```
+`.gitignore`: Python template from gitignore.io. Draft a README (purpose, run instructions, key commands).
 
-## 3. Commit Strategy When Working with Claude Code
-- **Separate commits before/after AI work**: checkpoint commit → let Claude Code work → review diff → commit, or `git reset --hard HEAD~1` to undo
-- **Commit messages**: Conventional Commits format `<type>[scope]: <description>`
+## 3. Commit Rules
+- Checkpoint → Claude Code works → review diff → commit (or `git reset --hard HEAD~1` to undo).
+- Format: Conventional Commits `<type>[scope]: <description>`
+  `feat` `fix` `refactor` `style` `docs` `test` `chore` `wip` `ci`
+- Claude Code may write the commit message from the diff, but you review the diff first.
+- Multiple features touched in one session → commit each separately.
 
-| Type | Description |
+## 4. Branch Strategy: `feature/*` → `develop` → `main`
+```
+feature/* (new work)  →  develop (integration/test)  →  main (production)
+```
+| Branch | Role |
 |---|---|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `refactor` | Code restructuring with no behavior change |
-| `style` | Formatting, semicolons, etc. (no logic change) |
-| `docs` | Documentation changes |
-| `test` | Adding/updating tests |
-| `chore` | Build, config, dependency management, etc. |
-| `wip` | Work-in-progress experimental commit (common in vibe coding; clean up before merging to main) |
-| `ci` | CI config/scripts (GitHub Actions, Jenkins, etc.) |
-- You can delegate commit-message writing to Claude Code ("commit the current changes using conventional commits based on the diff") — but review the diff first
-- When multiple features are touched in one session, explicitly ask Claude Code to commit each feature separately
+| `feature/*`, `fix/*`, `experiment/*`, `refactor/*` | New work. Branch off **`develop`**, not `main`. |
+| `develop` | Integration/test. Receives merges from feature branches. Must run, not necessarily prod-ready. |
+| `main` | Production. Only merges from a verified `develop`. Always deployable. |
 
-## 4. Branch Strategy
-| Prefix | Purpose |
-|---|---|
-| feat/ | Feature development |
-| fix/ | Bug fix |
-| experiment/ | Experimental attempt |
-| refactor/ | Structural improvement |
-
-- `main` should always stay in a working state
-- Always branch off for experimental requests
 ```bash
-git checkout -b feat/feature-name
-# after work
-git checkout main
-git merge feat/feature-name
-git branch -d feat/feature-name
+git checkout develop && git pull origin develop
+git checkout -b feature/name        # work, commit
+git checkout develop && git pull origin develop && git merge feature/name
+git push origin develop && git branch -d feature/name
+# only when develop is verified stable:
+git checkout main && git pull origin main && git merge develop && git push origin main
 ```
 
-## 5. Common Situations & Fixes
+**Multi-environment (WSL + Windows):** both are separate local clones of the same remote — the remote is the only sync point.
+- Push before switching environments; pull before starting work in one.
+- Never work the same branch in both without pull/push in between (diverging history).
+- Unexpected diffs across environments → suspect CRLF/LF, permissions, or path separators before assuming a real conflict.
+- Auth (SSH keys/tokens) is per-environment, not shared.
+
+## 5. Which Branch to Commit/Push/Pull On
+**Before any commit/push/pull:** run `git status` + `git branch -vv` — never act blind.
+
+| Branch | Commit | Push | Pull |
+|---|---|---|---|
+| `main` | Only merges from verified `develop` — never new/WIP work directly | Only clean, merged commits; ask user if unsure | Safe anytime, do before merging `develop` in |
+| `develop` | Only merges from feature branches — don't commit new work directly | After merging a verified feature branch, to sync team/other environment | Before branching off it or merging a feature branch in (catches other-environment changes) |
+| `feature/*`, `fix/*`, `refactor/*` | Free | Free, same-name remote branch | Pull `develop` periodically to avoid drift |
+| `experiment/*` | Free | Free | — **never merge into `develop`/`main` directly** |
+| Unrecognized branch name | — | — | **Stop, ask the user** what it's for |
+
+**If unsure which branch matches the task** (ambiguous names, several stale branches): list branches (`git branch -vv`, `git log --all --oneline --graph -20`), summarize what each contains, and ask the user before acting.
+
+**Multi-environment check:** before pushing, if unsure whether the other environment (WSL/Windows) pushed since your last pull, run `git fetch` and check `git log HEAD..origin/<branch>` first.
+
+**Hard rule:** never push new/WIP work directly to `main` or `develop` without explicit user confirmation.
+
+## 6. Common Fixes
 | Situation | Command |
 |---|---|
-| Discard all uncommitted changes | `git checkout -- .` |
-| Fully revert to previous commit | `git reset --hard HEAD~1` |
-| Revert while keeping history | `git revert HEAD` |
-| Restore only one file to a prior state | `git checkout HEAD~1 -- path/to/file` |
-| Temporarily switch branches | `git stash` → work → `git stash pop` |
+| Discard uncommitted changes | `git checkout -- .` |
+| Revert to previous commit (destructive) | `git reset --hard HEAD~1` |
+| Revert, keep history | `git revert HEAD` |
+| Restore one file from prior commit | `git checkout HEAD~1 -- path/to/file` |
+| Temp branch switch | `git stash` → work → `git stash pop` |
 
-**If a secret (e.g. `.env`) was accidentally committed**: rotating the key/credential immediately is the top priority — clearing it from history alone doesn't undo exposure. Then stop tracking it:
+**Secret committed (e.g. `.env`):** rotate the credential immediately — clearing history alone doesn't undo exposure. Then:
 ```bash
-git rm --cached .env
-echo ".env" >> .gitignore
-git commit -m "chore: stop tracking .env"
+git rm --cached .env && echo ".env" >> .gitignore && git commit -m "chore: stop tracking .env"
 ```
-For full history removal, use `git filter-repo` or BFG Repo-Cleaner — back up the repo first and proceed carefully.
+Full history removal: `git filter-repo` or BFG, backup first.
 
-## 6. How to Instruct Claude Code Effectively
-- ✅ Good: "Review current changes and commit them by feature using conventional commits", "Create branch feat/search and work there"
-- ❌ Bad: "Just clean up git however you want" (vague → risk of force push or history loss)
+## 7. Instructing Claude Code
+- ✅ "Review changes and commit by feature using conventional commits" / "Branch feature/search off develop and work there"
+- ❌ "Just clean up git however you want" (vague → risk of force push or history loss)
 
-### ⚠️ Commands That Always Require Human Approval
-| Command | Risk |
-|---|---|
-| `git push --force` | Can overwrite remote history and destroy collaborators' work |
-| `git reset --hard` | Permanently deletes uncommitted work |
-| `git branch -D` | Force-deletes an unmerged branch |
-| `git filter-repo` | Rewrites entire history, hard to undo |
+### ⚠️ Always require human approval
+`git push --force` · `git reset --hard` · `git branch -D` · `git filter-repo`
 
-## 7. GitHub Tips
-- Track changes per feature via PRs: `gh pr create --title "..." --body "..."`
-- Manage work units with Issues → give context like "start working on Issue #12"
-- Set up GitHub Actions to auto-run tests/lint on every push
+## 8. GitHub Tips
+- PRs per feature: `gh pr create --title "..." --body "..."`
+- Reference Issues for context ("start on Issue #12")
+- GitHub Actions to auto-run tests/lint on push
 
-## 8. Checklist
-- [ ] `.gitignore` ready and current state committed before starting
+## 9. Checklist
+- [ ] `.gitignore` ready, current state committed before starting
 - [ ] Checkpoint commit before big tasks; experiments on a separate branch
-- [ ] Meaningful commit message per completed unit + push regularly
+- [ ] New work branches off `develop`, not `main`; `develop` → `main` only when verified stable
+- [ ] Meaningful commit per completed unit; push regularly
+- [ ] Before commit/push/pull: confirm branch + role; ask user if unclear
+- [ ] Before switching WSL ↔ Windows: push first; pull before starting work
 - [ ] Force push / hard reset always reviewed by a human first
-- [ ] Rotate credentials immediately if a secret gets committed
+- [ ] Rotate credentials immediately if a secret is committed
