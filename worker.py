@@ -242,7 +242,11 @@ class MultiprocessWorker(QThread):
         result_info["resp_info"]["timestamp"] = datetime.now()
         result_info["job_name"] = self.job_name
 
-        res_url     = resp_info.get("url", "")
+        # [수정] 기존: resp_info["url"](리다이렉트 후 최종 URL)로 url_list를 대조
+        #        → redirect가 발생하는 사이트는 최종 URL ≠ 요청 URL이라
+        #          모든 결과가 "URL 불일치"로 skip되어 total=0이 되는 문제
+        #        → 리다이렉트 전 최초 요청 URL(req_url)로 대조 (없으면 기존 url로 fallback)
+        res_url     = resp_info.get("req_url") or resp_info.get("url", "")
         status_code = resp_info.get("status")
         resp_time   = resp_info.get("pure_latency", 0.0)
         reason      = resp_info.get("reason", "")

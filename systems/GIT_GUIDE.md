@@ -35,16 +35,21 @@ feature/* (new work)  →  develop (integration/test)  →  main (production)
 ```bash
 git checkout develop && git pull origin develop
 git checkout -b feature/name        # work, commit
-git checkout develop && git pull origin develop && git merge feature/name
-git push origin develop && git branch -d feature/name
-# only when develop is verified stable:
-git checkout main && git pull origin main && git merge develop && git push origin main
+git push -u origin feature/name
+gh pr create --base develop --title "..." --body "..."
+gh pr merge <PR#> --merge --delete-branch   # solo repo: add --admin (ruleset blocks self-approval)
+git checkout develop && git pull origin develop
+# only when develop is verified stable — release PR:
+gh pr create --base main --head develop --title "..." --body "..."
 ```
+
+> **PR required:** GitHub rulesets on this repo require changes to `develop`/`main` to go through a pull request. A direct push only succeeds via owner bypass (`remote: Bypassed rule violations`) — treat that warning as a mistake, not a feature.
 
 **Multi-environment (WSL + Windows):** both are separate local clones of the same remote — the remote is the only sync point.
 - Push before switching environments; pull before starting work in one.
 - Never work the same branch in both without pull/push in between (diverging history).
 - Unexpected diffs across environments → suspect CRLF/LF, permissions, or path separators before assuming a real conflict.
+- Line endings are normalized to LF repo-wide via `.gitattributes`. A whole-file diff is usually EOL noise — verify with `git diff --ignore-cr-at-eol` (empty = EOL-only change). A file that stays "modified" even after checkout/stash is pending renormalization: run `git add --renormalize <path>` and commit that separately from logic changes.
 - Auth (SSH keys/tokens) is per-environment, not shared.
 
 ## 5. Which Branch to Commit/Push/Pull On
@@ -53,7 +58,7 @@ git checkout main && git pull origin main && git merge develop && git push origi
 | Branch | Commit | Push | Pull |
 |---|---|---|---|
 | `main` | Only merges from verified `develop` — never new/WIP work directly | Only clean, merged commits; ask user if unsure | Safe anytime, do before merging `develop` in |
-| `develop` | Only merges from feature branches — don't commit new work directly | After merging a verified feature branch, to sync team/other environment | Before branching off it or merging a feature branch in (catches other-environment changes) |
+| `develop` | Only merges from feature branches — don't commit new work directly | Via merged PR from a feature branch; direct push triggers rule bypass — avoid | Before branching off it or merging a feature branch in (catches other-environment changes) |
 | `feature/*`, `fix/*`, `refactor/*` | Free | Free, same-name remote branch | Pull `develop` periodically to avoid drift |
 | `experiment/*` | Free | Free | — **never merge into `develop`/`main` directly** |
 | Unrecognized branch name | — | — | **Stop, ask the user** what it's for |
@@ -62,7 +67,7 @@ git checkout main && git pull origin main && git merge develop && git push origi
 
 **Multi-environment check:** before pushing, if unsure whether the other environment (WSL/Windows) pushed since your last pull, run `git fetch` and check `git log HEAD..origin/<branch>` first.
 
-**Hard rule:** never push new/WIP work directly to `main` or `develop` without explicit user confirmation.
+**Hard rule:** never push new/WIP work directly to `main` or `develop` without explicit user confirmation. Even verified, merged work should reach `develop`/`main` through a PR — the GitHub ruleset enforces this, and a direct push silently relies on owner bypass.
 
 ## 6. Common Fixes
 | Situation | Command |
@@ -95,6 +100,7 @@ Full history removal: `git filter-repo` or BFG, backup first.
 - [ ] `.gitignore` ready, current state committed before starting
 - [ ] Checkpoint commit before big tasks; experiments on a separate branch
 - [ ] New work branches off `develop`, not `main`; `develop` → `main` only when verified stable
+- [ ] `develop`/`main` receive changes via PR (`gh pr create`), never direct push
 - [ ] Meaningful commit per completed unit; push regularly
 - [ ] Before commit/push/pull: confirm branch + role; ask user if unclear
 - [ ] Before switching WSL ↔ Windows: push first; pull before starting work

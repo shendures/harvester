@@ -147,8 +147,15 @@ def set_chrome_webdriver(headless=False):
     return driver
 
 def get_response_status(response):
+    # 리다이렉트 발생 시 response.url은 최종 URL이므로,
+    # 워커의 url_list 매칭용으로 최초 요청 URL을 별도로 보존합니다.
+    # (redirect_urls의 첫 번째 원소 = 리다이렉트 전 최초 요청 URL)
+    redirect_urls = response.meta.get("redirect_urls")
+    req_url = redirect_urls[0] if redirect_urls else response.url
+
     response_status = {
                         "url": response.url,
+                        "req_url": req_url,
                         "method":response.request.method,
                         "params":response.request.body.decode('utf-8'),
                         "ip_address": response.ip_address.compressed,
