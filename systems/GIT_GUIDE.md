@@ -36,8 +36,9 @@ feature/* (new work)  →  develop (integration/test)  →  main (production)
 git checkout develop && git pull origin develop
 git checkout -b feature/name        # work, commit
 git push -u origin feature/name
-gh pr create --base develop --title "..." --body "..."   # merge the PR on GitHub
-git checkout develop && git pull origin develop && git branch -d feature/name
+gh pr create --base develop --title "..." --body "..."
+gh pr merge <PR#> --merge --delete-branch   # solo repo: add --admin (ruleset blocks self-approval)
+git checkout develop && git pull origin develop
 # only when develop is verified stable — release PR:
 gh pr create --base main --head develop --title "..." --body "..."
 ```
