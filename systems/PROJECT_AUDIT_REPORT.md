@@ -134,9 +134,9 @@ GUI 시작 버튼
     **여유 있는 프록시를 무작위 순회로 선택**(전부 소진 시에만 IgnoreRequest).
     무의미해진 `delay_until` 재스케줄 유도 코드 제거 (⑤ 재설계는 백로그 유지)
 - **검증**:
-  - `tests/test_middlewares.py` 신설(**프로젝트 첫 테스트**, 8건 PASS) —
-    URL 변환·비활성 행 제외, 제한 초과 시 IgnoreRequest, 프록시 간 분산,
-    0=무제한, 60초 윈도우 만료 후 재허용
+  - 유닛 테스트 8건 작성·전건 PASS — URL 변환·비활성 행 제외, 제한 초과 시
+    IgnoreRequest, 프록시 간 분산, 0=무제한, 60초 윈도우 만료 후 재허용
+    (검증용 임시 산출물로, 검증 완료 후 저장소에서 제거 — PR #6)
   - e2e: 로컬 대상 서버 + 요청 카운트 포워드 프록시 + `run_spider` 자식 프로세스 —
     수정 전(git stash) 프록시 경유 0건 재현 / 수정 후 전 요청 프록시 경유 + 수집 성공
   - WSL 테스트 환경: 저장소 `.venv`는 Windows용이라 uv로 별도 구성 (Python 3.12)
@@ -166,8 +166,8 @@ PR #5(프록시 수정) 머지 후 Windows 클론은 develop pull 필요.
    설계와 묶어 재검토 (현재는 전 프록시 소진 시 IgnoreRequest로 폐기)
 5. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
    키 노출 이력 점검
-6. **테스트 확대**: `tests/test_middlewares.py`로 착수됨(PR #5) —
-   `preprocess.py`, `utility.py` 순수 함수로 확대
+6. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
+   (이슈 ② 검증 시 미들웨어 테스트 8건을 작성해 효용은 확인됨 — PR #5 참고)
 7. **정리**: `frames_tmp.py` 제거 여부 결정, PROJECT_GUIDE 예시 JSON 수정,
    미구현 스파이더 타입(⑦) 명시적 예외 처리, GUI 경로에서
    `set_downloader_middlewares()`가 `DOWNLOADER_MIDDLEWARES`를 통째로 교체해
