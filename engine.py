@@ -47,30 +47,33 @@ def get_json_form(url, payload_yn):
     return processed_url, body
 
 
-def get_spider(conditions: dict):
+def get_spider(request_info: dict):
 
-    if conditions["spiders"] == "html":
+    # conditions 내부 spiders 우선, 없으면 최상위 fallback (현행 request_info.json 호환)
+    spiders = (request_info.get("conditions") or {}).get("spiders", request_info.get("spiders"))
+
+    if spiders == "html":
         return HtmlExtractorSpider
 
-    elif conditions["spiders"] == "html_render":
+    elif spiders == "html_render":
         return HtmlSeleniumSpider
 
-    elif conditions["spiders"] == "json":
+    elif spiders == "json":
         return JsonExtractorSpider
 
-    elif conditions["spiders"] == "xml":
+    elif spiders == "xml":
         return XmlExtractorSpider
 
-    elif conditions["spiders"] == "detail":
+    elif spiders == "detail":
         return DetailExtractorSpider
 
-    elif conditions["spiders"] == "html_render_detail":
+    elif spiders == "html_render_detail":
         return {}
 
-    elif conditions["spiders"] == "json_detail":
+    elif spiders == "json_detail":
         return {}
 
-    elif conditions["spiders"] == "json_payload_detail":
+    elif spiders == "json_payload_detail":
         return {}
 
 
