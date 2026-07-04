@@ -1,10 +1,10 @@
 # DataCrawler v2.0 (Harvest) — 프로젝트 리포트
 
-> `PROJECT_GUIDE.md`(구조 설명)와 `PROJECT_AUDIT_REPORT.md`(진행상황/이슈)를 통합한 문서입니다.
+> 프로젝트 구조·아키텍처 설명 문서입니다. 함께 관리되는 문서:
+> - **이슈·백로그**: `ISSUES.md`
+> - **진행 이력**: `HISTORY.md`
 
-- **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
 - **최신 갱신**: 2026-07-05
-- **조사 범위**: 전체 소스 코드(약 16,200줄), 문서(`systems/`), Git 이력, 의존성, 보안
 
 ---
 
@@ -196,7 +196,7 @@ Scrapy Item이 Spider에서 나온 뒤 거치는 후처리 단계.
 | `LoadItemPipeline` | 수집 결과를 `RESULT_INFO:` 형식으로 stdout에 출력 → `MultiprocessWorker`가 수신 |
 
 현재 유일한 파이프라인. 미사용이던 `DonasPipeline`·`CsvExportPipeline`·`MongoDBPipeline`은
-PR #8에서 제거됨 (이슈 ④ 참고). GUI의 DB 내보내기 UI는 파이프라인에 연결되어 있지 않음.
+PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI는 파이프라인에 연결되어 있지 않음.
 
 ---
 
@@ -253,10 +253,10 @@ Scrapy 다운로더/스파이더 미들웨어 모음.
 | 클래스 | 역할 |
 |---|---|
 | `RandomUserAgentMiddleware` | 요청마다 User-Agent를 랜덤 교체 |
-| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (⚠️ 반환값 이슈 — §7 이슈 ③ 참고) |
+| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (⚠️ 반환값 이슈 — `ISSUES.md` 이슈 ③ 참고) |
 | `RateLimitedProxyMiddleware` | IP 로테이션 및 분당 요청 수 제한 |
 | `LatencyTrackingMiddleware` | 요청~응답 구간 레이턴시를 측정하여 `meta["pure_latency"]`에 저장 |
-| `DelaySchedulerMiddleware` | 스케줄러 레벨 딜레이 적용 (⚠️ 미로드 — §7 이슈 ⑤ 참고) |
+| `DelaySchedulerMiddleware` | 스케줄러 레벨 딜레이 적용 (⚠️ 미로드 — `ISSUES.md` 이슈 ⑤ 참고) |
 
 ---
 
@@ -286,7 +286,7 @@ Scrapy Item 및 ItemLoader 정의. 수집 결과를 구조화된 형태로 파�
 `request_info.json` 파일을 생성하는 스크립트 (개발 도구).
 
 #### `frames_tmp.py`
-UI 레이아웃 프로토타이핑용 임시 파일 (5,796줄). **git 추적 중 — 정리 대상 (§5 참고)**.
+UI 레이아웃 프로토타이핑용 임시 파일 (5,796줄). **git 추적 중 — 정리 대상 (`ISSUES.md` 백로그 참고)**.
 
 ---
 
@@ -381,7 +381,9 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `xml` | `XmlExtractorSpider` | XML + XPath |
 | `detail` | `DetailExtractorSpider` | 목록→상세 2단계 |
 
-> ⚠️ `spiders` 키는 `conditions` 안이 아니라 **최상위**에 있어야 실제 코드와 일치합니다 (예시는 통일 필요, §6 참고).
+> ⚠️ 위 예시는 실제 코드와 두 가지가 어긋납니다 (`ISSUES.md` "문서 vs 코드 불일치" 참고):
+> `spiders` 키는 `conditions` 안이 아니라 **최상위**에 있어야 하고,
+> `items`의 `/text()` XPath는 이슈 ⑧로 인해 현재 정상 동작하지 않습니다 (요소 XPath `.//h2` 형태가 실동작).
 
 ---
 
@@ -402,173 +404,3 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `python-dotenv` | 환경 변수 로드 |
 | `pyinstaller` | 실행 파일(.exe) 빌드 |
 
----
-
-## 7. 진행상황 및 이슈 (감사 이력)
-
-### 7-1. 발견된 이슈 (심각도순, 2026-07-05 기준 재확인)
-
-| # | 이슈 | 위치 | 상태 |
-|---|---|---|---|
-| ① | **리다이렉트 시 수집 결과 전량 skip → total=0** | `worker.py` / `engine.py` | ✅ **해결** (`d469277`) |
-| ② | 프록시 활성 시 즉시 AttributeError — 설정 키 불일치로 GUI 경로에서는 프록시 자체가 조용히 무시되고 있었음 | `middlewares.py`, `worker.py`, `customized_settings.py` | ✅ **해결** (PR #5) |
-| ③ | 쿠키 랜덤 미들웨어가 이미 쿠키가 있으면 dict를 반환 (미들웨어 규약 위반) | `middlewares.py:349` (`if request.cookies: return request.cookies`) | ⬜ 미해결 |
-| ④ | MongoDBPipeline 실행 불가 — `db_conn`/`MongoClient` import 누락으로 로드 즉시 `NameError` | `pipelines.py`, `settings.py` | ✅ **해결** (PR #8 — 어떤 정상 경로에서도 미사용이라 복구 대신 **제거**, 기본 `ITEM_PIPELINES`를 `LoadItemPipeline`으로 교체) |
-| ⑤ | `DelaySchedulerMiddleware`는 Scrapy에 존재하지 않는 설정 키(`SCHEDULER_MIDDLEWARES`)에 등록되어 로드되지 않음. 내부도 제거된 API(`engine.schedule`)·`DontCloseSpider` 오용 | `settings.py:84`, `middlewares.py` | ⬜ 미해결 |
-| ⑥ | `get_response_status()` 취약 필드 접근 — `ip_address`가 None(Selenium 응답 등)이면 AttributeError로 **결과 조용히 유실**, 비표준 상태코드에서 `HTTPStatus()` ValueError | `engine.py:161,165` | ⬜ 미해결 |
-| ⑦ | 미구현 스파이더 타입이 빈 dict 반환 → `process.crawl({})` | `engine.py:67-74` | ⬜ 미해결 |
-| ⑧ | **`/text()` XPath 추출 깨짐** — `extract_data_from_root()`가 텍스트 노드에 `node.xpath(".")`를 호출. 일반 문자열 텍스트 노드는 빈 값 반환(**조용한 유실**), `"100"` 등 JSON 파싱 가능한 텍스트는 parsel 1.11이 셀렉터를 json 타입으로 판정해 ValueError → **해당 페이지 추출 전체 실패**. 요소 XPath(`.//h2`)는 정상 (PR #8 검증 중 실측 발견) | `engine.py:299` | ⬜ 미해결 |
-
-### 문서 vs 코드 불일치
-
-- 위 §5의 request_info.json 예시는 `spiders` 키를 `conditions` 안에 두지만
-  실제 파일·코드는 **최상위** 키 사용 (실제 쪽이 정답, 예시 수정 필요)
-- 위 §5 예시의 `items` XPath가 `.//h2/text()` 형태인데, 현재 엔진 코드에서
-  `/text()` XPath는 이슈 ⑧로 인해 정상 동작하지 않음 — 요소 XPath(`.//h2`)가
-  실제 동작 형태 (⑧ 수정 방향 결정 시 예시도 함께 정리)
-- `LoadItemPipeline` 등의 f-string 중첩 따옴표 문법은 **Python 3.12+ 전용** —
-  PyInstaller 빌드 환경도 3.12+ 필수
-
-### 보안·운영 관찰
-
-- **`env/database.ini`에 실제 API 키 4개 평문 존재** (공공데이터포털, 한국은행,
-  OpenDART, IROS). git 미추적 상태이지만, 그 이유가 Python 템플릿 `.gitignore`의
-  `env/` 규칙(가상환경용)에 **우연히** 걸렸기 때문 → `.gitignore`에 명시적 등록
-  또는 `.env` 이관 권장 (2026-07-05 재확인: 여전히 명시적 등록 안 됨)
-- `ROBOTSTXT_OBEY=True`인 반면 봇 UA 행세·랜덤 쿠키·프록시 로테이션 미들웨어가
-  공존 — 사용 정책 정리 필요
-- **테스트 코드 0개** — 검증용으로 작성했던 미들웨어 테스트 8건은 검증 완료 후
-  정책에 따라 저장소에서 제거됨 (PR #6). `preprocess.DataRefiner`,
-  `utility.generate_combined_urls`가 테스트 도입 최적 지점
-- `frames_tmp.py`(5,796줄)가 git 추적 중 — 가이드 스스로 임시 파일로 명시, 정리 대상 (2026-07-05 재확인: 여전히 추적 중)
-- Scrapy 2.16으로 올리면 sync `start_requests()`가 **에러 없이 무시되어 0건 수집**
-  (검증 중 실측) — 업그레이드 시 async `start()` 마이그레이션 필수
-
-### 7-2. 완료된 작업
-
-#### 리다이렉트 URL 불일치 수정 (`d469277`, 12줄)
-
-- **원인**: `worker._handle_line()`이 응답의 최종 URL(`response.url`)로 사전 생성한
-  url_list를 대조 → 리다이렉트 사이트는 최종 URL ≠ 요청 URL이라 모든 결과가
-  "URL 불일치"로 skip되어 total=0
-- **수정**:
-  - `engine.get_response_status()`: `resp_info`에 `req_url`(리다이렉트 전 최초 요청
-    URL, `response.meta["redirect_urls"][0]`) 추가
-  - `worker._handle_line()`: 대조 기준을 `req_url`로 변경 (없으면 기존 `url` fallback)
-- **검증**:
-  - 로컬 302 리다이렉트 서버 + `run_spider` 자식 프로세스 e2e —
-    수정 전 로직 skip 재현 / 수정 후 정상 수집·데이터 추출 확인 (PASS)
-  - Windows 환경 GUI 실행 — 리다이렉트 사이트 실수집 정상 동작 확인
-
-#### 저장소 전체 줄바꿈(LF) 정규화 (`e10073c`, `3edb01a`)
-
-- `.gitattributes(eol=lf)` 도입 이전에 CRLF로 커밋된 20개 파일 일괄 정규화
-- `git diff --ignore-cr-at-eol` 기준 **내용 변경 0줄** 검증
-- 부수 효과로 겪은 "EOL 림보"(CRLF blob + LF 규칙 → 영구 modified 유령 상태)의
-  원인·진단·해법을 GIT_GUIDE에 문서화. main/develop 모두 LF blob을 가리키므로
-  **재발 없음**
-
-#### Git 운영 체계 정비 (PR #2, #3)
-
-- GitHub ruleset("PR 필수")과 가이드의 직접 머지 플로우 충돌 발견
-  (직접 푸시 시 owner bypass 경고 발생)
-- GIT_GUIDE를 **PR 기반 플로우로 개정**: `gh pr create` → `gh pr merge --admin`
-  (1인 저장소는 자기 승인 불가로 `--admin` 필요)
-- EOL 노이즈 진단법(`git diff --ignore-cr-at-eol`, `git add --renormalize`) 추가
-
-#### 릴리스 및 멀티환경 동기화 (PR #4)
-
-- `develop → main` 릴리스 PR 머지: main = `0155bfa`
-- WSL / Windows 클론 모두 main·develop 동기화 완료, 양쪽 working tree clean 확인
-
-#### 프록시 rate limit 미들웨어 수정 (이슈 ②, PR #5)
-
-- **원인 (수정 과정에서 2건 추가 발견)**:
-  1. `middlewares.py:213`이 주석 처리된 클래스 속성 `REQUESTS_PER_MINUTE` 참조
-     → 프록시 목록이 로드되면 첫 요청부터 AttributeError
-  2. **설정 키 불일치** — worker는 `PROXY_REQ_INFO`(읽는 코드 없음)에 저장,
-     미들웨어는 최상위 `ip_list`/`allow_ip_cnts` 조회 → GUI 경로에서는
-     프록시 목록이 항상 빈 리스트라 **프록시가 조용히 무시**됨 (①에 도달조차 못 함)
-  3. **형식 불일치** — GUI 프록시 행은 dict(host/port/protocol/enabled)인데
-     미들웨어는 그대로 `meta['proxy']`에 할당 (Scrapy는 URL 문자열 요구)
-- **수정**:
-  - `customized_settings.set_ip_settings()`: dict 행 → `"http://host:port"` URL
-    변환, `enabled=False` 행 제외
-  - `worker.set_scrapy_settings()`: `PROXY_REQ_INFO` 대신 미들웨어가 읽는
-    `ip_list`/`allow_ip_cnts` 키로 직접 주입
-  - `RateLimitedProxyMiddleware.process_request()`: `self.req_per_minute` 사용,
-    `allow_ip_cnts ≤ 0`은 무제한 취급, "랜덤 1개 선택 후 초과 시 폐기" →
-    **여유 있는 프록시를 무작위 순회로 선택**(전부 소진 시에만 IgnoreRequest).
-    무의미해진 `delay_until` 재스케줄 유도 코드 제거 (⑤ 재설계는 백로그 유지)
-- **검증**:
-  - 유닛 테스트 8건 작성·전건 PASS — URL 변환·비활성 행 제외, 제한 초과 시
-    IgnoreRequest, 프록시 간 분산, 0=무제한, 60초 윈도우 만료 후 재허용
-    (검증용 임시 산출물로, 검증 완료 후 저장소에서 제거 — PR #6)
-  - e2e: 로컬 대상 서버 + 요청 카운트 포워드 프록시 + `run_spider` 자식 프로세스 —
-    수정 전(git stash) 프록시 경유 0건 재현 / 수정 후 전 요청 프록시 경유 + 수집 성공
-  - WSL 테스트 환경: 저장소 `.venv`는 Windows용이라 uv로 별도 구성 (Python 3.12)
-
-#### 문서 통합 (PR #7)
-
-- `PROJECT_GUIDE.md`(구조) + `PROJECT_AUDIT_REPORT.md`(진행상황)를
-  본 문서(`PROJECT_REPORT.md`)로 통합, 원본 삭제, `CLAUDE.md` 참조 갱신
-
-#### 미사용 파이프라인 제거 및 기본 파이프라인 교체 (이슈 ④, PR #8)
-
-- **방향**: import 복구(a) 대신 **제거(b)** 선택 — MongoDBPipeline은 GUI의 어떤
-  정상 경로에서도 미사용(GUI가 항상 `LoadItemPipeline`으로 교체)이었고, GUI의
-  DB 내보내기 UI는 파이프라인에 연결되어 있지 않음
-- **수정** (7파일, +1/−283줄):
-  - `pipelines.py`: `LoadItemPipeline`만 유지. `DonasPipeline`(템플릿 잔재),
-    `CsvExportPipeline`(주석 참조만 존재), `MongoDBPipeline`(로드 즉시 NameError),
-    주석 처리된 MongoDB 구버전 초안(79줄), 불필요해진 import 제거
-  - `settings.py`: 기본 `ITEM_PIPELINES` → `LoadItemPipeline` (CLI 실행·예외 삼킴
-    연쇄의 크래시 경로 자체 제거). 정의된 적 없는 `PostgreSQLPipeline` 주석 제거
-  - `customized_settings.py`: 호출처 없는 `set_item_pipelines()` 제거
-  - spiders 4종: 삭제된 `CsvExportPipeline`을 가리키던 주석 제거
-- **검증** (WSL uv venv, Python 3.12):
-  - 기본 설정 크롤(CLI 경로 상당) e2e — 수정 전(develop) `NameError: db_conn`
-    재현 / 수정 후 `LoadItemPipeline` 로드 + `RESULT_INFO` 정상 추출
-  - GUI 경로 e2e(`multiprocessing` + `run_spider`) — `EXECUTOR_STATUS: SUCCESS`
-  - 검증 중 이슈 ⑧(`/text()` XPath 추출 깨짐) 신규 발견 → 백로그 등록
-
-### 현재 브랜치 상태 (2026-07-05 기준)
-
-| 브랜치 | 커밋 | WSL | Windows |
-|---|---|---|---|
-| `main` | `0155bfa` (PR #4) | ✅ | ✅ |
-| `develop` | `0bbf496` (PR #8, main보다 앞섬) | ✅ | 확인 필요 |
-
-미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
-저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
-`develop`(PR #5~#8 반영)의 **Windows GUI 검증 후 `main` 릴리스 PR** 대기 중.
-
----
-
-## 8. 남은 작업 백로그 (권장 우선순위)
-
-1. **⑧ `/text()` XPath 추출 깨짐** (`engine.py:299`) — 텍스트 노드에
-   `node.xpath(".")` 호출: 일반 문자열은 빈 값(조용한 유실), JSON 파싱 가능한
-   텍스트(`"100"` 등)는 parsel json 타입 판정 → ValueError로 페이지 추출 전체
-   실패. 수정 방향: 텍스트 노드 셀렉터는 `node.get()`을 그대로 쓰도록 분기
-   (요소 노드만 `xpath(".")` + 태그 제거 경로). §5 예시 JSON의 `/text()` 표기도
-   수정 방향에 맞춰 함께 정리
-2. **⑥ `get_response_status()` 방어 코드** — Selenium 응답·비표준 상태코드에서
-   결과가 조용히 유실되는 문제
-3. **③ 쿠키 미들웨어 반환값** — `return None`으로 1줄 수정
-4. **⑤ `DelaySchedulerMiddleware` 정리/재설계** — 존재하지 않는 설정 키에 등록되어
-   미로드, 내부도 제거된 API 사용. rate limit 초과 요청의 재시도(지연 재예약)
-   설계와 묶어 재검토 (현재는 전 프록시 소진 시 IgnoreRequest로 폐기)
-5. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
-   키 노출 이력 점검
-6. **`worker.set_scrapy_settings()` 예외 삼킴 개선** — 핵심 설정(`ITEM_PIPELINES`
-   교체 등)은 try 밖으로 옮기고, try는 실패해도 진행 가능한 프록시 주입으로 한정
-   (④는 해결됐지만 예외 삼킴 구조 자체는 남아 있음)
-7. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
-   (이슈 ② 검증 시 미들웨어 테스트 8건을 작성해 효용은 확인됨 — PR #5 참고)
-8. **정리**: `frames_tmp.py` 제거 여부 결정, 위 §5 예시 JSON 수정,
-   미구현 스파이더 타입(⑦) 명시적 예외 처리, GUI 경로에서
-   `set_downloader_middlewares()`가 `DOWNLOADER_MIDDLEWARES`를 통째로 교체해
-   `LatencyTrackingMiddleware`·`SeleniumMiddleware`가 빠지는 문제 검토,
-   GUI DB 내보내기(UI만 존재)의 파이프라인 연결 여부 결정
-9. **릴리스**: Windows GUI에서 `develop`(PR #5~#8) 검증 후 `develop → main` 릴리스 PR
