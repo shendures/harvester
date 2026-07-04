@@ -112,6 +112,34 @@
 - Windows 환경 GUI 검증 완료 확인 후 `develop → main` 릴리스 PR 머지
 - main = `2dfbdcd` (PR #5~#9 포함: 프록시 rate limit 수정, 테스트 제거,
   문서 통합, 이슈 ④ 해소, 이슈 ⑧ 백로그 등록)
+- 이후 문서 분리(PR #11) 반영 릴리스 PR #12 머지 → main = `f611a65`
+
+### `/text()`·`@attr` XPath 추출 수정 (이슈 ⑧, PR #13, 2026-07-05)
+
+- **원인**: `engine.extract_data_from_root()`가 추출된 모든 노드에
+  `node.xpath(".")`를 재호출 — 문자열 결과(text()/@attr)는 빈 값(조용한 유실),
+  JSON 파싱 가능한 텍스트(`"100"` 등)는 parsel 1.11이 json 타입으로 판정해
+  ValueError → 해당 페이지 추출 전체 실패
+- **수정**: `node.root`가 문자열이면 그대로 사용, 요소 노드만 기존
+  `xpath(".") + 태그 제거` 경로 유지 (요소 XPath 동작 무변경)
+- **검증 중 확인**: `@href` 등 속성 XPath도 동일 버그 — 함께 해결
+- **검증** (WSL uv venv, Python 3.12, parsel 1.11.0):
+  - 유닛 4케이스(요소/일반 텍스트/숫자 텍스트/@href) — 수정 전 3/4 FAIL →
+    수정 후 4/4 PASS
+  - e2e(`run_spider` 자식 프로세스, `/text()`+`@href` blueprint) — 수정 전
+    0건(EXECUTOR_STATUS는 SUCCESS인 채 조용한 유실) → 수정 후 2행 정상 수집
+
+### `spiders` 키 조회 리팩터 (PR #14, 2026-07-05)
+
+- **배경**: `get_spider()`가 blueprint 전체를 받으면서 최상위 `spiders` 키만
+  조회 → 문서 §5 예시(`conditions` 내부 표기)와 불일치. request_info.json은
+  현행 유지가 제약이라 fallback 방식 채택
+- **수정**: 파라미터명을 `request_info`로 정정, `conditions["spiders"]` 우선
+  조회 + 최상위 fallback. **request_info.json 무변경**
+- **검증**: 사본 선검증 후 실코드 반영 — e2e 최상위 형태(현행) 수정 전후 모두
+  PASS(회귀 없음), conditions 내부 형태 수정 전 FAIL(`KeyError: 'spiders'`) →
+  수정 후 PASS, 유닛 4케이스(양쪽 존재 시 내부 우선 등) PASS
+- 부수 효과: `PROJECT_REPORT.md` §5 예시의 문서-코드 불일치 2건 자연 해소
 
 ---
 
@@ -119,8 +147,8 @@
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `2dfbdcd` (PR #10) | ✅ | pull 필요 |
-| `develop` | `a675cc8` (PR #9) + 본 문서 분리 PR | ✅ | pull 필요 |
+| `main` | `f611a65` (PR #12) | ✅ | pull 필요 |
+| `develop` | `6389f03` (PR #14) + 본 문서 현행화 PR | ✅ | pull 필요 |
 
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.

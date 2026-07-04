@@ -47,30 +47,33 @@ def get_json_form(url, payload_yn):
     return processed_url, body
 
 
-def get_spider(conditions: dict):
+def get_spider(request_info: dict):
 
-    if conditions["spiders"] == "html":
+    # conditions 내부 spiders 우선, 없으면 최상위 fallback (현행 request_info.json 호환)
+    spiders = (request_info.get("conditions") or {}).get("spiders", request_info.get("spiders"))
+
+    if spiders == "html":
         return HtmlExtractorSpider
 
-    elif conditions["spiders"] == "html_render":
+    elif spiders == "html_render":
         return HtmlSeleniumSpider
 
-    elif conditions["spiders"] == "json":
+    elif spiders == "json":
         return JsonExtractorSpider
 
-    elif conditions["spiders"] == "xml":
+    elif spiders == "xml":
         return XmlExtractorSpider
 
-    elif conditions["spiders"] == "detail":
+    elif spiders == "detail":
         return DetailExtractorSpider
 
-    elif conditions["spiders"] == "html_render_detail":
+    elif spiders == "html_render_detail":
         return {}
 
-    elif conditions["spiders"] == "json_detail":
+    elif spiders == "json_detail":
         return {}
 
-    elif conditions["spiders"] == "json_payload_detail":
+    elif spiders == "json_payload_detail":
         return {}
 
 
@@ -294,9 +297,15 @@ def extract_data_from_root(root: Selector, _items: Dict[str, str]) -> List[Dict[
         # values = [ re.sub('<.+?>', ' ', node.xpath(".").get(default='').strip(), 0).strip() for node in extracted_nodes ]
         values = []
         for node in extracted_nodes:
-            # node.get()은 해당 노드의 HTML 문자열을 반환합니다.
-            # re.sub를 사용하여 HTML 태그를 제거하고 공백을 정리합니다.
-            value = re.sub('<.+?>', ' ', node.xpath(".").get(default='').strip(), 0).strip()
+            if isinstance(node.root, str):
+                # text()/@attr 결과 — root가 문자열이므로 그대로 사용합니다.
+                # (문자열 셀렉터에 .xpath(".")를 재호출하면 빈 값이 되거나,
+                #  JSON 파싱 가능한 문자열은 json 타입 판정으로 ValueError가 발생합니다)
+                value = node.root.strip()
+            else:
+                # 요소 노드 — node.xpath(".").get()으로 HTML 문자열을 얻고
+                # re.sub를 사용하여 HTML 태그를 제거하고 공백을 정리합니다.
+                value = re.sub('<.+?>', ' ', node.xpath(".").get(default='').strip(), 0).strip()
             values.append(value)
 
         # 데이터 없으면 None으로 처리
