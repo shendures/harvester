@@ -451,7 +451,11 @@ def set_scrapy_settings(settings_dict: dict):
             settings_dict[key] = default
 
     try:
-        settings.set("PROXY_REQ_INFO",       customized_settings.set_ip_settings(settings_dict))
+        # RateLimitedProxyMiddleware가 읽는 키(ip_list / allow_ip_cnts)로 직접 주입
+        proxy_req_info = customized_settings.set_ip_settings(settings_dict)
+        if proxy_req_info:
+            settings.set("ip_list",       proxy_req_info["ip_list"])
+            settings.set("allow_ip_cnts", proxy_req_info["allow_ip_cnts"])
         settings.set("DOWNLOADER_MIDDLEWARES", customized_settings.set_downloader_middlewares(settings_dict))
         settings.set("ITEM_PIPELINES",        {"pipelines.LoadItemPipeline": 100})
         settings.set("CONCURRENT_REQUESTS",   settings_dict["threads"])
