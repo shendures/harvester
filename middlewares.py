@@ -171,8 +171,7 @@ class RandomProxyMiddleware:
 
 class RateLimitedProxyMiddleware:
 
-    # 1. 특정 시간 당 IP 허용 횟수 설정
-    # REQUESTS_PER_MINUTE = 15 # IP 허용 횟수
+    # 특정 시간 당 IP 허용 횟수는 settings의 allow_ip_cnts로 결정됨 (self.req_per_minute)
     TIME_WINDOW = 60  # 특정 시간 ( 초 단위 )
 
     def __init__(self, settings):
@@ -190,63 +189,39 @@ class RateLimitedProxyMiddleware:
         return cls(crawler.settings)
 
     def process_request(self, request, spider):
-        """요청에 무작위 프록시 할당 및 사용량 제한 검사"""
+        """여유 있는 프록시를 골라 요청에 할당합니다. (사용량 제한 검사 포함)"""
         if not self.proxies:
             return
 
-        # 1. 사용할 프록시 선택 및 할당
-        # (이 단계에서는 아직 요청을 보내지 않고, 검사/할당만 합니다.)
-        proxy = random.choice(self.proxies)
-        request.meta['proxy'] = proxy
-
         current_time = time.time()
 
-        # 2. IP 사용 기록 정리 및 횟수 검사
-
-        # 현재 IP의 사용 기록 리스트를 가져옵니다.
-        usage_list = self.proxy_usage[proxy]
-
-        # 60초(TIME_WINDOW) 이전에 발생한 기록은 모두 제거합니다. (슬라이딩 윈도우)
-        usage_list[:] = [t for t in usage_list if t > current_time - self.TIME_WINDOW]
-
-        # 3. Rate Limit 검사
-        if len(usage_list) >= self.REQUESTS_PER_MINUTE:
-            # --- 제한 초과 시 처리 ---
-
-            # 다음 요청 가능 시각 계산
-            # (가장 오래된 기록(리스트의 첫 번째 요소) 시각 + 60초)
-            earliest_time = usage_list[0]
-            wait_time = (earliest_time + self.TIME_WINDOW) - current_time
-
-            # 요청을 즉시 보내지 않고, Scrapy에게 잠시 보류하도록 지시합니다.
-            # return request으로 요청을 다시 스케줄러 큐에 넣고 싶지만, 미들웨어에서 직접 재스케줄링은 까다롭습니다.
-
-            # 가장 간단한 방법: 요청을 무시하고 스케줄러로 재스케줄링을 요청합니다.
-            # Scrapy의 지연 로직을 활용하기 위해 요청에 재시도 정보를 추가합니다.
-            spider.logger.warning(f"⏳ Rate Limit 초과. IP '{proxy}'는 {wait_time:.2f}초 후 사용 가능. 재예약 요청.")
-
-            # 요청을 버리고, 스케줄러 미들웨어에서 재스케줄링을 처리하거나,
-            # 다운로더 미들웨어에서 지연 후 재요청을 유도해야 합니다.
-
-            # *****************************************************************
-            # 현실적인 구현: 재시도 메타데이터를 추가하고 에러를 발생시켜 재스케줄링 유도
-            # *****************************************************************
-            request.dont_filter = True  # 필터링하지 않고 다시 큐에 넣도록 설정
-            request.meta['delay_until'] = current_time + wait_time
-
-            # 임시 에러를 발생시켜 Scrapy가 이 요청을 재시도하도록 유도합니다.
-            # 이는 요청을 버리고 다시 스케줄링하는 일반적인 패턴입니다.
-            raise IgnoreRequest(f"Proxy rate limit exceeded for {proxy}. Delay requested.")
-
-        else:
-            # --- 제한 미초과 시 처리 ---
-
-            # 요청 시각을 기록합니다.
-            usage_list.append(current_time)
-            spider.logger.debug(f"🌐 Requesting {request.url} using {proxy}. Count: {len(usage_list)}")
-
-            # 다음 미들웨어 또는 다운로더로 요청을 전달합니다.
+        # rate limit 미설정(0 이하)이면 무제한으로 취급하고 무작위 할당만 수행
+        if self.req_per_minute <= 0:
+            request.meta['proxy'] = random.choice(self.proxies)
             return None
+
+        # 프록시를 무작위 순서로 순회하며, 제한에 걸리지 않은 첫 프록시를 할당
+        for proxy in random.sample(self.proxies, len(self.proxies)):
+            usage_list = self.proxy_usage[proxy]
+
+            # 60초(TIME_WINDOW) 이전에 발생한 기록은 모두 제거합니다. (슬라이딩 윈도우)
+            usage_list[:] = [t for t in usage_list if t > current_time - self.TIME_WINDOW]
+
+            if len(usage_list) < self.req_per_minute:
+                # 요청 시각을 기록하고 프록시를 할당합니다.
+                usage_list.append(current_time)
+                request.meta['proxy'] = proxy
+                spider.logger.debug(f"🌐 Requesting {request.url} using {proxy}. Count: {len(usage_list)}")
+                return None
+
+        # --- 모든 프록시가 제한 초과 시 처리 ---
+        # 다음 요청 가능 시각 계산 (전체 프록시 중 가장 빨리 풀리는 기록 기준)
+        earliest_time = min(self.proxy_usage[p][0] for p in self.proxies if self.proxy_usage[p])
+        wait_time = (earliest_time + self.TIME_WINDOW) - current_time
+
+        spider.logger.warning(
+            f"⏳ 모든 프록시가 Rate Limit 초과. {wait_time:.2f}초 후 사용 가능. 요청을 버립니다: {request.url}")
+        raise IgnoreRequest(f"All proxies rate limited. Next available in {wait_time:.2f}s.")
 
 
 class DelaySchedulerMiddleware:
