@@ -141,14 +141,20 @@
   수정 후 PASS, 유닛 4케이스(양쪽 존재 시 내부 우선 등) PASS
 - 부수 효과: `PROJECT_REPORT.md` §5 예시의 문서-코드 불일치 2건 자연 해소
 
+### 3차 릴리스 (PR #16, 2026-07-05)
+
+- `develop → main` 릴리스 PR 머지: main = `f9fa763`
+  (PR #13 이슈 ⑧ XPath 수정, PR #14 spiders 키 리팩터, PR #15 문서 현행화 포함)
+- WSL·Windows 클론 모두 main·develop 동기화 완료
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-05 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `f611a65` (PR #12) | ✅ | pull 필요 |
-| `develop` | `6389f03` (PR #14) + 본 문서 현행화 PR | ✅ | pull 필요 |
+| `main` | `f9fa763` (PR #16) | ✅ | ✅ |
+| `develop` | `1ae4d19` (PR #15) + 본 문서 갱신 PR | ✅ | ✅ |
 
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
