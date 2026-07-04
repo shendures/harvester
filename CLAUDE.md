@@ -3,6 +3,8 @@
 > [!IMPORTANT]
 > Please review the following references to maintain project context:
 > - Project Guide: 'systems/PROJECT_REPORT.md'
+> - Issues & Backlog: 'systems/ISSUES.md'
+> - History: 'systems/HISTORY.md'
 > - GIT Guide: 'systems/GIT_GUIDE.md'
 
 
