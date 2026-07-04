@@ -26,9 +26,6 @@ class HtmlSeleniumSpider(scrapy.Spider):
     custom_settings = {
         'CONCURRENT_REQUESTS': 8, # Scrapy 요청의 동시성 (여기서는 Selenium 요청을 사용하므로, 낮게 유지)
         'DOWNLOAD_DELAY': 1,  # SeleniumRequest를 위한 다운로드 지연 시간 설정
-        # 'ITEM_PIPELINES': {
-        #     'pipelines.CsvExportPipeline': 300
-        # }
     }
 
     # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.

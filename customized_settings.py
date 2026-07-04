@@ -196,8 +196,20 @@ def set_ip_settings(request_info):
 
     if "proxy" in request_info.keys():
         if request_info["proxy"]["enabled"] == True:
+            # GUI 프록시 테이블 행(dict: host/port/protocol/enabled)을
+            # Scrapy request.meta['proxy']가 요구하는 URL 문자열로 변환
+            ip_list = []
+            for row in request_info["proxy"]["ip_list"]:
+                if isinstance(row, dict):
+                    if not row.get("enabled", True):
+                        continue
+                    protocol = str(row.get("protocol", "http")).lower()
+                    ip_list.append(f"{protocol}://{row['host']}:{row['port']}")
+                else:
+                    ip_list.append(row)
+
             proxy_req_info = {}
-            proxy_req_info["ip_list"] = request_info["proxy"]["ip_list"]
+            proxy_req_info["ip_list"] = ip_list
             proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
 
             return proxy_req_info
@@ -242,13 +254,5 @@ def set_downloader_middlewares(request_info):
     downloader_middlewares["middlewares.LatencyTrackingMiddleware"] = 743
 
     return downloader_middlewares
-
-
-def set_item_pipelines():
-
-    item_pipelines = {}
-    item_pipelines["pipelines.LoadItemPipeline"] = 100
-
-    return item_pipelines
 
 

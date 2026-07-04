@@ -103,9 +103,7 @@ SCHEDULER_MIDDLEWARES = {
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   "pipelines.MongoDBPipeline": 100
-   # "pipelines.CsvExportPipeline": 300
-   # "pipelines.PostgreSQLPipeline": 200
+   "pipelines.LoadItemPipeline": 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
