@@ -158,7 +158,7 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 
 | 함수 | 역할 |
 |---|---|
-| `get_spider(conditions)` | 수집 조건(`spiders` 키)에 따라 적합한 Spider 클래스를 반환 |
+| `get_spider(request_info)` | `spiders` 키(`conditions` 내부 우선, 없으면 최상위 fallback)에 따라 적합한 Spider 클래스를 반환 |
 | `get_scrapy_request(url, conditions, callback)` | GET/POST, 일반/렌더링/JSON/FormData 요청 객체를 생성 |
 | `set_requests(collect_info, callback)` | URL 목록을 생성하고 요청을 yield |
 | `get_result(collect_info, target, _items)` | HTML(XPath)/JSON/XML에서 데이터를 추출하여 딕셔너리 리스트로 반환 |
@@ -381,9 +381,9 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `xml` | `XmlExtractorSpider` | XML + XPath |
 | `detail` | `DetailExtractorSpider` | 목록→상세 2단계 |
 
-> ⚠️ 위 예시는 실제 코드와 두 가지가 어긋납니다 (`ISSUES.md` "문서 vs 코드 불일치" 참고):
-> `spiders` 키는 `conditions` 안이 아니라 **최상위**에 있어야 하고,
-> `items`의 `/text()` XPath는 이슈 ⑧로 인해 현재 정상 동작하지 않습니다 (요소 XPath `.//h2` 형태가 실동작).
+> `spiders` 키는 `conditions` 내부(위 예시)와 최상위(현행 request_info.json) 어느 쪽에 있어도
+> 동작합니다 (PR #14, 내부 우선). `items`의 XPath는 요소(`.//h2`)·텍스트(`.//h2/text()`)·속성(`@href`)
+> 표기를 모두 지원합니다 (PR #13).
 
 ---
 
