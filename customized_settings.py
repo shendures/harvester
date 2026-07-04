@@ -256,11 +256,3 @@ def set_downloader_middlewares(request_info):
     return downloader_middlewares
 
 
-def set_item_pipelines():
-
-    item_pipelines = {}
-    item_pipelines["pipelines.LoadItemPipeline"] = 100
-
-    return item_pipelines
-
-

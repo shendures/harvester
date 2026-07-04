@@ -11,9 +11,6 @@ class DetailExtractorSpider(scrapy.Spider):
     # CONCURRENT_REQUESTS를 settings.py 대신 여기서 커스터마이징할 수 있습니다.
     # custom_settings = {
     #     'CONCURRENT_REQUESTS': 32,
-    #     # 'ITEM_PIPELINES': {
-    #     #     'pipelines.CsvExportPipeline': 300
-    #     # }
     # }
 
     # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
