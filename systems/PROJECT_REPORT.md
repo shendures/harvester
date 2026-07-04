@@ -194,10 +194,9 @@ Scrapy Item이 Spider에서 나온 뒤 거치는 후처리 단계.
 | 클래스 | 역할 |
 |---|---|
 | `LoadItemPipeline` | 수집 결과를 `RESULT_INFO:` 형식으로 stdout에 출력 → `MultiprocessWorker`가 수신 |
-| `CsvExportPipeline` | 수집 완료 즉시 CSV 파일로 저장 (스파이더 종료 시 파일 닫기) |
-| `MongoDBPipeline` | MongoDB 컬렉션에 저장 (⚠️ 현재 크래시 — §5 이슈 ④ 참고) |
 
-현재 활성화된 파이프라인은 `settings.py`에서 설정합니다.
+현재 유일한 파이프라인. 미사용이던 `DonasPipeline`·`CsvExportPipeline`·`MongoDBPipeline`은
+PR #8에서 제거됨 (이슈 ④ 참고). GUI의 DB 내보내기 UI는 파이프라인에 연결되어 있지 않음.
 
 ---
 
@@ -245,7 +244,7 @@ Scrapy 프레임워크 설정 파일.
 주요 설정:
 - `CONCURRENT_REQUESTS = 32` / `CONCURRENT_REQUESTS_PER_DOMAIN = 8`
 - `RANDOMIZE_DOWNLOAD_DELAY = True`
-- `ITEM_PIPELINES`: 기본 `MongoDBPipeline` (실행 시 `LoadItemPipeline`으로 교체됨)
+- `ITEM_PIPELINES`: 기본 `LoadItemPipeline` (GUI 실행 시에도 동일 파이프라인으로 재설정)
 - `DOWNLOADER_MIDDLEWARES`: 프록시, User-Agent 랜덤화, 레이턴시 추적, Selenium 실행 순서로 구성
 
 #### `middlewares.py`
@@ -254,10 +253,10 @@ Scrapy 다운로더/스파이더 미들웨어 모음.
 | 클래스 | 역할 |
 |---|---|
 | `RandomUserAgentMiddleware` | 요청마다 User-Agent를 랜덤 교체 |
-| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (⚠️ 반환값 이슈 — §5 이슈 ③ 참고) |
+| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (⚠️ 반환값 이슈 — §7 이슈 ③ 참고) |
 | `RateLimitedProxyMiddleware` | IP 로테이션 및 분당 요청 수 제한 |
 | `LatencyTrackingMiddleware` | 요청~응답 구간 레이턴시를 측정하여 `meta["pure_latency"]`에 저장 |
-| `DelaySchedulerMiddleware` | 스케줄러 레벨 딜레이 적용 (⚠️ 미로드 — §5 이슈 ⑤ 참고) |
+| `DelaySchedulerMiddleware` | 스케줄러 레벨 딜레이 적용 (⚠️ 미로드 — §7 이슈 ⑤ 참고) |
 
 ---
 
@@ -414,15 +413,19 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | ① | **리다이렉트 시 수집 결과 전량 skip → total=0** | `worker.py` / `engine.py` | ✅ **해결** (`d469277`) |
 | ② | 프록시 활성 시 즉시 AttributeError — 설정 키 불일치로 GUI 경로에서는 프록시 자체가 조용히 무시되고 있었음 | `middlewares.py`, `worker.py`, `customized_settings.py` | ✅ **해결** (PR #5) |
 | ③ | 쿠키 랜덤 미들웨어가 이미 쿠키가 있으면 dict를 반환 (미들웨어 규약 위반) | `middlewares.py:349` (`if request.cookies: return request.cookies`) | ⬜ 미해결 |
-| ④ | MongoDBPipeline 실행 불가 — `MongoClient` import 주석 처리(`pipelines.py:10`), `open_spider()`에서 `NameError` | `pipelines.py:10,133` | ⬜ 미해결 |
+| ④ | MongoDBPipeline 실행 불가 — `db_conn`/`MongoClient` import 누락으로 로드 즉시 `NameError` | `pipelines.py`, `settings.py` | ✅ **해결** (PR #8 — 어떤 정상 경로에서도 미사용이라 복구 대신 **제거**, 기본 `ITEM_PIPELINES`를 `LoadItemPipeline`으로 교체) |
 | ⑤ | `DelaySchedulerMiddleware`는 Scrapy에 존재하지 않는 설정 키(`SCHEDULER_MIDDLEWARES`)에 등록되어 로드되지 않음. 내부도 제거된 API(`engine.schedule`)·`DontCloseSpider` 오용 | `settings.py:84`, `middlewares.py` | ⬜ 미해결 |
 | ⑥ | `get_response_status()` 취약 필드 접근 — `ip_address`가 None(Selenium 응답 등)이면 AttributeError로 **결과 조용히 유실**, 비표준 상태코드에서 `HTTPStatus()` ValueError | `engine.py:161,165` | ⬜ 미해결 |
 | ⑦ | 미구현 스파이더 타입이 빈 dict 반환 → `process.crawl({})` | `engine.py:67-74` | ⬜ 미해결 |
+| ⑧ | **`/text()` XPath 추출 깨짐** — `extract_data_from_root()`가 텍스트 노드에 `node.xpath(".")`를 호출. 일반 문자열 텍스트 노드는 빈 값 반환(**조용한 유실**), `"100"` 등 JSON 파싱 가능한 텍스트는 parsel 1.11이 셀렉터를 json 타입으로 판정해 ValueError → **해당 페이지 추출 전체 실패**. 요소 XPath(`.//h2`)는 정상 (PR #8 검증 중 실측 발견) | `engine.py:299` | ⬜ 미해결 |
 
 ### 문서 vs 코드 불일치
 
 - 위 §5의 request_info.json 예시는 `spiders` 키를 `conditions` 안에 두지만
   실제 파일·코드는 **최상위** 키 사용 (실제 쪽이 정답, 예시 수정 필요)
+- 위 §5 예시의 `items` XPath가 `.//h2/text()` 형태인데, 현재 엔진 코드에서
+  `/text()` XPath는 이슈 ⑧로 인해 정상 동작하지 않음 — 요소 XPath(`.//h2`)가
+  실제 동작 형태 (⑧ 수정 방향 결정 시 예시도 함께 정리)
 - `LoadItemPipeline` 등의 f-string 중첩 따옴표 문법은 **Python 3.12+ 전용** —
   PyInstaller 빌드 환경도 3.12+ 필수
 
@@ -505,23 +508,51 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
     수정 전(git stash) 프록시 경유 0건 재현 / 수정 후 전 요청 프록시 경유 + 수집 성공
   - WSL 테스트 환경: 저장소 `.venv`는 Windows용이라 uv로 별도 구성 (Python 3.12)
 
+#### 문서 통합 (PR #7)
+
+- `PROJECT_GUIDE.md`(구조) + `PROJECT_AUDIT_REPORT.md`(진행상황)를
+  본 문서(`PROJECT_REPORT.md`)로 통합, 원본 삭제, `CLAUDE.md` 참조 갱신
+
+#### 미사용 파이프라인 제거 및 기본 파이프라인 교체 (이슈 ④, PR #8)
+
+- **방향**: import 복구(a) 대신 **제거(b)** 선택 — MongoDBPipeline은 GUI의 어떤
+  정상 경로에서도 미사용(GUI가 항상 `LoadItemPipeline`으로 교체)이었고, GUI의
+  DB 내보내기 UI는 파이프라인에 연결되어 있지 않음
+- **수정** (7파일, +1/−283줄):
+  - `pipelines.py`: `LoadItemPipeline`만 유지. `DonasPipeline`(템플릿 잔재),
+    `CsvExportPipeline`(주석 참조만 존재), `MongoDBPipeline`(로드 즉시 NameError),
+    주석 처리된 MongoDB 구버전 초안(79줄), 불필요해진 import 제거
+  - `settings.py`: 기본 `ITEM_PIPELINES` → `LoadItemPipeline` (CLI 실행·예외 삼킴
+    연쇄의 크래시 경로 자체 제거). 정의된 적 없는 `PostgreSQLPipeline` 주석 제거
+  - `customized_settings.py`: 호출처 없는 `set_item_pipelines()` 제거
+  - spiders 4종: 삭제된 `CsvExportPipeline`을 가리키던 주석 제거
+- **검증** (WSL uv venv, Python 3.12):
+  - 기본 설정 크롤(CLI 경로 상당) e2e — 수정 전(develop) `NameError: db_conn`
+    재현 / 수정 후 `LoadItemPipeline` 로드 + `RESULT_INFO` 정상 추출
+  - GUI 경로 e2e(`multiprocessing` + `run_spider`) — `EXECUTOR_STATUS: SUCCESS`
+  - 검증 중 이슈 ⑧(`/text()` XPath 추출 깨짐) 신규 발견 → 백로그 등록
+
 ### 현재 브랜치 상태 (2026-07-05 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `0155bfa` (PR #4) | ✅ | ✅ |
-| `develop` | `c3a42e7` (PR #6, main보다 5개 커밋 앞섬) | ✅ | 확인 필요 |
+| `develop` | `0bbf496` (PR #8, main보다 앞섬) | ✅ | 확인 필요 |
 
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
-`develop`(PR #5, #6 반영)의 **Windows GUI 검증 후 `main` 릴리스 PR** 대기 중.
+`develop`(PR #5~#8 반영)의 **Windows GUI 검증 후 `main` 릴리스 PR** 대기 중.
 
 ---
 
 ## 8. 남은 작업 백로그 (권장 우선순위)
 
-1. **④ MongoDBPipeline import 누락** — CLI 실행 크래시 및 GUI 연쇄 실패 경로 차단
-   (`worker.set_scrapy_settings()`의 예외 삼킴 개선 포함)
+1. **⑧ `/text()` XPath 추출 깨짐** (`engine.py:299`) — 텍스트 노드에
+   `node.xpath(".")` 호출: 일반 문자열은 빈 값(조용한 유실), JSON 파싱 가능한
+   텍스트(`"100"` 등)는 parsel json 타입 판정 → ValueError로 페이지 추출 전체
+   실패. 수정 방향: 텍스트 노드 셀렉터는 `node.get()`을 그대로 쓰도록 분기
+   (요소 노드만 `xpath(".")` + 태그 제거 경로). §5 예시 JSON의 `/text()` 표기도
+   수정 방향에 맞춰 함께 정리
 2. **⑥ `get_response_status()` 방어 코드** — Selenium 응답·비표준 상태코드에서
    결과가 조용히 유실되는 문제
 3. **③ 쿠키 미들웨어 반환값** — `return None`으로 1줄 수정
@@ -530,10 +561,14 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
    설계와 묶어 재검토 (현재는 전 프록시 소진 시 IgnoreRequest로 폐기)
 5. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
    키 노출 이력 점검
-6. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
+6. **`worker.set_scrapy_settings()` 예외 삼킴 개선** — 핵심 설정(`ITEM_PIPELINES`
+   교체 등)은 try 밖으로 옮기고, try는 실패해도 진행 가능한 프록시 주입으로 한정
+   (④는 해결됐지만 예외 삼킴 구조 자체는 남아 있음)
+7. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
    (이슈 ② 검증 시 미들웨어 테스트 8건을 작성해 효용은 확인됨 — PR #5 참고)
-7. **정리**: `frames_tmp.py` 제거 여부 결정, 위 §5 예시 JSON 수정,
+8. **정리**: `frames_tmp.py` 제거 여부 결정, 위 §5 예시 JSON 수정,
    미구현 스파이더 타입(⑦) 명시적 예외 처리, GUI 경로에서
    `set_downloader_middlewares()`가 `DOWNLOADER_MIDDLEWARES`를 통째로 교체해
-   `LatencyTrackingMiddleware`·`SeleniumMiddleware`가 빠지는 문제 검토
-8. **릴리스**: Windows GUI에서 `develop`(PR #5, #6) 검증 후 `develop → main` 릴리스 PR
+   `LatencyTrackingMiddleware`·`SeleniumMiddleware`가 빠지는 문제 검토,
+   GUI DB 내보내기(UI만 존재)의 파이프라인 연결 여부 결정
+9. **릴리스**: Windows GUI에서 `develop`(PR #5~#8) 검증 후 `develop → main` 릴리스 PR
