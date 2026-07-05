@@ -346,7 +346,7 @@ class RandomCookieMiddleware:
 
         # 이미 요청에 쿠키가 설정되어 있다면 건너뜁니다.
         if request.cookies:
-            return request.cookies
+            return None
 
         # 1. UUID 세션 ID 모방 (가장 강력한 무작위 값)
         random_uuid_session = self._generate_uuid()
