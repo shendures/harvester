@@ -156,16 +156,24 @@ def get_response_status(response):
     redirect_urls = response.meta.get("redirect_urls")
     req_url = redirect_urls[0] if redirect_urls else response.url
 
+    # Selenium 등으로 생성된 응답은 ip_address가 None일 수 있고,
+    # 비표준 상태 코드는 HTTPStatus()가 ValueError를 발생시키므로 방어적으로 처리합니다.
+    ip_address = response.ip_address.compressed if response.ip_address else None
+    try:
+        reason = HTTPStatus(response.status).phrase
+    except ValueError:
+        reason = ""
+
     response_status = {
                         "url": response.url,
                         "req_url": req_url,
                         "method":response.request.method,
                         "params":response.request.body.decode('utf-8'),
-                        "ip_address": response.ip_address.compressed,
+                        "ip_address": ip_address,
                         "user_agents": response.request.headers.get('User-Agent').decode('utf-8'),
                         "cookies": set_cookies(response),
                         "status": response.status,
-                        "reason": HTTPStatus(response.status).phrase,
+                        "reason": reason,
                         "pure_latency":response.meta["download_latency"],
                         "total_latency":response.meta["total_latency"]
                        }

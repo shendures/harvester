@@ -147,6 +147,18 @@
   (PR #13 이슈 ⑧ XPath 수정, PR #14 spiders 키 리팩터, PR #15 문서 현행화 포함)
 - WSL·Windows 클론 모두 main·develop 동기화 완료
 
+### `get_response_status()` 방어 코드 추가 (이슈 ⑥, PR #19, 2026-07-05)
+
+- **원인**: Selenium 등으로 생성된 응답은 `response.ip_address`가 None일 수 있어
+  `.compressed` 접근 시 AttributeError, 비표준 상태 코드(예: 520)는
+  `HTTPStatus(response.status)`가 ValueError → 두 경우 모두 호출부(spider
+  `parse()`)의 광범위 `except Exception`에 걸려 **결과가 조용히 유실**
+- **수정**: `ip_address`는 None이면 그대로 None 전달, `reason`은
+  `HTTPStatus()` ValueError를 try/except로 잡아 빈 문자열로 대체
+- **검증** (WSL uv venv, Python 3.12): 유닛 2케이스(ip_address=None,
+  비표준 상태코드 520) — 수정 전 각각 AttributeError로 FAIL / 수정 후 PASS
+  (검증용 스크립트는 정책에 따라 검증 후 삭제)
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-05 기준)
