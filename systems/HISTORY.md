@@ -159,14 +159,28 @@
   비표준 상태코드 520) — 수정 전 각각 AttributeError로 FAIL / 수정 후 PASS
   (검증용 스크립트는 정책에 따라 검증 후 삭제)
 
+### 4차 릴리스 (PR #20, 2026-07-05)
+
+- `develop → main` 릴리스 PR 머지: main = `9a08497` (PR #19 이슈 ⑥ 수정 포함)
+- WSL·Windows(`/mnt/d/Career/python_uv/Harvest`) 클론 모두 main·develop 동기화 완료
+
+### 쿠키 랜덤 미들웨어 반환값 수정 (이슈 ③, PR #21, 2026-07-05)
+
+- **원인**: `RandomCookieMiddleware.process_request()`가 요청에 이미 쿠키가
+  있으면 `request.cookies`(dict)를 그대로 반환 — Scrapy의 `process_request`
+  규약(`None`/`Response`/`Request`만 허용) 위반으로 `_InvalidOutput` 예외 발생
+- **수정**: `return request.cookies` → `return None`
+- **검증** (WSL uv venv, Python 3.12): 미들웨어 인스턴스에 쿠키가 설정된
+  요청을 직접 전달 — 수정 전 dict 반환(AssertionError) / 수정 후 `None` 반환 PASS
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-05 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `f9fa763` (PR #16) | ✅ | ✅ |
-| `develop` | `1ae4d19` (PR #15) + 본 문서 갱신 PR | ✅ | ✅ |
+| `main` | `9a08497` (PR #20) | ✅ | ✅ |
+| `develop` | `741309e` (PR #19) + 본 문서 갱신 PR | ✅ | ✅ |
 
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.

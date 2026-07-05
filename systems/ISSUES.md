@@ -14,7 +14,7 @@
 |---|---|---|---|
 | ① | **리다이렉트 시 수집 결과 전량 skip → total=0** | `worker.py` / `engine.py` | ✅ **해결** (`d469277`) |
 | ② | 프록시 활성 시 즉시 AttributeError — 설정 키 불일치로 GUI 경로에서는 프록시 자체가 조용히 무시되고 있었음 | `middlewares.py`, `worker.py`, `customized_settings.py` | ✅ **해결** (PR #5) |
-| ③ | 쿠키 랜덤 미들웨어가 이미 쿠키가 있으면 dict를 반환 (미들웨어 규약 위반) | `middlewares.py:349` (`if request.cookies: return request.cookies`) | ⬜ 미해결 |
+| ③ | 쿠키 랜덤 미들웨어가 이미 쿠키가 있으면 dict를 반환 (미들웨어 규약 위반) | `middlewares.py:349` (`if request.cookies: return request.cookies`) | ✅ **해결** (PR #21 — `return None`으로 수정, Scrapy `process_request` 규약(None/Response/Request) 준수) |
 | ④ | MongoDBPipeline 실행 불가 — `db_conn`/`MongoClient` import 누락으로 로드 즉시 `NameError` | `pipelines.py`, `settings.py` | ✅ **해결** (PR #8 — 어떤 정상 경로에서도 미사용이라 복구 대신 **제거**, 기본 `ITEM_PIPELINES`를 `LoadItemPipeline`으로 교체) |
 | ⑤ | `DelaySchedulerMiddleware`는 Scrapy에 존재하지 않는 설정 키(`SCHEDULER_MIDDLEWARES`)에 등록되어 로드되지 않음. 내부도 제거된 API(`engine.schedule`)·`DontCloseSpider` 오용 | `settings.py:84`, `middlewares.py` | ⬜ 미해결 |
 | ⑥ | `get_response_status()` 취약 필드 접근 — `ip_address`가 None(Selenium 응답 등)이면 AttributeError로 **결과 조용히 유실**, 비표준 상태코드에서 `HTTPStatus()` ValueError | `engine.py:161,165` | ✅ **해결** (PR #19 — `ip_address` None 방어, `HTTPStatus()` ValueError를 try/except로 처리) |
@@ -47,18 +47,17 @@
 
 ## 4. 남은 작업 백로그 (권장 우선순위)
 
-1. **③ 쿠키 미들웨어 반환값** — `return None`으로 1줄 수정
-2. **⑤ `DelaySchedulerMiddleware` 정리/재설계** — 존재하지 않는 설정 키에 등록되어
+1. **⑤ `DelaySchedulerMiddleware` 정리/재설계** — 존재하지 않는 설정 키에 등록되어
    미로드, 내부도 제거된 API 사용. rate limit 초과 요청의 재시도(지연 재예약)
    설계와 묶어 재검토 (현재는 전 프록시 소진 시 IgnoreRequest로 폐기)
-3. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
+2. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
    키 노출 이력 점검
-4. **`worker.set_scrapy_settings()` 예외 삼킴 개선** — 핵심 설정(`ITEM_PIPELINES`
+3. **`worker.set_scrapy_settings()` 예외 삼킴 개선** — 핵심 설정(`ITEM_PIPELINES`
    교체 등)은 try 밖으로 옮기고, try는 실패해도 진행 가능한 프록시 주입으로 한정
    (④는 해결됐지만 예외 삼킴 구조 자체는 남아 있음)
-5. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
+4. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
    (이슈 ② 검증 시 미들웨어 테스트 8건을 작성해 효용은 확인됨 — PR #5 참고)
-6. **정리**: `frames_tmp.py` 제거 여부 결정,
+5. **정리**: `frames_tmp.py` 제거 여부 결정,
    미구현 스파이더 타입(⑦) 명시적 예외 처리, GUI 경로에서
    `set_downloader_middlewares()`가 `DOWNLOADER_MIDDLEWARES`를 통째로 교체해
    `LatencyTrackingMiddleware`·`SeleniumMiddleware`가 빠지는 문제 검토,
