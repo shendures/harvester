@@ -67,14 +67,11 @@ def get_spider(request_info: dict):
     elif spiders == "detail":
         return DetailExtractorSpider
 
-    elif spiders == "html_render_detail":
-        return {}
+    elif spiders in ("html_render_detail", "json_detail", "json_payload_detail"):
+        raise NotImplementedError(f"'{spiders}' 스파이더는 아직 구현되지 않았습니다.")
 
-    elif spiders == "json_detail":
-        return {}
-
-    elif spiders == "json_payload_detail":
-        return {}
+    else:
+        raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
 
 
 def set_requests(collect_info, callback):
