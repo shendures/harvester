@@ -48,6 +48,11 @@ COOKIES_DEBUG = False # True로 설정하면 디버깅이 편하나, 성능 저�
 #    "middlewares.DonasSpiderMiddleware": 543,
 #}
 
+SPIDER_MIDDLEWARES = {
+    # delay_until이 걸린 요청을 지연 재스케줄 (process_spider_output 훅이므로 SPIDER_MIDDLEWARES에 등록)
+    'middlewares.DelaySchedulerMiddleware': 500,
+}
+
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 
@@ -79,11 +84,6 @@ DOWNLOADER_MIDDLEWARES = {
     "scrapy_selenium.SeleniumMiddleware": 800,
 }
 
-
-# 3. 스케줄러 미들웨어 활성화
-SCHEDULER_MIDDLEWARES = {
-    'middlewares.DelaySchedulerMiddleware': 500, # 스케줄러 미들웨어 우선순위 설정
-}
 
 
 # PROXY_LIST = [

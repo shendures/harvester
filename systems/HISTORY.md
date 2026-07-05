@@ -173,6 +173,43 @@
 - **검증** (WSL uv venv, Python 3.12): 미들웨어 인스턴스에 쿠키가 설정된
   요청을 직접 전달 — 수정 전 dict 반환(AssertionError) / 수정 후 `None` 반환 PASS
 
+### `DelaySchedulerMiddleware` 재설계 (이슈 ⑤, PR #23, 2026-07-06)
+
+- **원인**: `settings.py`가 존재하지 않는 Scrapy 설정 키(`SCHEDULER_MIDDLEWARES`)에
+  등록해 미들웨어 자체가 로드되지 않음. 내부 로직도 제거된 API
+  (`spider.crawler.engine.schedule()`)를 호출하고, `process_spider_output` 안에서
+  `DontCloseSpider`를 던져도 `spider_idle` 시그널 핸들러가 아니면 아무 효과가 없어
+  구조적으로 이중으로 죽어 있었음. `request.meta['delay_until']`을 설정하는 호출부도
+  전무해 완전한 죽은 코드였음
+- **수정**:
+  - `_DelayedRescheduler` 공유 헬퍼 신설 — `reactor.callLater` + `engine.crawl()`로
+    지연 재주입, `spider_idle` 시그널에서 `DontCloseSpider`로 조기 종료 방지
+  - `DelaySchedulerMiddleware`를 이 헬퍼로 재작성, `settings.py`의 등록 키를
+    `SPIDER_MIDDLEWARES`로 정정
+  - 백로그 메모(rate limit 재시도 설계와 함께 재검토)에 따라 `RateLimitedProxyMiddleware`도
+    연동 — 프록시 전량 소진 시 `IgnoreRequest`로 폐기만 하던 것을 지연 재시도로 변경
+  - 재주입 시 `request.replace(dont_filter=True)` 적용 (이미 dupefilter를 거친
+    요청이 재주입 시 조용히 드롭되는 것 방지)
+- **검증**: mock 크롤러(실제 Scrapy `Request`/`Settings` 객체 + twisted reactor)로
+  지연 후 정상 재주입, rate limit 초과 시 폐기 대신 재스케줄 등록 확인 (검증 스크립트는
+  정책에 따라 삭제)
+- **PR #23 코드 리뷰 (8앵글 + 1-vote verify)에서 후속 결함 2건 CONFIRMED, 병합 전 수정**:
+  1. `CLOSESPIDER_*` 확장이 `spider_idle`을 거치지 않고 스파이더를 직접 닫아
+     `pending`/`DontCloseSpider` 가드를 우회 → 지연 타이머 발동 시 `engine.crawl()`의
+     `RuntimeError`가 Twisted 콜백 안에서 조용히 삼켜져 재시도 요청이 소리 없이 유실.
+     **수정**: 예약된 `DelayedCall`을 `pending_calls`에 추적하고, `spider_closed`
+     시그널에서 남은 타이머를 명시적으로 취소 + 경고 로그 남기도록 변경
+  2. `RateLimitedProxyMiddleware`의 재스케줄에 Scrapy `RetryMiddleware`의
+     `RETRY_TIMES` 같은 상한이 없어, 프록시 풀 대비 동시성이 큰 실사용 설정에서
+     무한 재스케줄 가능성 + 통계 미노출. **수정**: `MAX_RATE_LIMIT_RETRIES`(5회) +
+     `request.meta['rate_limit_retries']` 카운터 추가, `rate_limit/rescheduled`·
+     `rate_limit/max_reached` 통계 노출
+  - **검증**: mock 크롤러 + 실제 reactor로 (a) 정상 지연 재주입 경로 회귀 없음,
+    (b) 강제 종료 시 타이머 취소 후 닫힌 엔진에 `crawl()` 미호출, (c) 5회 재시도 후
+    통계와 함께 포기 확인 (검증 스크립트는 정책에 따라 삭제)
+  - 낮은 우선순위로 `meta.pop('delay_until')`의 제자리 변경(동일 Request 객체
+    중복 yield 시 중복 크롤 가능성, 현재는 도달 불가한 잠재 리스크)은 백로그에 등록
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-05 기준)
