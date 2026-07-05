@@ -12,6 +12,7 @@ from scrapy.exceptions import IgnoreRequest, NotConfigured
 from scrapy.exceptions import DontCloseSpider
 import scrapy
 from scrapy import signals
+from twisted.internet import reactor
 import uuid
 from datetime import datetime as dt
 
@@ -167,14 +168,56 @@ class RandomProxyMiddleware:
         return response
 
 
+class _DelayedRescheduler:
+    """지정된 시간이 지난 뒤 요청을 엔진에 재주입합니다.
+
+    대기 중인 요청이 있는 동안(spider_idle 시점)에는 DontCloseSpider를 발생시켜
+    스파이더가 조기 종료되지 않도록 막습니다. CLOSESPIDER_* 등으로 spider_idle을
+    거치지 않고 스파이더가 강제 종료되는 경우에는 spider_closed 시점에 남은
+    타이머를 취소해, 이미 닫힌 엔진에 재주입을 시도하다 조용히 유실되는 대신
+    명시적으로 경고 로그를 남깁니다.
+    """
+
+    def __init__(self, crawler):
+        self.crawler = crawler
+        self.pending_calls = set()
+        crawler.signals.connect(self.spider_idle, signal=signals.spider_idle)
+        crawler.signals.connect(self.spider_closed, signal=signals.spider_closed)
+
+    def schedule(self, request, wait_time):
+        # call은 reactor.callLater가 반환하기 전까지 존재하지 않으므로, 실행 시점에
+        # 클로저로 자기 자신을 참조해 pending_calls에서 제거합니다.
+        call = reactor.callLater(wait_time, lambda: self._reinject(call, request))
+        self.pending_calls.add(call)
+
+    def _reinject(self, call, request):
+        self.pending_calls.discard(call)
+        # 동일 요청이 이미 스케줄러를 한 번 거쳤을 수 있으므로 dupefilter에 막히지 않도록 재주입
+        self.crawler.engine.crawl(request.replace(dont_filter=True))
+
+    def spider_idle(self, spider):
+        if self.pending_calls:
+            raise DontCloseSpider
+
+    def spider_closed(self, spider, reason=None):
+        if not self.pending_calls:
+            return
+        spider.logger.warning(
+            f"⚠️ 스파이더 종료(reason={reason})로 대기 중이던 재시도 요청 "
+            f"{len(self.pending_calls)}건을 취소합니다.")
+        for call in list(self.pending_calls):
+            if call.active():
+                call.cancel()
+        self.pending_calls.clear()
 
 
 class RateLimitedProxyMiddleware:
 
     # 특정 시간 당 IP 허용 횟수는 settings의 allow_ip_cnts로 결정됨 (self.req_per_minute)
     TIME_WINDOW = 60  # 특정 시간 ( 초 단위 )
+    MAX_RATE_LIMIT_RETRIES = 5  # 재시도 상한 (Scrapy RetryMiddleware의 RETRY_TIMES와 동일한 취지)
 
-    def __init__(self, settings):
+    def __init__(self, settings, crawler):
         self.proxies = settings.getlist('ip_list')
         self.req_per_minute = settings.get('allow_ip_cnts', 0)
         if not self.proxies:
@@ -183,10 +226,12 @@ class RateLimitedProxyMiddleware:
         # IP별 요청 시각을 저장하는 딕셔너리
         # 구조: {'http://ip:port': [timestamp1, timestamp2, ...]}
         self.proxy_usage = defaultdict(list)
+        self.stats = crawler.stats
+        self.rescheduler = _DelayedRescheduler(crawler)
 
     @classmethod
     def from_crawler(cls, crawler):
-        return cls(crawler.settings)
+        return cls(crawler.settings, crawler)
 
     def process_request(self, request, spider):
         """여유 있는 프록시를 골라 요청에 할당합니다. (사용량 제한 검사 포함)"""
@@ -215,44 +260,53 @@ class RateLimitedProxyMiddleware:
                 return None
 
         # --- 모든 프록시가 제한 초과 시 처리 ---
+        retries = request.meta.get('rate_limit_retries', 0)
+        if retries >= self.MAX_RATE_LIMIT_RETRIES:
+            self.stats.inc_value('rate_limit/max_reached')
+            spider.logger.error(
+                f"❌ Rate Limit 재시도 한도({self.MAX_RATE_LIMIT_RETRIES}회) 초과로 요청을 포기합니다: {request.url}")
+            raise IgnoreRequest(f"Rate limit retry limit ({self.MAX_RATE_LIMIT_RETRIES}) exceeded.")
+
         # 다음 요청 가능 시각 계산 (전체 프록시 중 가장 빨리 풀리는 기록 기준)
         earliest_time = min(self.proxy_usage[p][0] for p in self.proxies if self.proxy_usage[p])
         wait_time = (earliest_time + self.TIME_WINDOW) - current_time
+        request.meta['rate_limit_retries'] = retries + 1
 
+        self.stats.inc_value('rate_limit/rescheduled')
         spider.logger.warning(
-            f"⏳ 모든 프록시가 Rate Limit 초과. {wait_time:.2f}초 후 사용 가능. 요청을 버립니다: {request.url}")
-        raise IgnoreRequest(f"All proxies rate limited. Next available in {wait_time:.2f}s.")
+            f"⏳ 모든 프록시가 Rate Limit 초과. {wait_time:.2f}초 후 재시도합니다 "
+            f"({retries + 1}/{self.MAX_RATE_LIMIT_RETRIES}): {request.url}")
+        self.rescheduler.schedule(request, wait_time)
+        raise IgnoreRequest(f"All proxies rate limited. Re-queued in {wait_time:.2f}s.")
 
 
 class DelaySchedulerMiddleware:
-    """다운로더에서 요청이 무시된 후, 지연 메타데이터를 기반으로 요청을 큐에 다시 넣는 미들웨어"""
+    """spider가 yield한 요청 중 meta['delay_until']이 설정된 요청을,
+    해당 시각이 될 때까지 대기시킨 뒤 다시 큐에 넣는 미들웨어"""
+
+    def __init__(self, crawler):
+        self.rescheduler = _DelayedRescheduler(crawler)
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler)
 
     def process_spider_output(self, response, result, spider):
         for request_or_item in result:
             # 결과가 Request 객체이고, 재시도 지연 정보가 있다면
             if isinstance(request_or_item, scrapy.Request) and 'delay_until' in request_or_item.meta:
-                delay_until = request_or_item.meta['delay_until']
-                current_time = time.time()
+                delay_until = request_or_item.meta.pop('delay_until')
+                wait_time = delay_until - time.time()
 
-                if delay_until > current_time:
-                    # 아직 대기 시간이 남았다면
-                    wait_time = delay_until - current_time
-
-                    # 요청을 스케줄러 큐에 다시 넣기 전에 지연 시간을 설정합니다.
-                    # Scrapy는 이 요청을 즉시 처리하지 않고, 잠시 후 다시 시도합니다.
-                    # 이 방법은 명확한 지연 보장이 어려우므로, 다음 tick에서 다시 process_request를 거치게 합니다.
-                    spider.crawler.engine.schedule(request_or_item)
+                if wait_time > 0:
+                    # 아직 대기 시간이 남았다면 지연 후 재주입 (즉시 yield하지 않음)
                     spider.logger.debug(
                         f"Re-scheduling request {request_or_item.url} for later ({wait_time:.2f}s delay).")
+                    self.rescheduler.schedule(request_or_item, wait_time)
+                    continue
 
-                    # 스파이더가 요청을 기다리는 동안 닫히지 않도록 합니다.
-                    raise DontCloseSpider()
-
-                    # 대기 시간이 지났다면 정상적으로 처리합니다.
-                else:
-                    yield request_or_item
-            else:
-                yield request_or_item
+                # 대기 시간이 지났다면 정상적으로 처리합니다.
+            yield request_or_item
 
 
 class RandomUserAgentMiddleware:
