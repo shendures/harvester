@@ -147,7 +147,7 @@
   (PR #13 이슈 ⑧ XPath 수정, PR #14 spiders 키 리팩터, PR #15 문서 현행화 포함)
 - WSL·Windows 클론 모두 main·develop 동기화 완료
 
-### `get_response_status()` 방어 코드 추가 (이슈 ⑥, PR #18, 2026-07-05)
+### `get_response_status()` 방어 코드 추가 (이슈 ⑥, PR #19, 2026-07-05)
 
 - **원인**: Selenium 등으로 생성된 응답은 `response.ip_address`가 None일 수 있어
   `.compressed` 접근 시 AttributeError, 비표준 상태 코드(예: 520)는
