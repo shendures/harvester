@@ -34,7 +34,7 @@ import utility
 import customized_settings
 from conf import DataStore
 from style import THEME, TagButton, Divider, Parts
-from preprocess import DataRefiner, RefineStats, load_custom_rule
+from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 store    = DataStore()
 theme    = THEME()
@@ -978,6 +978,31 @@ class MonitorPageTriggers:
             if matched:
                 visible += 1
         self.refined_count_lbl.setText(f"{visible} rows")
+
+    # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
+    def _on_monitor_tab_changed(self, index: int):
+        """
+        "② 정제 규칙 설정" 탭(index=1) 진입 시, 이번 수집이 needs_cleaning=True인데
+        등록된 커스텀 규칙 파일이 없으면 팝업으로 안내합니다. 이번 수집 결과당 최초
+        1회만 확인하고(같은 결과를 보며 탭을 왔다갔다 해도 반복해서 뜨지 않음),
+        preprocess(task)에서 새 수집 결과가 들어올 때 다시 확인 가능하도록 리셋됩니다.
+        """
+        if index != 1 or self._cleaning_warned:
+            return
+
+        seq_no         = self._current_task.get("seq_no")
+        needs_cleaning = self._current_task.get("needs_cleaning", False)
+        if not (needs_cleaning and seq_no):
+            return
+
+        self._cleaning_warned = True
+        if not custom_rule_exists(seq_no):
+            QMessageBox.warning(
+                self, "정제 규칙 없음",
+                f"이 수집물(seq_no={seq_no})은 사용자 정의 정제 규칙이 필요하도록 "
+                f"표시되어 있으나(needs_cleaning=True), 등록된 규칙 파일이 없습니다.\n"
+                f"범용 규칙만 적용됩니다."
+            )
 
     # ── 정제 실행 ─────────────────────────────────────────────────────
     def _run_refine(self):

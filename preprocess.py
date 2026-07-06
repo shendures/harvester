@@ -340,6 +340,16 @@ def _resolve_custom_rule_path(seq_no) -> str:
     return file_path if os.path.exists(file_path) else default_source
 
 
+def custom_rule_exists(seq_no) -> bool:
+    """
+    `{seq_no}.py` 커스텀 정제 규칙 파일의 존재 여부만 확인합니다 — load_custom_rule()과
+    달리 파일을 실행(exec)하지 않습니다. 번들 기본값→앱데이터 seed는 동일하게 적용됩니다.
+    (예: GUI에서 "규칙 없음"을 안내만 하고 싶을 때, 불필요하게 사용자 코드를 실행하지
+    않도록 분리된 가벼운 확인 함수)
+    """
+    return os.path.isfile(_resolve_custom_rule_path(seq_no))
+
+
 def load_custom_rule(seq_no):
     """
     request_info.json과 동일한 경로 정책으로 사용자 정의 정제 함수를 로드합니다.
