@@ -14,7 +14,6 @@ from http import HTTPStatus
 import glean
 
 from items import DonasItem, DonasItemLoader
-from scrapy_selenium import SeleniumRequest
 from scrapy.selector import Selector
 
 from selenium import webdriver
@@ -96,14 +95,7 @@ def get_scrapy_request(url, conditions, callback):
 
     if conditions['method'] == "GET":
 
-        # 렌더링 페이지 요청
-        if conditions['dataFormat'] == "html" and conditions['rendering'] == True:
-            return SeleniumRequest(**request_kwargs)
-                    # ⭐ wait_time, wait_until 등 Selenium의 동작을 추가할 수 있습니다.
-                    # 예를 들어, 페이지의 특정 요소가 로드될 때까지 기다릴 수 있습니다.
-                    # wait_time=5
-
-        # 일반 요청
+        # 일반 요청 (렌더링 페이지도 spirenderer가 자체 Chrome 드라이버로 처리하므로 동일)
         return scrapy.Request(**request_kwargs)
 
     # 2. POST 요청에 대한 추가 처리

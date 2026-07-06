@@ -79,9 +79,6 @@ DOWNLOADER_MIDDLEWARES = {
 
     # requests와 response간의 Latency 측정
     'middlewares.LatencyTrackingMiddleware': 743,
-
-    # 7. Selenium 실행 (가장 안쪽, 모든 헤더 설정 후 실행)
-    "scrapy_selenium.SeleniumMiddleware": 800,
 }
 
 
@@ -134,24 +131,3 @@ HTTPERROR_ALLOW_ALL = True  # 모든 응답 상태 허용
 
 # Set settings whose default value is deprecated to a future-proof value
 FEED_EXPORT_ENCODING = "utf-8-sig"
-
-# 1. Selenium 드라이버 이름 지정
-SELENIUM_DRIVER_NAME = 'chrome'
-
-# 2. WebDriver 실행 파일 경로 지정 (PATH 환경 변수 사용 시 None)
-# ⭐️ (PATH 환경 변수를 사용한 경우)
-SELENIUM_DRIVER_EXECUTABLE_PATH = None
-
-# ⭐️ (절대 경로를 문자열로 지정)
-# SELENIUM_DRIVER_EXECUTABLE_PATH = 'D:/python/portfolio/donas/resources/drivers/chromedriver/chromedriver_143_0_7499_40_64.exe'
-
-
-# 4. 브라우저 옵션
-SELENIUM_DRIVER_ARGUMENTS = [
-    # 일부 시스템에서 발생 가능한 샌드박스 오류 방지 (특히 Linux)
-    '--no-sandbox',
-    # GPU 사용 불가 환경에서 오류 방지
-    '--disable-gpu',
-    # 서버나 백그라운드에서 실행할 경우 'headless'를 추가합니다.
-    # '--headless',
-]
