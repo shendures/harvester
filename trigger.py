@@ -2552,6 +2552,17 @@ class MainWindowTriggers:
         self.dashboard.set_running(False)
 
     def _on_finished(self, task: dict, summary: dict):
+        # 중지 직후 곧바로 재시작하면, 교체되기 전 워커의 finished 신호가
+        # 새 워커 시작 이후에 뒤늦게 도착할 수 있음(QThread.wait()가 메인
+        # 스레드 이벤트 루프를 막는 동안 큐잉되었다가 처리됨). 그 경우
+        # 실제로 실행 중인 현재 워커의 상태를 건드리면 안 되므로 무시.
+        if self.sender() is not self._worker:
+            self.log_manager.append_log(
+                "info",
+                "[DEBUG] 이전 워커의 지연된 완료 신호 무시 (현재 워커로 이미 교체됨)"
+            )
+            return
+
         self.global_toolbar.set_running(False)
         self.reset_progress()
         self.dashboard.set_running(False)
