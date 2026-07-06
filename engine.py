@@ -32,8 +32,11 @@ from spiders.spidetail import DetailExtractorSpider
 
 def get_json_form(url, payload_yn):
 
-    processed_url = re.search(".*(?=\?)", url)[0]
-    body = json.loads(re.search("(?<=\?).*", url)[0])
+    if "?" not in url:
+        raise ValueError(f"POST 요청 URL은 '<url>?<JSON 쿼리>' 형식이어야 합니다: {url!r}")
+
+    processed_url = re.search(r".*(?=\?)", url)[0]
+    body = json.loads(re.search(r"(?<=\?).*", url)[0])
 
     # if payload_yn == False:
     #     _body = json.loads(body)
@@ -123,6 +126,12 @@ def get_scrapy_request(url, conditions, callback):
             ## Case 2
             request_kwargs['data'] = body
             return JsonRequest(**request_kwargs)
+
+        else:
+            raise ValueError(f"지원하지 않는 payload 값입니다: {conditions.get('payload')!r} (True/False만 지원)")
+
+    else:
+        raise ValueError(f"지원하지 않는 method 값입니다: {conditions['method']!r} (GET/POST만 지원)")
 
 
 def set_chrome_webdriver(headless=False):
