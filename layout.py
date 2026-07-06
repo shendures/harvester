@@ -516,6 +516,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         self._all_rows       = []
         self._collected_data = []   # raw 수집 데이터
         self._refined_data   = []   # 정제 후 데이터
+        self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._out_mode       = None
         self.output_info     = customized_settings.get_output_settings()
 
@@ -942,6 +943,9 @@ class MonitorPage(QWidget, MonitorPageTriggers):
     # ── 추출 관련 메서드 ──────────────────────────────────────────────
     def preprocess(self, task):
         """메모리(_collected_data)에 보관된 수집 데이터를 FILE 또는 DB로 추출"""
+        # seq_no/needs_cleaning 등 정제 시 참조할 현재 작업 정보 보관
+        self._current_task = task or {}
+
         if not self._collected_data:
             QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
