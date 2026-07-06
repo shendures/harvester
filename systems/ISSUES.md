@@ -8,7 +8,7 @@
 
 ---
 
-## 0. 요약 표 (해결 12건 · 미해결 4건)
+## 0. 요약 표 (해결 13건 · 미해결 3건)
 
 | # | 이슈 요약 | 위치 | 상태 |
 |---|---|---|---|
@@ -24,7 +24,7 @@
 | ⑩ | `net_rotate` 잔재 키로 프록시 목록 검증 (구버전 스키마) | `trigger.py:1741` | ✅ 해결 |
 | ⑪ | 월간 스케줄 등록 시 QTimer OverflowError | `trigger.py:1939-1943, 1988-1989` | ✅ 해결 |
 | ⑫ | 스케줄 저장 위치 오류(소스/설치 디렉터리, PyInstaller 시 유실) | `trigger.py:2009,2015,2018`, `layout.py:1346-1347` | ✅ 해결 |
-| ⑬ | GUI 경로에서 SeleniumMiddleware 탈락 (이중 렌더링) | `worker.py:459`, `customized_settings.py:224-256` | ⬜ 미해결 |
+| ⑬ | GUI 경로에서 SeleniumMiddleware 탈락 (이중 렌더링) | `worker.py:459`, `customized_settings.py:224-256` | ✅ 해결 |
 | ⑭ | spirenderer 드라이버 누수 (`driver.quit()` finally 미사용) | `spiders/spirenderer.py:64-101` | ⬜ 미해결 |
 | ⑮ | POST URL에 `?` 없으면 크래시, 미지원 분기 시 암묵적 None 반환 | `engine.py:36-37, 83-133` | ⬜ 미해결 |
 | ⑯ | blueprint 2건 이상 시 빈 설정으로 기동, 워커 조용히 사망 | `conf.py:165-183`, `worker.py:92` | ⬜ 미해결 |
@@ -49,7 +49,7 @@
 | ⑩ | **`net_rotate` 잔재 키 검증** — 스케줄 등록 시 프록시 목록 존재 여부를 `BlueprintStorage().read().get("net_rotate")`로 확인하지만, `net_rotate`는 구버전(frames_tmp.py) 스키마의 잔재로 현행 blueprint(request_info.json)에는 존재하지 않는 키. 프록시를 등록해도 항상 "목록 비어 있음"으로 판정 (⑨ 버그로 체크박스가 항상 꺼져 있어 현재는 우연히 도달하지 않을 뿐) | `trigger.py:1741` | ✅ **해결** (`self.session_page._proxy_rows`(현행 스키마)로 교체) |
 | ⑪ | **월간 스케줄 등록 시 OverflowError** — `_register_timer`가 남은 시간을 ms로 환산해 `QTimer.start(ms)`에 전달. 30일 = 2,592,000,000ms로 C int 최대값(2,147,483,647)을 초과 → 약 24.8일 이상 남은 스케줄(월간 주기)은 등록 시점에 OverflowError. `mark_done`의 monthly 재등록(+30일)도 동일 | `trigger.py:1939-1943, 1988-1989` | ✅ **해결** (`_MAX_TIMER_MS`(7일) 상한을 두고, 남은 시간이 이를 초과하면 7일 뒤 `_register_timer`를 재호출해 남은 시간을 재계산하는 방식으로 청크 분할. int32 오버플로우 발생 불가) |
 | ⑫ | **스케줄 저장 위치 오류** — `_save_schedules_to_json`/`_load_schedules_from_json`이 `self.file_path`(LOCALAPPDATA/CollectorApp — BlueprintStorage와 동일 정책)가 아닌 `self.default_source`(**소스/설치 디렉터리**)에 저장. PyInstaller 빌드 시 `resource_path()`가 임시 폴더(`_MEIPASS`)라서 **스케줄이 실행할 때마다 유실**. `file_path`는 선언만 되고 미사용 | `trigger.py:2009,2015,2018`, `layout.py:1346-1347` | ✅ **해결** (저장은 `self.file_path`(LOCALAPPDATA, 디렉터리 없으면 생성)에, 로드는 `file_path` 우선·없으면 `default_source` 폴백으로 `BlueprintStorage`와 동일한 정책 적용) |
-| ⑬ | **GUI 실행 경로에서 `SeleniumMiddleware` 탈락** — `set_scrapy_settings()`가 `DOWNLOADER_MIDDLEWARES`를 `set_downloader_middlewares()` 결과로 통째로 교체하는데, 이 dict에는 settings.py의 `scrapy_selenium.SeleniumMiddleware: 800`이 없음. `html_render` 타입의 `SeleniumRequest`가 일반 요청으로 처리됨. 현재는 spirenderer가 parse에서 자체 Chrome을 다시 띄워 겉으로는 동작하지만 **같은 페이지를 2회 요청(일반 다운로드 + Selenium 렌더)** 하는 구조 | `worker.py:459`, `customized_settings.py:224-256` | ⬜ 미해결 |
+| ⑬ | **GUI 실행 경로에서 `SeleniumMiddleware` 탈락** — `set_scrapy_settings()`가 `DOWNLOADER_MIDDLEWARES`를 `set_downloader_middlewares()` 결과로 통째로 교체하는데, 이 dict에는 settings.py의 `scrapy_selenium.SeleniumMiddleware: 800`이 없음. `html_render` 타입의 `SeleniumRequest`가 일반 요청으로 처리됨. 현재는 spirenderer가 parse에서 자체 Chrome을 다시 띄워 겉으로는 동작하지만 **같은 페이지를 2회 요청(일반 다운로드 + Selenium 렌더)** 하는 구조 | `worker.py:459`, `customized_settings.py:224-256` | ✅ **해결** — 조사 결과 `scrapy_selenium.SeleniumMiddleware`는 CLI 경로에 등록돼 있어도 실제로는 항상 죽어있는 코드였음: `SELENIUM_DRIVER_EXECUTABLE_PATH=None`이라 `from_crawler`가 매번 `NotConfigured`로 자체 비활성화하고, 설령 경로를 채워도 `scrapy_selenium` 0.0.7이 구버전 Selenium API(`executable_path`/`chrome_options`)로 드라이버를 생성해 고정된 `selenium==4.41.0`에서는 `TypeError`로 크래시(직접 venv에서 시그니처 확인). 실제 렌더링/추출은 이미 `spirenderer.py`가 자체 Chrome 드라이버로 전담하고 있었으므로, GUI 쪽에 미들웨어를 추가 등록(대칭 맞추기)하는 대신 **죽은 의존성 자체를 제거**: `settings.py`에서 `SeleniumMiddleware` 등록과 `SELENIUM_DRIVER_*` 설정 삭제, `engine.get_scrapy_request()`의 `html_render` 분기가 `SeleniumRequest` 대신 일반 `scrapy.Request`를 반환하도록 변경, `requirements.txt`에서 `scrapy-selenium` 제거. CLI/GUI 양쪽 경로가 이제 동일하게 동작하며 이중 요청 가능성도 원천 차단됨 |
 | ⑭ | **spirenderer 드라이버 누수** — `driver.quit()`이 try 블록 마지막에 있어 셀렉터 매칭 실패 등 예외 발생 시 Chrome 프로세스가 정리되지 않고 누적됨 (`finally` 이동 필요) | `spiders/spirenderer.py:64-101` | ⬜ 미해결 |
 | ⑮ | **POST URL에 `?`가 없으면 즉시 크래시** — `get_json_form()`의 `re.search(".*(?=\?)", url)[0]`가 `None[0]` → TypeError. 같은 줄들이 SyntaxWarning(`"\?"` 잘못된 이스케이프, 향후 Python에서 에러 승격) 유발. 또 `get_scrapy_request()`는 `payload`가 True/False 외의 값이거나 method가 GET/POST 외이면 암묵적으로 `None`을 반환해 스파이더가 `yield None` 하게 됨 | `engine.py:36-37, 83-133` | ⬜ 미해결 |
 | ⑯ | **blueprint 2건 이상이면 빈 설정으로 기동 → 워커 조용히 사망** — `request_info.json` 루트 리스트에 항목이 2개 이상이면 unwrap 없이 리스트를 `_validate()`에 전달, `"url" in list`는 항상 False라 검증 실패 → 빈 dict 폴백. 이 상태로 시작하면 `worker.run()`의 `self.task["callback_url"]`(try 밖)에서 KeyError → QThread가 조용히 죽고 UI는 "실행 중"에 고착 | `conf.py:165-183`, `worker.py:92` | ⬜ 미해결 |
@@ -103,8 +103,7 @@
    인스턴스를 주입받도록 수정, `net_rotate` 잔재 검증을 현행 스키마
    (`session_page._proxy_rows`)로 교체, 월간 스케줄 QTimer OverflowError 해소
    (7일 단위 타이머 분할), 스케줄 저장 경로를 `file_path`(LOCALAPPDATA)로 교정
-2. **크롤링 경로 견고화 (⑬·⑭·⑮·⑯)** — GUI 경로 `DOWNLOADER_MIDDLEWARES`에
-   `SeleniumMiddleware` 포함(또는 spirenderer 이중 렌더링 구조 정리),
+2. ~~**크롤링 경로 견고화 (⑬·⑭·⑮·⑯)**~~ → **⑬ 해소, ⑭·⑮·⑯ 남음** —
    spirenderer `driver.quit()` finally 이동, `get_json_form()` `?` 없는 URL 방어
    + raw string 전환, `get_scrapy_request()` 미지원 분기 명시적 예외,
    BlueprintStorage 다건 리스트 검증 로직 수정 + `worker.run()` KeyError 방어
