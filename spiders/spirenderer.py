@@ -63,42 +63,42 @@ class HtmlSeleniumSpider(scrapy.Spider):
             # ChromeDriver 객체 생성
             driver = engine.set_chrome_webdriver()
 
-            # 웹페이지 로드를 위한 대기 시간 설정 (최대 10초)
-            wait = WebDriverWait(driver, 10)
+            try:
+                # 웹페이지 로드를 위한 대기 시간 설정 (최대 10초)
+                wait = WebDriverWait(driver, 10)
 
-            # 웹 페이지 실행
-            time.sleep(3)
-            driver.get(response.url)
-            time.sleep(3)
+                # 웹 페이지 실행
+                time.sleep(3)
+                driver.get(response.url)
+                time.sleep(3)
 
-            root = self.request_info["conditions"]["items"]["root"]
-            _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
+                root = self.request_info["conditions"]["items"]["root"]
+                _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
 
-            # 로그인 기능이 있는 사이트 시 로그인 실행
-            if self.request_info["conditions"]["login"] is not None:
-                login_info = self.request_info["conditions"]["login"]
-                engine.run_login(driver, self.request_info["seq_no"], login_info)
+                # 로그인 기능이 있는 사이트 시 로그인 실행
+                if self.request_info["conditions"]["login"] is not None:
+                    login_info = self.request_info["conditions"]["login"]
+                    engine.run_login(driver, self.request_info["seq_no"], login_info)
 
-            time.sleep(3)
+                time.sleep(3)
 
-            selectors = driver.find_elements(By.XPATH, root)
-            result = engine.get_render_result(self.request_info["seq_no"], driver, selectors, _items)
+                selectors = driver.find_elements(By.XPATH, root)
+                result = engine.get_render_result(self.request_info["seq_no"], driver, selectors, _items)
 
-            # 데이터 처리
-            loader = engine.set_item_loader(response, self.request_info, result)
+                # 데이터 처리
+                loader = engine.set_item_loader(response, self.request_info, result)
 
-            yield loader.load_item()
+                yield loader.load_item()
 
-
-            # # 맨 마지막에 연 윈도우창 종료
-            # window_handles = driver.window_handles
-            # new_window_handle = window_handles[-1]
-            # driver.switch_to.window(new_window_handle)
-            # driver.close()
-            # original_window_handle = window_handles[0]
-            # driver.switch_to.window(original_window_handle)
-
-            driver.quit()
+                # # 맨 마지막에 연 윈도우창 종료
+                # window_handles = driver.window_handles
+                # new_window_handle = window_handles[-1]
+                # driver.switch_to.window(new_window_handle)
+                # driver.close()
+                # original_window_handle = window_handles[0]
+                # driver.switch_to.window(original_window_handle)
+            finally:
+                driver.quit()
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
