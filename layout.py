@@ -1351,7 +1351,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         self._load_schedules_from_json()   # ← 앱 시작 시 저장된 스케줄 로드
         self._refresh_table()
         self.sched_task = {}
-        self.session_page = SessionSettingsPage()
+        self.session_page = None  # MainWindow가 실제 SessionSettingsPage 인스턴스를 주입
 
     # ────────────────────────────────────────────────
     def _build(self):
@@ -2951,6 +2951,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.schedule_page = SchedulerPage(); self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()
         self.session_page = SessionSettingsPage()
+        self.schedule_page.session_page = self.session_page
 
         # Navigator 순서
         self.stack.addWidget(self.dashboard)  # 0

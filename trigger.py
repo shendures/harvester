@@ -1702,6 +1702,10 @@ class StatisticsPageTriggers:
 class SchedulerPageTriggers:
     """SchedulerPage의 스케줄 등록·수정·삭제·실행·타이머 메서드"""
 
+    # QTimer.start()는 C int(최대 2,147,483,647ms ≈ 24.8일)를 받으므로,
+    # 이보다 긴 대기는 이 단위로 쪼개어 재등록한다 (월간 주기=30일 등에서 OverflowError 방지).
+    _MAX_TIMER_MS = 7 * 24 * 60 * 60 * 1000
+
     def _apply_schedule(self, dlg, sched_info_dict):
         """다이얼로그 위젯값을 읽어 유효성 검사 → 등록 또는 수정 수행"""
         sched_task  = sched_info_dict["sched_task"]
@@ -1738,7 +1742,7 @@ class SchedulerPageTriggers:
 
         if self.session_page._global_cb.isChecked():
 
-            if not (BlueprintStorage().read().get("net_rotate") or []):
+            if not getattr(self.session_page, "_proxy_rows", []):
                 errors.append(
                     "• 프록시 사용이 선택되었으나 프록시 목록이 비어 있습니다.\n"
                     "  [세션 설정] 페이지에서 프록시를 먼저 등록해 주세요."
@@ -1851,6 +1855,12 @@ class SchedulerPageTriggers:
             "retry":        sched_info_dict["retry"].value(),
             "user_agent":   self.session_page.ua_check.isChecked(),
             "cookie":       self.session_page.cookie_check.isChecked(),
+            "proxy": {
+                "enabled":       self.session_page._global_cb.isChecked(),
+                "rotate":        self.session_page._rotate_cb.isChecked(),
+                "allow_ip_cnts": self.session_page._allow_ip_cnts.value(),
+                "ip_list":       deepcopy(getattr(self.session_page, "_proxy_rows", [])),
+            },
             "extract": {
                 "file": {
                     "enabled":      is_file,
@@ -1897,7 +1907,7 @@ class SchedulerPageTriggers:
         else:
             target = store.get_schedules()[idx]
             for key in ("task_nm", "callback_url", "delay", "threads",
-                        "timeout", "retry", "user_agent", "cookie"):
+                        "timeout", "retry", "user_agent", "cookie", "proxy"):
                 target[key] = common_fields[key]
             target["extract"]["file"].update(common_fields["extract"]["file"])
             target["extract"]["db"].update(common_fields["extract"]["db"])
@@ -1939,8 +1949,12 @@ class SchedulerPageTriggers:
         ms = max(0, int((run_at - datetime.now()).total_seconds() * 1000))
         t  = QTimer(self)
         t.setSingleShot(True)
-        t.timeout.connect(lambda i=idx: self._run_now(i))
-        t.start(ms)
+        if ms > self._MAX_TIMER_MS:
+            t.timeout.connect(lambda i=idx: self._register_timer(i))
+            t.start(self._MAX_TIMER_MS)
+        else:
+            t.timeout.connect(lambda i=idx: self._run_now(i))
+            t.start(ms)
         self._timers[idx] = t
 
     def _update_countdown(self):
@@ -2006,16 +2020,18 @@ class SchedulerPageTriggers:
                 if isinstance(run_at, datetime):
                     entry["schedule"]["run_at"] = run_at.isoformat()
                 serializable.append(entry)
-            with open(self.default_source, "w", encoding="utf-8") as f:
+            os.makedirs(self.app_dir, exist_ok=True)
+            with open(self.file_path, "w", encoding="utf-8") as f:
                 json.dump(serializable, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"[SchedulerPage] 스케줄 저장 실패: {e}")
 
     def _load_schedules_from_json(self):
-        if not os.path.exists(self.default_source):
+        target = self.file_path if os.path.exists(self.file_path) else self.default_source
+        if not os.path.exists(target):
             return
         try:
-            with open(self.default_source, "r", encoding="utf-8") as f:
+            with open(target, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             if not isinstance(saved, list):
                 return
