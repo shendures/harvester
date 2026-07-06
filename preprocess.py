@@ -12,7 +12,12 @@ RefineStats 데이터 클래스
 
 load_custom_rule() 함수
   - 수집물(blueprint)마다 다른 사용자 정의 정제 로직을 파일 하나로 플러그인.
-  - `<앱 데이터 폴더>/custom_rules/{seq_no}.py` 파일에 아래 둘 중 하나를 정의:
+  - `request_info.json`과 동일한 경로 정책(BlueprintStorage)을 그대로 따릅니다:
+        <앱 데이터 폴더>/{seq_no}.py         — 실제 실행 시 읽는 위치(고객 PC별로 다름)
+        <번들 리소스 경로>/{seq_no}.py       — 패키징 시 포함한 고객별 기본값
+    최초 실행 시 앱 데이터 폴더에 파일이 없으면 번들 기본값을 그대로 복사해 심고,
+    이후에는 앱 데이터 폴더의 사본을 우선 사용합니다(고객 PC에서 직접 수정 가능).
+  - 파일에는 아래 둘 중 하나를 정의:
         def refine(data: list[dict]) -> list[dict]: ...       # 전체 목록 단위
         def refine_row(row: dict) -> dict: ...                 # 행 단위
     (둘 다 있으면 refine()을 우선 사용)
@@ -43,8 +48,11 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
+
+import utility
 
 
 # ── 정제 통계 컨테이너 ────────────────────────────────────────────────
@@ -297,26 +305,54 @@ class DataRefiner:
 
 
 # ── 사용자 정의 정제 규칙 로더 ─────────────────────────────────────────
-def _custom_rules_dir() -> str:
+def _app_dir() -> str:
     """
-    사용자 정의 정제 규칙(.py) 파일이 위치하는 디렉터리 경로.
-
-    BlueprintStorage/SchedulerPage와 동일한 정책 — PyInstaller 설치/임시
-    디렉터리가 아닌, 앱 데이터 폴더(LOCALAPPDATA 등)에 두어 배포 후에도
-    사용자가 자유롭게 파일을 추가·수정할 수 있게 합니다.
+    앱 데이터 디렉터리 경로 — BlueprintStorage(request_info.json)와 동일한 정책
+    (LOCALAPPDATA/CollectorApp 등)입니다. PyInstaller 설치/임시 디렉터리가 아니라
+    이 경로에 두어야 배포 후에도 사용자가 파일을 자유롭게 수정할 수 있습니다.
     """
     if sys.platform == "win32":
         root = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
     else:
         root = os.path.join(os.path.expanduser("~"), ".config")
-    directory = os.path.join(root, "CollectorApp", "custom_rules")
+    directory = os.path.join(root, "CollectorApp")
     os.makedirs(directory, exist_ok=True)
     return directory
 
 
+def _resolve_custom_rule_path(seq_no) -> str:
+    """
+    `{seq_no}.py`의 실제 경로를 결정합니다. request_info.json과 동일한 위치
+    정책(BlueprintStorage._initialize_storage와 동일 패턴)을 따릅니다:
+
+    - 앱 데이터 폴더에 파일이 없고 번들 리소스 경로에 기본값이 있으면 최초
+      1회 복사해 심습니다(고객별로 패키징에 포함한 기본 규칙).
+    - 이후에는 앱 데이터 폴더의 파일을 우선 사용하고, 없으면 번들 리소스
+      경로로 폴백합니다.
+    """
+    filename    = f"{seq_no}.py"
+    file_path   = os.path.join(_app_dir(), filename)
+    default_source = os.path.join(utility.resource_path(), filename)
+
+    if not os.path.exists(file_path) and os.path.exists(default_source):
+        shutil.copy2(default_source, file_path)
+
+    return file_path if os.path.exists(file_path) else default_source
+
+
+def custom_rule_exists(seq_no) -> bool:
+    """
+    `{seq_no}.py` 커스텀 정제 규칙 파일의 존재 여부만 확인합니다 — load_custom_rule()과
+    달리 파일을 실행(exec)하지 않습니다. 번들 기본값→앱데이터 seed는 동일하게 적용됩니다.
+    (예: GUI에서 "규칙 없음"을 안내만 하고 싶을 때, 불필요하게 사용자 코드를 실행하지
+    않도록 분리된 가벼운 확인 함수)
+    """
+    return os.path.isfile(_resolve_custom_rule_path(seq_no))
+
+
 def load_custom_rule(seq_no):
     """
-    `<앱 데이터 폴더>/custom_rules/{seq_no}.py`에서 사용자 정의 정제 함수를 로드합니다.
+    request_info.json과 동일한 경로 정책으로 사용자 정의 정제 함수를 로드합니다.
 
     파일에 refine(data: list[dict]) -> list[dict]가 있으면 그대로 반환하고,
     refine_row(row: dict) -> dict만 있으면 각 행에 적용하는 함수로 감싸서
@@ -330,7 +366,7 @@ def load_custom_rule(seq_no):
         "규칙 없음"(None)과 "규칙이 있는데 깨져 있음"(예외)을 호출 측이
         구분해 다르게 안내할 수 있도록 의도한 동작입니다.
     """
-    path = os.path.join(_custom_rules_dir(), f"{seq_no}.py")
+    path = _resolve_custom_rule_path(seq_no)
     if not os.path.isfile(path):
         return None
 

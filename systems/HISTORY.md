@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-05
+- **최신 갱신**: 2026-07-07
 
 ---
 
@@ -210,14 +210,149 @@
   - 낮은 우선순위로 `meta.pop('delay_until')`의 제자리 변경(동일 Request 객체
     중복 yield 시 중복 크롤 가능성, 현재는 도달 불가한 잠재 리스크)은 백로그에 등록
 
+### 미구현 스파이더 타입 예외 처리 (이슈 ⑦, PR #25, 2026-07-06)
+
+- **원인**: `get_spider()`가 미구현 스파이더 타입 3종(`html_render_detail`,
+  `json_detail`, `json_payload_detail`)에 빈 dict `{}`를 반환해 `worker.py`가
+  그대로 `process.crawl({}, ...)`에 넘김. 인식 못 하는 타입에 대한 else 분기도
+  없어 암묵적으로 `None`이 반환됨 — 두 경우 모두 Scrapy 내부 깊은 곳에서
+  불투명한 실패로 나타남
+- **수정**: 미구현 3종은 `NotImplementedError`, 미인식 타입은 `ValueError`를
+  명시적으로 raise. `worker.py`의 기존 `get_spider()`/`process.crawl()` 주변
+  try/except가 이미 로그를 남기고 깔끔히 중단하므로 호출부 변경은 불필요
+
+### 스케줄 기능 전면 복구 (이슈 ⑨~⑫, PR #27, 2026-07-06)
+
+- **원인**: `SchedulerPage`가 `MainWindow`의 실제 `SessionSettingsPage`를 쓰지
+  않고 별도 인스턴스를 직접 생성·보관 — 스케줄 등록 시 읽는 UA/쿠키 설정이
+  항상 기본값이고 `proxy` 키 자체가 없어 스케줄 수집은 프록시를 전혀 쓰지
+  않음(⑨). 프록시 목록 존재 여부도 구버전(`frames_tmp.py`) 스키마 잔재인
+  `net_rotate` 키로 확인해 항상 "목록 없음"으로 판정(⑩). 월간 스케줄은 남은
+  시간을 ms로 환산해 `QTimer.start()`에 그대로 넘겨 30일치가 C int32 최댓값을
+  넘어 OverflowError(⑪). 스케줄 저장이 설치/소스 디렉터리에 이뤄져
+  PyInstaller 실행마다 유실(⑫)
+- **수정**: `MainWindow`의 실제 `SessionSettingsPage` 인스턴스를 `SchedulerPage`에
+  주입, 수동 실행과 동일한 스키마의 `proxy` 딕셔너리를 스케줄 payload에 추가,
+  프록시 검증도 현행 스키마(`session_page._proxy_rows`)로 교체. 7일 단위로
+  타이머를 재등록하는 방식으로 월간 스케줄의 int32 오버플로우 제거.
+  저장/로드를 `file_path`(LOCALAPPDATA) 기준으로 변경(BlueprintStorage와
+  동일 정책, 없으면 `default_source`로만 폴백)
+
+### 죽은 SeleniumMiddleware 경로 제거 (이슈 ⑬, PR #29, 2026-07-06)
+
+- **원인**: `SELENIUM_DRIVER_EXECUTABLE_PATH`가 항상 미설정이라
+  `scrapy_selenium.SeleniumMiddleware`는 로드마다 `NotConfigured`로 자체
+  비활성화. 설령 경로를 채워도 `scrapy_selenium` 0.0.7이 구버전 Selenium
+  API(`executable_path`/`chrome_options`)를 써서 고정된 `selenium==4.41.0`에서
+  `TypeError`. 실제 렌더링은 이미 `spirenderer.py`가 자체 Chrome 드라이버로
+  전담하고 있어, 미들웨어를 GUI 경로에 추가 등록(대칭 맞추기)하는 대신 죽은
+  의존성 자체를 제거하는 방향 선택
+- **수정**: `settings.py`에서 `SeleniumMiddleware` 등록·`SELENIUM_DRIVER_*` 설정
+  삭제, `engine.get_scrapy_request()`의 `html_render` 분기가 `SeleniumRequest`
+  대신 일반 `scrapy.Request`를 반환, `requirements.txt`에서 `scrapy-selenium`
+  제거 — 같은 페이지를 2회(일반 다운로드 + Selenium 렌더) 요청할 가능성도
+  함께 차단
+
+### spirenderer 드라이버 누수 수정 (이슈 ⑭, PR #31, 2026-07-06)
+
+- **원인**: `driver.quit()`이 try 블록 마지막에 있어 렌더링/추출 중 예외(빈
+  셀렉터 매칭의 `IndexError` 등) 발생 시 정리되지 않고 Chrome 프로세스가 누적
+- **수정**: 드라이버 생성 이후 코드를 내부 try/finally로 감싸 `driver.quit()`을
+  finally로 이동
+- **검증**: mock으로 추출 도중 예외를 강제 발생시켜 `driver.quit()` 호출을 확인
+  (검증 스크립트는 정책에 따라 삭제)
+
+### POST URL 파싱·미지원 분기 방어 (이슈 ⑮, PR #33, 2026-07-06)
+
+- **원인**: `get_json_form()`이 `?` 없는 POST URL에서 `None[0]` TypeError로
+  크래시, 정규식도 잘못된 이스케이프(`\?`)를 써서 SyntaxWarning(향후 Python
+  버전에서 SyntaxError로 승격 예정). `get_scrapy_request()`도 GET/POST 외
+  method이거나 POST인데 `payload`가 True/False가 아니면 암묵적으로 `None`을
+  반환해 스파이더가 `yield None`
+- **수정**: `?` 부재 시 명시적 `ValueError`, 정규식을 raw string으로 전환.
+  지원 범위 밖 method/payload 조합도 명시적 `ValueError`. 모든
+  `start_requests()` 호출부가 이미 `try/except Exception`으로 감싸고 있어
+  새 예외는 조용한 실패 대신 명확한 로그로 처리됨
+- **검증**: GET / POST(formdata) / POST(json) 정상 경로 3종 + 신규 예외 3종을
+  인터프리터에서 직접 실행해 확인
+
+### 이슈 ⑯(다중 블루프린트 대응) 보류 처리 (PR #35, 2026-07-06)
+
+- blueprint 2건 이상 시 빈 설정으로 기동되는 문제(이슈 ⑯)를, 단건 전제인
+  현행 구조를 땜질 수정하는 대신 예정된 다중 블루프린트 업그레이드에서 함께
+  재설계하기로 결정 — `ISSUES.md`에 미해결이 아닌 보류로 등록
+
+### 재시작 시 구 워커의 지연 finished 신호 무시 (이슈 ⑰, PR #37, 2026-07-06)
+
+- **원인**: 중지 직후 곧바로 재시작하면, 구 워커의 실제 정리(최대 ~1.3s)가
+  끝나기 전에 새 워커가 시작됨. `QThread.wait()`가 메인 스레드 이벤트 루프를
+  막는 동안 구 워커의 `finished` 신호가 큐잉됐다가 새 워커 시작 이후 뒤늦게
+  도착 — `_on_finished`가 신호 출처를 구분하지 않아, 정상 수집 중인 새
+  워커를 "중단됨"으로 되돌려 UI가 되돌아간 것처럼 보임
+- **수정**: `_on_finished(task, summary)` 최상단에
+  `if self.sender() is not self._worker: return` 가드 추가 — `self.sender()`는
+  큐잉된 크로스스레드 연결이어도 실제 emit한 워커 인스턴스를 정확히 반환
+- **검증**: 격리된 PyQt6 재현(구 워커 0.6s 지연 vs 신 워커 즉시 교체)으로
+  구 워커 신호는 무시, 신 워커 신호는 정상 처리됨을 확인
+
+### GUI 로그에서 내부 [DEBUG] 진단 메시지 제거 (PR #39, 2026-07-06)
+
+- **배경**: URL 샘플 덤프, 자식 프로세스/드레인 내부 상태, `resp_info` 구조
+  불일치, URL 불일치 skip, 최종 카운터 요약, 구 워커 신호 관련 메시지 등
+  과거 디버깅용 `[DEBUG]` 로그가 사용자 대면 로그 뷰어에 그대로 노출되고
+  있었음 — 내부 변수명이 드러나고 사용자가 취할 조치도 없었으며, 로그
+  필터(ALL/INFO/OK/WARN/ERR)에도 DEBUG 등급이 없어 숨길 방법도 없었음
+- **수정**: 해당 GUI 노출 emit만 제거(내부 `logger.*()` 콘솔/파일 로그는
+  그대로 유지), 사용자에게 실질적 의미가 있는 2건(URL 미생성, 시작 시 URL
+  개수)은 `[DEBUG]` 태그 없이 평문 로그로 남김
+
+### 수집물별 커스텀 정제 규칙 플러그인 (PR #41, 2026-07-06)
+
+- **배경**: 사이트마다 데이터 형식이 달라 범용 정제 규칙 하나로는 커버 불가
+  — 수집물(blueprint)마다 별도 정제 로직을 파일 하나로 꽂아 넣을 수 있게 지원
+- **구현**: `preprocess.load_custom_rule(seq_no)` 신설 — 당시엔
+  `<앱 데이터 폴더>/custom_rules/{seq_no}.py`에 정의된 `refine(data)` 또는
+  `refine_row(row)`를 로드(파일 없으면 `None`, 파일이 깨져 있으면 예외 그대로
+  전파해 "규칙 없음"과 구분). `MonitorPageTriggers._run_refine()`에 배선 —
+  blueprint의 `seq_no` + `needs_cleaning`이 모두 있을 때만 커스텀 규칙을
+  `DataRefiner`의 6개 범용 규칙보다 먼저 적용, 로드/실행 실패 시 원본
+  데이터로 폴백하며 로그로 남김(정제 자체는 막지 않음)
+
+### 커스텀 정제 규칙 경로 통일 및 미설정 경고 (PR #42, 2026-07-07)
+
+- **배경**: 이 프로그램은 고객마다 수집 대상·데이터 형식이 달라, 개발자가
+  고객별로 `request_info.json`과 정제 규칙을 세트로 준비해 각자의 PC에 심어
+  배포하는 구조. PR #41 당시 커스텀 규칙 파일은 `custom_rules/` 서브폴더에
+  두고 번들 기본값 시딩(seeding)이 없어, 이미 구축된 `request_info.json`
+  배포 방식(`BlueprintStorage`)과 다른 경로 정책을 쓰고 있었음
+- **수정 ①(경로 통일)**: `preprocess._app_dir()`가 `request_info.json`과 동일한
+  `LOCALAPPDATA/CollectorApp` 경로를 직접 가리키도록 변경. `BlueprintStorage`와
+  동일한 seed-on-first-run 패턴(`_resolve_custom_rule_path`) 추가 — 앱 데이터
+  폴더에 파일이 없고 번들 리소스 경로(`utility.resource_path()`, 고객별
+  패키징에 포함한 기본 규칙)에 기본값이 있으면 최초 1회 복사해 심고, 이후엔
+  앱 데이터 폴더 사본을 우선 사용(고객 PC에서 직접 수정 가능)
+- **수정 ②(미설정 경고)**: `preprocess.custom_rule_exists(seq_no)` 신설 —
+  `load_custom_rule()`과 달리 파일을 `exec`하지 않는 단순 존재 확인. 새
+  `MonitorPageTriggers._on_monitor_tab_changed()`를 `tab_widget.currentChanged`에
+  연결해 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데 규칙 파일이
+  없으면 팝업으로 안내. 같은 수집 결과에 대해 탭을 오가도 반복해서 뜨지
+  않도록 `_cleaning_warned` 플래그로 최초 1회만 확인하고, `preprocess(task)`에서
+  새 수집 결과가 들어올 때 리셋
+- **검증**: 임시 uv venv(Python 3.12) 스크립트로 (a) 경로 해석·시딩(번들 →
+  앱데이터 복사 → 이후 앱데이터 우선) 3케이스, (b) 헤드리스 PyQt6로 실제
+  `MonitorPage` 인스턴스를 띄워 팝업 게이팅(needs_cleaning=False/규칙 없음/
+  반복 방지/리셋/규칙 존재 시 무팝업) 5케이스 확인 (검증 스크립트는 정책에
+  따라 삭제)
+
 ---
 
-## 현재 브랜치 상태 (2026-07-05 기준)
+## 현재 브랜치 상태 (2026-07-07 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `9a08497` (PR #20) | ✅ | ✅ |
-| `develop` | `741309e` (PR #19) + 본 문서 갱신 PR | ✅ | ✅ |
+| `main` | `9a08497` (PR #20) | ✅ | 미확인 |
+| `develop` | `2b74f89` (PR #41) + 본 문서 갱신 PR(#42) | ✅ | 미확인 |
 
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
+(2026-07-07 재확인: 여전히 미해결)
