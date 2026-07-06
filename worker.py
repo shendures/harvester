@@ -102,13 +102,12 @@ class MultiprocessWorker(QThread):
             # [DEBUG] url_list 생성 결과 확인
             if total == 0:
                 logger.warning("[DEBUG][run] generate_combined_urls() 반환값이 비어 있음 — callback_url: %s", callback_url)
-                self.log_message.emit("warn", f"[DEBUG] url_list 비어 있음 — URL 생성 결과 없음 (callback_url: {callback_url})")
+                self.log_message.emit("warn", f"수집 대상 URL이 생성되지 않았습니다. URL 설정을 확인해주세요. (대상: {callback_url})")
             else:
                 logger.debug("[DEBUG][run] url_list 생성 완료 — 총 %d개", total)
-                self.log_message.emit("info", f"[DEBUG] url_list 생성 완료 — 총 {total}개")
+                self.log_message.emit("info", f"총 {total}개 URL 수집을 시작합니다.")
                 for u in list(url_list)[:5]:   # 최대 5개만 출력 (로그 과부하 방지)
                     logger.debug("[DEBUG][run] url_list 샘플: %s", u)
-                    self.log_message.emit("info", f"[DEBUG] url_list 샘플: {u}")
 
         except Exception as e:
             # [수정] 기존: bare except로 예외 원인을 로그에 남기지 않아 디버깅 불가
@@ -160,11 +159,6 @@ class MultiprocessWorker(QThread):
                             "(현재 _done=%d, processed=%d)",
                             self._done, len(processed_urls),
                         )
-                        self.log_message.emit(
-                            "info",
-                            f"[DEBUG] 자식 프로세스 종료 → drain 시작 "
-                            f"(_done={self._done}, processed={len(processed_urls)})",
-                        )
                         pre_drain_done = self._done
                         self._drain_queue_and_process(
                             url_list, processed_urls, callback_url, total, delay, threads
@@ -172,11 +166,6 @@ class MultiprocessWorker(QThread):
                         logger.debug(
                             "[DEBUG][run] drain 완료 — drain 전 _done=%d, drain 후 _done=%d, 추가 수집=%d",
                             pre_drain_done, self._done, self._done - pre_drain_done,
-                        )
-                        self.log_message.emit(
-                            "info",
-                            f"[DEBUG] drain 완료 — drain 전={pre_drain_done}, "
-                            f"drain 후={self._done}, 추가 수집={self._done - pre_drain_done}건",
                         )
                         break
                     continue
@@ -232,11 +221,6 @@ class MultiprocessWorker(QThread):
                 type(resp_info).__name__,
                 list(result_info.keys()),
             )
-            self.log_message.emit(
-                "err",
-                f"[DEBUG] resp_info 구조 불일치 — 타입: {type(resp_info).__name__}, "
-                f"최상위 키: {list(result_info.keys())}",
-            )
             return
 
         result_info["resp_info"]["timestamp"] = datetime.now()
@@ -271,11 +255,6 @@ class MultiprocessWorker(QThread):
                     "  url_list 샘플(최대 3개): %s\n"
                     "  url_list 총 %d개",
                     res_url, sample, len(url_list),
-                )
-                self.log_message.emit(
-                    "warn",
-                    f"[DEBUG] ★URL 불일치★ res_url={res_url} | "
-                    f"url_list 샘플={sample} | url_list 크기={len(url_list)}",
                 )
             return
 
@@ -402,11 +381,6 @@ class MultiprocessWorker(QThread):
             "[DEBUG][_emit_finished] 최종 카운터 — _done=%d, _errors=%d, "
             "_resp_times 개수=%d, elapsed=%.1fs",
             self._done, self._errors, len(self._resp_times), elapsed,
-        )
-        self.log_message.emit(
-            "info",
-            f"[DEBUG] 최종 카운터 — _done={self._done}, _errors={self._errors}, "
-            f"응답시간 샘플 수={len(self._resp_times)}, elapsed={elapsed:.1f}s",
         )
 
         summary = {
