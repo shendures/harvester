@@ -368,3 +368,4 @@
 미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
 저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
 (2026-07-07 재확인: 여전히 미해결)
+

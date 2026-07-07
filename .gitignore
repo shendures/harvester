@@ -210,3 +210,6 @@ $RECYCLE.BIN/
 .env.*.local
 *.pem
 *.key
+
+# 개인 학습 노트 (HISTORY.md/ISSUES.md와 별개, 저장소에 커밋하지 않음)
+systems/STUDY.md
