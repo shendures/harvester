@@ -61,12 +61,30 @@ raw 수집 데이터
 
 - 파일명: `{seq_no}.py` — `request_info.json`의 `seq_no` 값과 **문자열
   그대로 정확히 일치**해야 함 (예: `seq_no="000000"` → `000000.py`).
-- 위치 정책은 `request_info.json`(`BlueprintStorage`)과 완전히 동일합니다:
+- **런타임/배포 경로**는 `request_info.json`(`BlueprintStorage`)과 완전히
+  동일합니다 (2026-07-07, PR #42):
   - 번들 리소스 경로(`utility.resource_path()` 루트, 개발 시 프로젝트 루트 /
     PyInstaller 빌드 후 `_MEIPASS`)에 고객별 기본값을 패키징.
   - 앱 데이터 폴더(`LOCALAPPDATA/CollectorApp` 등)에 파일이 없으면 최초
     실행 시 번들 기본값을 그대로 복사(seed)하고, 이후에는 앱 데이터 폴더
     사본을 우선 사용 — 고객 PC에서 직접 수정 가능.
+  - `preprocess.py`의 `_resolve_custom_rule_path()`/`_app_dir()`는 이 평면
+    경로만 알고 있으며, 아래 §3.1a의 개발용 폴더 구조와는 무관합니다.
+
+#### 3.1a 개발 시점 관리 폴더: `custom_rules/`
+
+레포 루트의 `custom_rules/{seq_no}.py`는 **개발자가 여러 고객/블루프린트의
+정제 규칙 모듈을 한곳에 모아 작업하는 개발 전용 폴더**입니다 (2026-07-07
+결정). 런타임이 참조하는 §3.1의 평면 경로와는 별개입니다.
+
+- `request_info.json`(고객별 로컬 설정, `.gitignore` 등록·미추적)과 달리
+  `custom_rules/`는 **git으로 이력 관리**합니다 — 정제 규칙은 설정값이
+  아니라 코드이므로 변경 이력을 남길 필요가 있다는 판단.
+- 특정 고객에게 배포할 때는 `custom_rules/{seq_no}.py` 중 해당 고객 파일
+  **하나만** 레포 루트(=`utility.resource_path()` 위치)로 복사해 패키징합니다.
+  이 복사 단계에서 다시 "파일 단위 1개"로 좁혀지므로 런타임 코드는 변경이
+  필요 없습니다.
+- 실제 정제 규칙 로직 작성은 Windows 개발 환경에서 진행됩니다.
 
 ### 3.2 함수 계약
 
@@ -109,19 +127,22 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
    `true`로 설정.
 2. **seq_no 확인**: 대상 블루프린트의 `seq_no` 값을 정확히 확인 (문자열
    앞자리 0 유실 등 오타 주의).
-3. **정제 함수 작성**: `refine()` 또는 `refine_row()` 중 로직에 맞는 형태로
-   `{seq_no}.py` 작성 (§3.2 계약 준수).
+3. **정제 함수 작성**: `custom_rules/{seq_no}.py`에 `refine()` 또는
+   `refine_row()` 중 로직에 맞는 형태로 작성 (§3.2 계약 준수, Windows
+   개발 환경 기준). 이 폴더는 git으로 이력 관리되므로 커밋 대상.
 4. **배포 전 단독 검증**: 실제 raw 데이터 샘플로 정제 함수를 임시
    스크립트에서 단독 실행해 예외 없이 기대한 출력이 나오는지 확인.
    검증 스크립트는 확인 후 삭제(저장소 커밋 정책과 동일하게 산출물로
    남기지 않음).
-5. **배포 위치에 배치**: `utility.resource_path()` 루트에 `{seq_no}.py`를
-   포함해 패키징 — 최초 실행 시 앱 데이터 폴더로 자동 시딩됨.
+5. **배포 위치에 배치**: `custom_rules/{seq_no}.py`를 레포 루트
+   (`utility.resource_path()` 위치)로 복사한 뒤 패키징 — 최초 실행 시 앱
+   데이터 폴더로 자동 시딩됨.
 6. **GUI 통합 확인**: "② 정제 규칙 설정" 탭 진입 시 경고 팝업이 뜨지
    않는지, 실제 수집 1회 실행 후 로그에 `"사용자 정의 규칙(seq_no=...)
    적용됨"` 문구가 남는지, 결과 데이터가 기대대로 정규화됐는지 확인.
-7. **정리**: 검증용 임시 스크립트/파일 삭제. `{seq_no}.py`는 배포
-   산출물이므로 유지.
+7. **정리**: 검증용 임시 스크립트/파일 삭제. `custom_rules/{seq_no}.py`
+   원본은 유지, 레포 루트로 복사했던 배포용 사본은 배포 산출물이므로
+   그대로 두거나 다음 고객 빌드 전 정리.
 
 ---
 
@@ -133,9 +154,9 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 **1) `request_info.json`에서 `needs_cleaning: true` 설정**
 
-**2) `000000.py` 작성**
+**2) `custom_rules/000000.py` 작성** (Windows 개발 환경, git 추적 대상)
 ```python
-# 000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
+# custom_rules/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
 import re
 
 def refine_row(row: dict) -> dict:
@@ -151,7 +172,7 @@ def refine_row(row: dict) -> dict:
 **3) 배포 전 단독 검증** (임시, 커밋 안 함)
 ```python
 import importlib.util
-spec = importlib.util.spec_from_file_location("test", "000000.py")
+spec = importlib.util.spec_from_file_location("test", "custom_rules/000000.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 sample = [{"tel": "02)1234-5678", "name": "가게A"}, {"tel": "tel:01098765432", "name": "가게B"}]
@@ -159,13 +180,14 @@ print([m.refine_row(r) for r in sample])
 # → tel이 "02-1234-5678", "010-9876-5432"로 정규화되는지 확인
 ```
 
-**4) 배포**: `utility.resource_path()` 루트에 `000000.py` 포함해 패키징.
+**4) 배포**: `custom_rules/000000.py`를 레포 루트로 복사해 `000000.py`로
+패키징 (`utility.resource_path()` 위치).
 
 **5) GUI 통합 확인**: 탭 진입 시 경고 없음 → 수집 1회 실행 →
 `"사용자 정의 규칙(seq_no=000000) 적용됨"` 로그 확인 → 결과의 `tel` 필드
 정규화 확인.
 
-**6) 정리**: 검증 스크립트 삭제.
+**6) 정리**: 검증 스크립트 삭제. `custom_rules/000000.py` 원본은 유지.
 
 ---
 
