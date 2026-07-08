@@ -68,6 +68,7 @@ class MultiprocessWorker(QThread):
         self._running  = True
         self._errors   = 0
         self._done     = 0
+        self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
         self._resp_times: list[float] = []
         self.total        = None
         self._started_at: datetime | None = None
@@ -181,7 +182,7 @@ class MultiprocessWorker(QThread):
             self.log_message.emit("err", err_msg)
 
         finally:
-            self._emit_finished(callback_url)
+            self._emit_finished(callback_url, total)
 
     # ── 내부 헬퍼 ─────────────────────────────────────
     def _handle_line(
@@ -248,6 +249,7 @@ class MultiprocessWorker(QThread):
                 logger.debug("[DEBUG][_handle_line] 중복 URL skip: %s", res_url)
             else:
                 # url_list 불일치 — total=0 원인의 핵심 후보
+                self._skipped += 1
                 sample = list(url_list)[:3]
                 logger.warning(
                     "[DEBUG][_handle_line] ★ URL 불일치 skip ★\n"
@@ -362,7 +364,7 @@ class MultiprocessWorker(QThread):
             except Exception:
                 pass
 
-    def _emit_finished(self, callback_url: str) -> None:
+    def _emit_finished(self, callback_url: str, url_count: int) -> None:
         """
         finally 블록에서 호출 — 세션 요약을 DataStore에 기록하고
         finished 시그널을 emit합니다.
@@ -394,6 +396,8 @@ class MultiprocessWorker(QThread):
             "started":     self._started_at.strftime("%Y-%m-%d %H:%M:%S") if self._started_at else "—",
             "interrupted": not self._running,
             "finished":    now.strftime("%Y-%m-%d %H:%M:%S"),
+            "url_count":   url_count,
+            "skipped":     self._skipped,
         }
 
         self.store.add_session(summary)

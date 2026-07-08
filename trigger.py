@@ -3611,11 +3611,19 @@ class MainWindowTriggers:
             return
 
         if summary.get("total", 0) == 0:
-            self.log_manager.append_log("err", "크롤링 완료 — 수집된 데이터가 없습니다.")
+            url_count = summary.get("url_count", 0)
+            skipped   = summary.get("skipped", 0)
+            elapsed   = summary.get("elapsed", 0)
+            self.log_manager.append_log(
+                "err",
+                f"크롤링 완료 — 수집된 데이터가 없습니다 "
+                f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
+            )
             self.dashboard._update_step_ui(0)
             msg = QMessageBox(self)
             msg.setWindowTitle("수집 결과 없음")
             msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                        f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
                         "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
             msg.setIcon(QMessageBox.Icon.Warning)
             msg.setStyleSheet(f"""
