@@ -573,6 +573,29 @@
   9개 assertion 확인 — 수동 실행 2건만 Raw 탭으로 전환되고 나머지는
   화면 유지됨을 확인. 검증용 venv/스크립트는 확인 후 삭제
 
+### 수집 결과 0건 완료 시 진단 정보(URL 개수·소요시간·skip 건수) 노출 (`4f87aee`, 2026-07-08)
+
+- **배경**: 수집이 완료됐지만 결과가 0건이면 항상 "URL 또는 수집 설정을
+  확인하고 다시 시도해 주세요"라는 동일한 안내만 떴음. 실제로는 원인이
+  ① URL 생성 자체 실패, ② URL은 생성됐지만 응답이 `url_list`와 매칭 안 돼
+  전량 skip, ③ 응답은 받았으나 전부 에러, ④ 정상 응답인데 추출 로직이
+  0건 파싱 등으로 갈리는데, 그중 "URL 불일치 skip" 정보는 `worker.py`에
+  이미 감지 로직이 있었지만 `logger.warning()`(개발자 로그 파일 전용)만
+  써서 실사용자에게는 절대 보이지 않는 상태였음
+- **수정**:
+  - `worker.py`: `MultiprocessWorker.__init__`에 `_skipped` 카운터 추가
+    (URL 불일치 skip만 집계, 중복 응답 skip은 정상 동작이라 제외).
+    `_emit_finished(callback_url, url_count)`로 시그니처 변경해 생성된
+    URL 개수를 받고, `summary`에 `url_count`/`skipped` 필드 추가
+  - `trigger.py`: `_on_finished()`의 0건 완료 분기 로그·팝업 문구에
+    "생성 URL {n}개 · URL 불일치 skip {n}건 · 소요 {n}s" 요약 추가
+    (소요 시간은 기존 `summary['elapsed']`를 그대로 재사용)
+- **검증** (WSL uv venv, 헤드리스 PyQt6): `_handle_line()`의 불일치/중복
+  skip 판정 분기별 카운터 증감, `_emit_finished()`가 만든 `summary`의
+  `url_count`/`skipped` 값, `_on_finished()`가 그 값을 로그·팝업 텍스트에
+  실제로 반영하는지, 수동+0건 시 Raw 탭 자동 전환이 회귀 없이 유지되는지
+  — 15개 assertion 확인. 검증 스크립트는 확인 후 삭제
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-08 기준)
@@ -580,13 +603,13 @@
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `7df06b2` (PR #45) | ✅ | 미확인 |
-| `develop` | `e875d76` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`e875d76`, 위 항목 참고) | ✅ | 미확인 |
+| `develop` | `4f87aee` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`4f87aee`, 위 항목 참고) | ✅ | 미확인 |
 
 `main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격, fill_null 사용자
 지정 치환값, 비교 탭 스크롤·정렬 동기화, 규칙 넘버링 재배치, 커스텀 규칙
 체크박스 연동, 완료 알림 중복 제거, 프록시 더미 데이터 제거, layout.py→trigger.py
-메서드 이관, 수동 수집 완료 시 모니터링-Raw 탭 자동 전환 등)이 다수 쌓여
-있어 릴리스 대상 — 아직 release PR 미생성.
+메서드 이관, 수동 수집 완료 시 모니터링-Raw 탭 자동 전환, 0건 완료 시
+진단 정보 노출 등)이 다수 쌓여 있어 릴리스 대상 — 아직 release PR 미생성.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 
