@@ -187,23 +187,23 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 ## 5. 작업 프로세스 예시
 
 `seq_no="000000"`(샤브올데이) 블루프린트를 예로 든 워크스루입니다. 가정:
-`tel` 필드가 `"02)1234-5678"` / `"02-1234-5678 "` / `"tel:0212345678"` 등
-제각각이라 범용 규칙(공백 trim 정도)으로는 정규화가 안 되는 상황.
+`tel` 필드에 `"02)1234-5678"`처럼 괄호가 섞여 있어 하이픈으로 통일 정규화가
+필요한 상황.
 
 **1) `request_info.json`에서 `needs_cleaning: true` 설정**
 
-**2) `custom_rules/000000.py` 작성** (Windows 개발 환경, git 추적 대상)
+**2) `custom_rules/000000.py` 작성** (Windows 개발 환경, git 추적 대상 —
+현재 실제 배포된 내용, `418597f`에서 자릿수 기반 재조합 방식 대신 단순
+치환으로 교체됨)
 ```python
 # custom_rules/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
 import re
 
+
 def refine_row(row: dict) -> dict:
     tel = row.get("tel", "")
-    digits = re.sub(r"\D", "", tel)          # 숫자만 추출
-    if len(digits) == 10:
-        row["tel"] = f"{digits[:2]}-{digits[2:6]}-{digits[6:]}"
-    elif len(digits) == 11:
-        row["tel"] = f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    digits = re.sub(r"\)", "-", tel)
+    row["tel"] = digits
     return row
 ```
 
@@ -213,7 +213,7 @@ import importlib.util
 spec = importlib.util.spec_from_file_location("test", "custom_rules/000000.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
-sample = [{"tel": "02)1234-5678", "name": "가게A"}, {"tel": "tel:01098765432", "name": "가게B"}]
+sample = [{"tel": "02)1234-5678", "name": "가게A"}, {"tel": "010)9876-5432", "name": "가게B"}]
 print([m.refine_row(r) for r in sample])
 # → tel이 "02-1234-5678", "010-9876-5432"로 정규화되는지 확인
 ```
