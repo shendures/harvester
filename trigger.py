@@ -3628,6 +3628,11 @@ class MainWindowTriggers:
                 QPushButton:hover {{ background:{ACCENT_HOVER}; }}
             """)
             msg.exec()
+            if task.get("job") == "수동 실행":
+                self.stack.setCurrentIndex(1)
+                for i, btn in enumerate(self.sidebar._btns):
+                    btn.setChecked(i == 1)
+                self.monitor_page.tab_widget.setCurrentIndex(0)
             # 결과 없어도 대기 큐 소비는 계속 진행
             self._consume_pending_queue()
             return
@@ -3655,6 +3660,12 @@ class MainWindowTriggers:
         job_name = task.get("task_nm")
         if job_name:
             self.schedule_page.mark_done(job_name)
+
+        if task.get("job") == "수동 실행":
+            self.stack.setCurrentIndex(1)
+            for i, btn in enumerate(self.sidebar._btns):
+                btn.setChecked(i == 1)
+            self.monitor_page.tab_widget.setCurrentIndex(0)
 
         # ── 정상 완료 후 대기 큐 소비 ──
         self._consume_pending_queue()
