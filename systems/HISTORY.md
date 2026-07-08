@@ -509,6 +509,52 @@
   `custom_rule`을 건드리지 않으면 수동 조정이 유지됨, `_run_refine()` 회귀
   없음 — 모든 시나리오 PASS
 
+### GUI 중복 알림·더미 데이터 제거 및 layout.py→trigger.py 메서드 이관 (`6943a23`, 2026-07-08)
+
+- **완료 알림 팝업 중복 제거**: `_on_finished()`의 정상 완료 분기에서 바로 위
+  `log_manager.append_log("info", "크롤링 완료")`가 이미 로그로 남기는데도
+  `QMessageBox.information(self, "success", "수집 완료.")`를 또 띄우고 있어
+  중복 — 팝업 삭제(`trigger.py`). 결과 0건 시 뜨는 "수집 결과 없음" 경고
+  팝업은 로그에 없는 안내 문구(URL/설정 확인)를 담고 있어 유지. 부수 효과:
+  이 팝업이 모달이라 `schedule_page.mark_done()`/`_consume_pending_queue()`
+  (다음 대기 스케줄 실행)가 사용자가 팝업을 닫아야 진행되던 구조였는데,
+  삭제로 스케줄 연속 실행이 사용자 개입 없이 바로 이어지게 됨
+- **세션 설정 프록시 목록 초기 더미 데이터 제거**: `SessionSettingsPage._seed()`
+  (`10.0.0.1` 등 4개 샘플 행을 앱 시작 시 항상 채워 넣던 메서드)와 호출부 삭제
+  — `_proxy_rows`는 빈 리스트로 시작, 사용자가 "+ 추가"/"Import"로 넣은
+  항목만 표시
+- **layout.py의 토글/트리거 성격 메서드를 trigger.py Mixin으로 이관**:
+  "layout.py = UI 구성, trigger.py = 시그널 이벤트 핸들러(Mixin)" 원칙을
+  기준으로 전수 분석한 결과, 5개 메서드가 이 원칙을 위반하고 있음을 확인
+  (분석 상세는 대화 로그 참고):
+  - `StatisticsPage.reload()` (약 90줄, `QTimer.timeout`에 연결된 데이터
+    갱신 로직) → `StatisticsPageTriggers`
+  - `SchedulerPage._manage_schedule_task()` (약 730줄, 스케줄 등록/수정
+    다이얼로그+제출 핸들러 — 동일 패턴인 `_add_proxy_dialog`/`_add_cred_dialog`는
+    이미 trigger.py에 있었음) → `SchedulerPageTriggers`
+  - `SessionSettingsPage._proxy_table_context_menu()` /
+    `_toggle_proxy_enabled()` / `_on_proxy_item_changed()` (프록시 활성/비활성
+    토글 3종 — 호출부인 `_on_proxy_row_clicked()`는 이미 trigger.py에 있어
+    같은 기능이 두 파일에 걸쳐 쪼개져 있었음) → `SessionSettingsPageTriggers`
+  - 죽은 코드 `SessionSettingsPage.load_ip_list_from_file()`도 함께 제거
+    (어디서도 연결되지 않았고, 존재하지 않는 `self.ip_proxy_table`을 참조 —
+    호출됐다면 즉시 크래시)
+  - orphan import 정리: layout.py에서 `re`/`csv`/`socket`/`defaultdict`/
+    `db_conn`/`timedelta` 제거(이관된 코드에서만 쓰이던 것). trigger.py에는
+    누락된 `QMenu`/`QSpinBox`/`QDoubleSpinBox`/`QDateEdit`/`defaultdict` 추가
+  - **이관 중 실제 버그 2건 발견·수정**: ① `_manage_schedule_task()`의
+    `request_info["callback_url"]`이 layout.py 모듈 전역변수를 참조하고
+    있어 단순 이동만으로는 `NameError` — `BlueprintStorage().read()`로
+    교체(trigger.py 다른 곳의 기존 관례와 동일). ② 위 위젯 import 누락
+    — Python은 함수가 "정의된 모듈"의 전역 네임스페이스에서 이름을
+    찾으므로, 모듈 간 메서드 이동 시 흔히 놓치기 쉬운 함정
+- **검증** (WSL uv venv, Python 3.12, 헤드리스 PyQt6): `MainWindow()` 전체
+  인스턴스화(스케줄 페이지가 실제 `SessionSettingsPage` 인스턴스를 쓰는지,
+  즉 이슈 ⑨ 수정이 유지되는지 포함) + `reload()` 실측 데이터 갱신 +
+  프록시 토글 전 구간(체크박스 클릭/우클릭 메뉴 삭제) +
+  `_manage_schedule_task()` 등록/수정 양쪽 다이얼로그 빌드 — 6개 시나리오
+  PASS. 검증용 venv/스크립트는 확인 후 삭제
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-08 기준)
@@ -516,11 +562,12 @@
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `7df06b2` (PR #45) | ✅ | 미확인 |
-| `develop` | `5a0d665` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`5a0d665`, 위 항목 참고) | ✅ | 미확인 |
+| `develop` | `6943a23` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`6943a23`, 위 항목 참고) | ✅ | 미확인 |
 
 `main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격, fill_null 사용자
 지정 치환값, 비교 탭 스크롤·정렬 동기화, 규칙 넘버링 재배치, 커스텀 규칙
-체크박스 연동 등)이 다수 쌓여 있어 릴리스 대상 — 아직 release PR 미생성.
+체크박스 연동, 완료 알림 중복 제거, 프록시 더미 데이터 제거, layout.py→trigger.py
+메서드 이관 등)이 다수 쌓여 있어 릴리스 대상 — 아직 release PR 미생성.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 
