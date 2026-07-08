@@ -752,7 +752,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             rl.addWidget(row_w)
 
         # 커스텀 정제 규칙 체크 시 규칙 ②~⑤(remove_duplicate/remove_null_row/
-        # fill_null/trim_whitespace)를 동일 상태로 자동 설정 (켤 때/끌 때 모두)
+        # fill_null/trim_whitespace)를 자동으로 켬 (해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
 
         rl.addSpacing(12)
