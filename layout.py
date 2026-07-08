@@ -523,6 +523,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {
+            "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
             "remove_duplicate":  True,   # 중복 행 제거
             "remove_null_row":   True,   # 모든 필드 null 행 제거
             "fill_null":         True,   # null → "—" 치환
@@ -678,6 +679,8 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         rl.addSpacing(8)
 
         rule_defs = [
+            ("custom_rule",      "커스텀 정제 규칙 적용",
+             "seq_no에 등록된 사용자 정의 규칙(refine/refine_row)을 범용 규칙보다 먼저 적용합니다."),
             ("remove_duplicate", "중복 행 제거",
              "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("remove_null_row",  "모든 필드 null 행 제거",

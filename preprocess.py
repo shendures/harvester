@@ -29,6 +29,7 @@ load_custom_rule() 함수
     from preprocess import DataRefiner, RefineStats, load_custom_rule
 
     rules = {
+        "custom_rule":      True,
         "remove_duplicate": True,
         "remove_null_row":  True,
         "fill_null":        True,
@@ -38,10 +39,9 @@ load_custom_rule() 함수
     }
 
     custom_rule = load_custom_rule(seq_no)   # None이면 커스텀 규칙 없음
-    data = custom_rule(raw_data) if custom_rule else raw_data
 
-    refiner = DataRefiner(rules=rules, drop_columns=["brand"])
-    refined_data, stats = refiner.run(data)
+    refiner = DataRefiner(rules=rules, drop_columns=["brand"], custom_rule=custom_rule)
+    refined_data, stats = refiner.run(raw_data)
 """
 
 from __future__ import annotations
@@ -51,6 +51,7 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass, field
+from typing import Callable
 
 import utility
 
@@ -66,6 +67,8 @@ class RefineStats:
     deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
     deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "전체 필드 NULL"}
     modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
+    custom_rule_applied: bool     = False  # ⑦ custom_rule 정상 적용 여부
+    custom_rule_error:   str | None = None  # ⑦ custom_rule 실행 중 예외 메시지 (있으면 원본 데이터로 폴백)
 
     @property
     def refine_rate(self) -> str:
@@ -88,6 +91,7 @@ class RefineStats:
 
 # ── 기본 정제 규칙 ────────────────────────────────────────────────────
 DEFAULT_RULES: dict[str, bool] = {
+    "custom_rule":       True,  # ⑦ 커스텀 규칙(seq_no, 있으면) 적용
     "remove_duplicate": True,   # 중복 행 제거
     "remove_null_row":  True,   # 모든 필드 null 행 제거
     "fill_null":        True,   # null → "—" 치환
@@ -105,6 +109,7 @@ class DataRefiner:
     수집된 raw 데이터에 정제 규칙을 순차 적용하는 엔진.
 
     규칙 적용 순서 (변경하지 마세요 — 순서가 결과에 영향을 미칩니다):
+        ⑦ custom_rule       — 커스텀 규칙(seq_no, 있고 활성화된 경우) 적용, 나머지보다 먼저 실행
         ① remove_duplicate  — 중복 행 제거
         ② remove_null_row   — 모든 필드 null 행 제거
         ③ fill_null         — 잔존 null → "—" 치환
@@ -117,14 +122,18 @@ class DataRefiner:
         self,
         rules:        dict[str, bool] | None = None,
         drop_columns: list[str]       | None = None,
+        custom_rule:  Callable[[list[dict]], list[dict]] | None = None,
     ) -> None:
         """
         Args:
             rules:        규칙 활성화 딕셔너리. None이면 DEFAULT_RULES 사용.
             drop_columns: ⑤ drop_columns 규칙 활성 시 제외할 컬럼명 목록.
+            custom_rule:  ⑦ custom_rule 규칙 활성 시 실행할 콜러블
+                          (`load_custom_rule()`의 반환값). None이면 이 step은 건너뜁니다.
         """
         self.rules:        dict[str, bool] = {**DEFAULT_RULES, **(rules or {})}
         self.drop_columns: list[str]       = drop_columns or []
+        self.custom_rule:  Callable[[list[dict]], list[dict]] | None = custom_rule
 
     # ── 공개 인터페이스 ───────────────────────────────────────────────
     def run(self, raw_data: list[dict]) -> tuple[list[dict], RefineStats]:
@@ -147,6 +156,7 @@ class DataRefiner:
         stats       = RefineStats(raw_count=len(raw_data))
         orig_indices = list(range(len(raw_data)))  # 각 행의 원본 위치 추적
 
+        data, stats = self._step_custom_rule(data, stats)
         data, stats, orig_indices = self._step_remove_duplicate(data, stats, orig_indices)
         data, stats, orig_indices = self._step_remove_null_row(data, stats, orig_indices)
         data, stats = self._step_fill_null(data, stats)
@@ -198,6 +208,28 @@ class DataRefiner:
     def _shallow_copy(raw_data: list[dict]) -> list[dict]:
         """각 행 dict를 shallow copy하여 원본 보호."""
         return [row.copy() for row in raw_data]
+
+    # ── 규칙 ⑦ 커스텀 규칙(seq_no) 적용 ─────────────────────────────
+    def _step_custom_rule(
+        self, data: list[dict], stats: RefineStats
+    ) -> tuple[list[dict], RefineStats]:
+        if not self.rules.get("custom_rule") or self.custom_rule is None:
+            return data, stats
+
+        try:
+            result = self.custom_rule(data)
+            if not isinstance(result, list) or len(result) != len(data):
+                got = len(result) if isinstance(result, list) else type(result).__name__
+                raise ValueError(
+                    f"커스텀 규칙은 입력과 동일한 길이의 list를 반환해야 합니다 "
+                    f"(입력 {len(data)}행, 반환 {got})"
+                )
+        except Exception as e:
+            stats.custom_rule_error = str(e)
+            return data, stats
+
+        stats.custom_rule_applied = True
+        return result, stats
 
     # ── 규칙 ① 중복 행 제거 ──────────────────────────────────────────
     def _step_remove_duplicate(
