@@ -1044,7 +1044,7 @@ class MonitorPageTriggers:
 
         lm = getattr(self.window(), 'log_manager', None)
 
-        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ⑦ custom_rule step이 담당 ──
+        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ① custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
         seq_no         = self._current_task.get("seq_no")
         needs_cleaning = self._current_task.get("needs_cleaning", False)

@@ -206,14 +206,14 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 수집된 raw 데이터를 정제하는 로직 전담 모듈.
 
-- **`DataRefiner`**: 7가지 정제 규칙을 순서대로 적용합니다. `custom_rule`(⑦)은
-  나머지 6개(①~⑥)보다 항상 먼저 실행됩니다 (PR #41, 이후 `1bfbeef`에서 트리거의
+- **`DataRefiner`**: 7가지 정제 규칙을 순서대로 적용합니다. `custom_rule`(①)이
+  나머지 6개(②~⑦)보다 항상 먼저 실행됩니다 (PR #41, 이후 `1bfbeef`에서 트리거의
   별도 전처리 단계 대신 `DataRefiner` 자체의 규칙으로 승격).
   1. `custom_rule`: seq_no별 커스텀 정제 함수 적용 (있고 활성화된 경우만, §커스텀
      정제 규칙 참고)
   2. `remove_duplicate`: 중복 행 제거
   3. `remove_null_row`: null 포함 행 제거
-  4. `fill_null`: null → 지정값 치환 (GUI 입력값, 기본 빈 값; `DataRefiner` 직접 호출 시 기본값은 `"—"`)
+  4. `fill_null`: null → 지정값 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일)
   5. `trim_whitespace`: 문자열 앞뒤 공백 제거
   6. `drop_columns`: 지정 컬럼 제외
   7. `cast_numeric`: 문자열 숫자 → int/float 변환

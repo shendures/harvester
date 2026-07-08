@@ -9,22 +9,21 @@
 ## 1. 정제 파이프라인 개요
 
 `DataRefiner`가 7개 규칙을 모두 소유하고 순차 적용합니다. 커스텀 규칙(`custom_rule`,
-seq_no별 플러그인)은 코드상 "규칙 ⑦"로 표기되지만 **실행 순서는 항상 맨 먼저**입니다 —
-사이트별 원시 데이터를 정규화한 뒤, 그 위에서 범용 규칙(중복 제거 등)을 적용하기 위함
-(`preprocess.py:111` 주석 참고).
+seq_no별 플러그인)이 **항상 맨 먼저 실행되는 ①번 규칙**입니다 — 사이트별 원시 데이터를
+정규화한 뒤, 그 위에서 범용 규칙(중복 제거 등)을 적용하기 위함 (`preprocess.py:108` 주석 참고).
 
 ```
 raw 수집 데이터
     │
     ▼
 DataRefiner.run()
-    ├─ ⑦ custom_rule       (seq_no별, 있고 활성화된 경우에만 — 항상 맨 먼저 실행)
-    ├─ ① remove_duplicate
-    ├─ ② remove_null_row
-    ├─ ③ fill_null
-    ├─ ④ trim_whitespace
-    ├─ ⑤ drop_columns
-    └─ ⑥ cast_numeric
+    ├─ ① custom_rule       (seq_no별, 있고 활성화된 경우에만 — 항상 맨 먼저 실행)
+    ├─ ② remove_duplicate
+    ├─ ③ remove_null_row
+    ├─ ④ fill_null
+    ├─ ⑤ trim_whitespace
+    ├─ ⑥ drop_columns
+    └─ ⑦ cast_numeric
     │
     ▼
 정제된 데이터 + RefineStats
@@ -43,21 +42,21 @@ DataRefiner.run()
 
 ---
 
-## 2. 범용 정제 규칙 (`DataRefiner`, ①~⑥)
+## 2. 범용 정제 규칙 (`DataRefiner`, ①~⑦)
 
 `preprocess.DataRefiner`가 아래 순서대로 적용합니다. **순서를 바꾸면 결과가
-달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:111` 주석 참고). 커스텀
-규칙(⑦ `custom_rule`)은 이 6종보다 먼저 실행되며 상세는 §3 참고.
+달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:108` 주석 참고). 커스텀
+규칙(① `custom_rule`)은 이 6종보다 먼저 실행되며 상세는 §3 참고.
 
 | # | 규칙 키 | 내용 | 기본값 |
 |---|---|---|---|
-| ⑦ | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) — **실행은 항상 맨 먼저** | 활성 |
-| ① | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
-| ② | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
-| ③ | `fill_null` | 잔존 null 값을 지정한 값으로 치환 (GUI 기본: 빈 값, `DataRefiner` 직접 호출 시 기본값은 `"—"`) | 활성 |
-| ④ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
-| ⑤ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 | 비활성 |
-| ⑥ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
+| ① | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) — **실행은 항상 맨 먼저** | 활성 |
+| ② | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
+| ③ | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
+| ④ | `fill_null` | 잔존 null 값을 지정한 값으로 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일) | 활성 |
+| ⑤ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
+| ⑥ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 | 비활성 |
+| ⑦ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
 
 - 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:525`
   `_refine_rules`)로 수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
@@ -119,19 +118,19 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 로드(파일 찾기·`exec`)와 실행(호출·검증)이 서로 다른 계층에서 처리됩니다.
 
-- **로드** (`trigger.py:1037`, `_run_refine()`): 해당 수집(task)의
+- **로드** (`trigger.py:1042`, `_run_refine()`): 해당 수집(task)의
   `needs_cleaning=True` **그리고** `seq_no`가 존재할 때만
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
   지점에서 잡아 `err` 로그를 남기고 `custom_rule_fn = None`으로 진행합니다.
-- **실행** (`preprocess.py:210` `DataRefiner._step_custom_rule()`): 로드된
+- **실행** (`preprocess.py:213` `DataRefiner._step_custom_rule()`): 로드된
   콜러블은 `DataRefiner(custom_rule=...)`로 전달되고, `rules["custom_rule"]`이
   켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
   입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
-  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:225`).
-  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:228`).
+  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:228`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:231`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
-  `custom_rule_error`를 보고 로그·요약 문구를 결정합니다(`trigger.py:1065-1072`)
+  `custom_rule_error`를 보고 로그·요약 문구를 결정합니다(`trigger.py:1070-1080`)
   — 커스텀 규칙의 버그가 수집 자체를 막지는 않지만, 배포 전 테스트하지
   않으면 실패가 로그로만 조용히 남고 지나갈 수 있습니다.
 - GUI는 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데

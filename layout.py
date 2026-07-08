@@ -681,13 +681,13 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         rule_defs = [
             ("custom_rule",      "커스텀 정제 규칙 적용",
-             "seq_no에 등록된 사용자 정의 규칙(refine/refine_row)을 범용 규칙보다 먼저 적용합니다."),
+             "사용자 정의 정제 함수를 적용합니다."),
             ("remove_duplicate", "중복 행 제거",
              "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("remove_null_row",  "모든 필드 null 행 제거",
              "모든 필드가 null·빈 값인 행만 삭제합니다."),
-            ("fill_null",        "null → 지정값 치환",
-             "삭제 대상 외 null 값을 지정한 값으로 대체합니다 (기본 '—')."),
+            ("fill_null",        "결측값(N/A) 치환",
+             "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
             ("trim_whitespace",  "문자열 공백 trim",
              "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
             ("drop_columns",     "제외 필드 지정",
