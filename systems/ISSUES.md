@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-08
+- **최신 갱신**: 2026-07-09
 
 ---
 
@@ -70,13 +70,13 @@
 - **`env/database.ini`에 실제 API 키 4개 평문 존재** (공공데이터포털, 한국은행,
   OpenDART, IROS). git 미추적 상태이지만, 그 이유가 Python 템플릿 `.gitignore`의
   `env/` 규칙(가상환경용)에 **우연히** 걸렸기 때문 → `.gitignore`에 명시적 등록
-  또는 `.env` 이관 권장 (2026-07-05 재확인: 여전히 명시적 등록 안 됨)
+  또는 `.env` 이관 권장 (2026-07-09 재확인: 여전히 명시적 등록 안 됨)
 - `ROBOTSTXT_OBEY=True`인 반면 봇 UA 행세·랜덤 쿠키·프록시 로테이션 미들웨어가
   공존 — 사용 정책 정리 필요
 - **테스트 코드 0개** — 검증용으로 작성했던 미들웨어 테스트 8건은 검증 완료 후
   정책에 따라 저장소에서 제거됨 (PR #6). `preprocess.DataRefiner`,
   `utility.generate_combined_urls`가 테스트 도입 최적 지점
-- `frames_tmp.py`(5,796줄)가 git 추적 중 — 가이드 스스로 임시 파일로 명시, 정리 대상 (2026-07-05 재확인: 여전히 추적 중)
+- `frames_tmp.py`(5,796줄)가 git 추적 중 — 가이드 스스로 임시 파일로 명시, 정리 대상 (2026-07-09 재확인: 여전히 추적 중, 어디서도 import 안 됨)
 - Scrapy 2.16으로 올리면 sync `start_requests()`가 **에러 없이 무시되어 0건 수집**
   (검증 중 실측) — 업그레이드 시 async `start()` 마이그레이션 필수
 
@@ -108,9 +108,10 @@
 2. ~~**크롤링 경로 견고화 (⑬·⑭·⑮·⑯)**~~ → **⑬·⑭·⑮ 해소, ⑯ 보류**(다중 블루프린트 업그레이드에서 재설계 예정, §1 참고)
 3. **보안**: `env/database.ini` 명시적 gitignore 등록(또는 `.env` 이관),
    키 노출 이력 점검
-4. **`worker.set_scrapy_settings()` 예외 삼킴 개선** — 핵심 설정(`ITEM_PIPELINES`
-   교체 등)은 try 밖으로 옮기고, try는 실패해도 진행 가능한 프록시 주입으로 한정
-   (④는 해결됐지만 예외 삼킴 구조 자체는 남아 있음)
+4. ~~**`worker.set_scrapy_settings()` 예외 삼킴 개선**~~ → **해소** (`f00bc77`) —
+   핵심 설정(`DOWNLOADER_MIDDLEWARES`/`ITEM_PIPELINES`/`CONCURRENT_REQUESTS`/
+   `DOWNLOAD_DELAY`/`DOWNLOAD_TIMEOUT`)을 try 밖으로 옮겨 실패 시 예외가
+   그대로 전파되도록 변경, try는 실패해도 진행 가능한 프록시 설정 주입으로 한정
 5. **테스트 도입**: `preprocess.py`, `utility.py` 순수 함수부터
    (이슈 ② 검증 시 미들웨어 테스트 8건을 작성해 효용은 확인됨 — PR #5 참고)
 6. **정리**: §4 미사용 코드·모듈 삭제 (`frames_tmp.py` 우선),
