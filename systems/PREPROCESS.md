@@ -40,6 +40,13 @@ DataRefiner.run()
 둘 중 하나라도 해당 안 되면(파일 없음 / 체크박스 꺼짐) 이 단계는 조용히 건너뛰고
 범용 6규칙만 적용됩니다.
 
+**체크박스 자동 연동** (`trigger.py` `_on_custom_rule_toggled`): "커스텀 정제 규칙
+적용" 체크박스를 켤 때마다 ②~⑤(`remove_duplicate`/`remove_null_row`/`fill_null`/
+`trim_whitespace`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔 상태여도 매번
+덮어씀). 해제할 때는 ②~⑤에 영향을 주지 않고 직전 상태를 그대로 둡니다 — 커스텀
+규칙이 정규화한 데이터에는 기본 위생 규칙(중복/결측 정리 등)이 항상 함께 돌도록
+하기 위한 편의 기능이며, ⑥`drop_columns`·⑦`cast_numeric`은 연동 대상이 아닙니다.
+
 ---
 
 ## 2. 범용 정제 규칙 (`DataRefiner`, ①~⑦)

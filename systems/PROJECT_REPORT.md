@@ -23,12 +23,12 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 3,023줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 2,744줄 |
+| GUI 레이아웃 | `layout.py` | 3,050줄 |
+| 이벤트 핸들러 (Mixin) | `trigger.py` | 2,801줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 493줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 441줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
-| 데이터 정제 | `preprocess.py` | 346줄 |
+| 데이터 정제 | `preprocess.py` | 349줄 |
 | 설정·상태 공유 (싱글턴 3종) | `conf.py` | 352줄 |
 | 프로토타입 잔재 (정리 대상) | `frames_tmp.py` | 5,796줄 (git 추적 중) |
 
@@ -107,7 +107,7 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (3000+ 줄
 | `Sidebar` | 좌측 내비게이션 메뉴 (대시보드, 모니터링, 스케줄러, 통계분석, 세션설정, 인증관리) |
 | `GlobalToolbar` | 상단 고정 툴바. URL 입력, 시작/중지 버튼 |
 | `DashboardPage` | 수집 진행 상태(Step Tracker), 수집 설정(딜레이·스레드), 세션 통계, 실시간 모니터링 테이블 |
-| `MonitorPage` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교 |
+| `MonitorPage` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교(좌우 테이블 스크롤·정렬 동기화) |
 | `StatisticsPage` | KPI 카드, 상태코드 도넛 차트, 응답시간 바 차트, 시간대별 추이 선 그래프, 세션 이력 테이블 |
 | `SchedulerPage` | 스케줄 작업 등록/수정/삭제. 주기: 매일/주간/월간/특정일 |
 | `SessionSettingsPage` | 수집 딜레이, 스레드, 타임아웃, 재시도, User-Agent, 쿠키, 프록시 설정 |
@@ -227,6 +227,9 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
   `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에 전달합니다.
   경로 해석·시딩·실제 로드는 `conf.CustomRuleStorage`가 전담(§`conf.py` 참고).
   상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
+  GUI "② 정제 규칙 설정" 탭에서 "커스텀 정제 규칙 적용" 체크박스를 켜면
+  ②~⑤(remove_duplicate/remove_null_row/fill_null/trim_whitespace)가 자동으로
+  켜짐(토글마다 매번 강제 적용) — 해제 시에는 ②~⑤에 영향 없음.
 
 ---
 

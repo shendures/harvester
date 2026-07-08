@@ -422,6 +422,93 @@
 - 부수 효과로 `PROJECT_REPORT.md`의 관련 서술(6규칙→7규칙, 싱글턴 2개→3개)도
   함께 현행화
 
+### fill_null 규칙에 사용자 지정 치환값 지원 (`bda1096`, `155e322`, 2026-07-08)
+
+- **배경**: ③(현 ④) `fill_null` 규칙이 `preprocess.py`에 `"—"`로 하드코딩되어
+  있어 사용자가 원하는 치환값(예: `"N/A"`, `"없음"`)을 지정할 수 없었음
+- **수정**: `DataRefiner.__init__`에 `fill_value` 인자 추가, `_step_fill_null()`이
+  하드코딩 대신 이 값을 사용. GUI는 이미 있던 `drop_columns` 체크박스의
+  "옆에 `QLineEdit`" 패턴을 그대로 재사용해 `fill_null` 체크박스 옆에 입력 필드
+  추가. 여러 차례 요구사항 조정을 거쳐 최종적으로 **GUI 기본값은 빈 값**(입력
+  칸이 처음엔 비어 있고, 지우면 빈 값 치환됨을 안내하는 placeholder만 표시)으로
+  결정 — `DataRefiner`를 직접 호출할 때(GUI를 거치지 않는 코드)의 기본값은 이
+  시점엔 `"—"`로 유지(이후 `0cda32b`에서 통일, 아래 참고)
+- **검증** (WSL uv venv, 헤드리스 PyQt6): 기본값·사용자 지정값·빈 입력 시 폴백
+  3케이스 확인
+- **문서화** (`155e322`): `PREPROCESS.md`/`PROJECT_REPORT.md`를 이 변경에 맞춰 동기화
+
+### Before/After 비교 탭 좌우 테이블 스크롤·정렬 동기화 (`b6e1a95`, 2026-07-08)
+
+- **배경**: "④ Before/After 비교" 탭의 `cmp_raw_table`/`cmp_ref_table`이 완전히
+  독립적으로 동작해, 한쪽을 스크롤하거나 정렬해도 반대쪽은 그대로였음. 사용자
+  요청으로 "같은 컬럼·방향으로만 동기화"(행 단위 정합까지는 보장하지 않는) 방식의
+  구현 가능성을 먼저 검토한 뒤 승인받아 구현
+- **수정**: 두 테이블의 `verticalScrollBar().valueChanged`를 상호 연결(같은 값이면
+  재귀 종료). `horizontalHeader().sortIndicatorChanged`도 상호 연결해, 정렬된
+  컬럼명을 반대쪽에서 이름으로 찾아 같은 방향으로 `sortByColumn()` 호출 — 컬럼
+  인덱스가 아닌 **이름 기반 매칭**(`drop_columns`로 컬럼 구성이 달라질 수 있어서),
+  대응 컬럼이 없으면 무시. Raw/Refined는 `remove_duplicate`/`remove_null_row`로
+  행 수가 달라질 수 있어 "같은 줄 = 같은 원본 행"은 보장하지 않음
+- **검증 중 실제 버그 발견**: Qt `QHeaderView.sortIndicatorSection()`이 한 번도
+  정렬한 적 없는 테이블에서 `columnCount()`와 같은 범위 밖 값을 반환하는 경우가
+  있어(컬럼 수 변경 후 내부 상태 미갱신), 가드가 `>= 0`만 확인하다가
+  `horizontalHeaderItem()`의 `None`에서 크래시. 상한(`< columnCount()`)까지
+  확인하도록 수정
+- **검증**: 헤드리스 PyQt6 — raw↔ref 스크롤 동기화(양방향), raw↔ref 정렬
+  동기화(컬럼명·방향·실제 행 순서), `drop_columns`로 대응 컬럼이 없을 때 안전
+  무시, 상호 연결로 인한 무한 재귀 없음(호출 2회로 종료) — 6개 시나리오 PASS
+
+### custom_rules/000000.py 전화번호 정규화 로직 단순화 (`418597f`, 2026-07-08)
+
+- 샤브올데이(seq_no=000000) 커스텀 정제 규칙의 `tel` 필드 정규화 로직을, 자릿수
+  기반 재조합(10/11자리 하이픈 삽입)에서 `")" → "-"` 단순 치환으로 교체(사용자
+  직접 작성)
+
+### DataRefiner 규칙 넘버링 재배치 및 fill_value 기본값 통일 (`0cda32b`, 2026-07-08)
+
+- **배경**: `preprocess.py`의 순환 숫자 라벨이 `custom_rule`을 ⑦로 표기하면서도
+  실제로는 항상 가장 먼저 실행되도록 되어 있어, 코드·문서를 처음 보는 사람에게
+  혼란을 줄 수 있는 상태였음(사용자 요청으로 확인 후 재배치)
+  - `preprocess.py` 전체(`DataRefiner` docstring·`__init__` Args·`RefineStats`
+    필드 주석·`DEFAULT_RULES`·각 `_step_*` 메서드 섹션 주석), `trigger.py` 주석
+    1건, `PREPROCESS.md`(다이어그램·규칙 표·섹션 제목), `PROJECT_REPORT.md`
+    (요약 문장)의 순환 숫자를 실제 실행/GUI 순서로 재배치:
+    `custom_rule`=①, `remove_duplicate`=②, `remove_null_row`=③, `fill_null`=④,
+    `trim_whitespace`=⑤, `drop_columns`=⑥, `cast_numeric`=⑦
+  - `PREPROCESS.md`의 `preprocess.py`/`trigger.py` 코드 라인 인용(구
+    `preprocess.py:111/210/225/228`, `trigger.py:1037/1065-1072`)이 이 세션의
+    앞선 `fill_value` 편집으로 몇 줄 밀려 있던 것도 함께 교정
+  - `DataRefiner.__init__`의 `fill_value` 파라미터 기본값을 `"—"` → `""`로 변경
+    — 이전까지 GUI 기본값(빈 값)과 `DataRefiner` 직접 호출 기본값(`"—"`)이
+    달랐던 것을 통일
+  - GUI 규칙명·부연 설명 문구 정리(사용자 피드백 반영): "커스텀 정제 규칙 적용"
+    부연 설명을 실행 순서 설명 대신 기능 자체에 대한 설명("사용자 정의 정제
+    함수를 적용합니다.")으로, `fill_null` 규칙명을 "null → 지정값 치환" →
+    "결측값(N/A) 치환"으로, 부연 설명도 "삭제 대상 외 결측값을 지정한 값으로
+    대체합니다."로 단순화
+- **검증**: 순수 로직 회귀 테스트(`DEFAULT_RULES` 키 순서 불변, `custom_rule`
+  최우선 실행 확인, 7규칙 전체 순차 적용 결과 확인, 신규 기본값(빈 값) 반영
+  확인), 헤드리스 PyQt6 e2e(`_run_refine()` 회귀 없음, 변경된 GUI 텍스트 반영
+  확인) — 주석·문서 전용 변경이라 실행 코드는 한 줄도 바뀌지 않음을 diff로도 확인
+
+### 커스텀 정제 규칙 체크박스 — 규칙 ②~⑤ 자동 연동 (`3b98ac5`, `5a0d665`, 2026-07-08)
+
+- **배경**: "커스텀 정제 규칙 적용"을 켤 때마다 함께 켜는 게 자연스러운 범용
+  규칙(②~⑤: `remove_duplicate`/`remove_null_row`/`fill_null`/`trim_whitespace`)을
+  사용자가 매번 수동으로 맞춰야 하는 번거로움 — 자동 연동 가능 여부를 먼저
+  검토한 뒤 요구사항(양방향 연동, 매번 덮어쓰기)을 확정해 구현
+- **최초 구현** (`3b98ac5`): `layout.py`에서 `custom_rule` 체크박스의
+  `stateChanged`를 새 핸들러 `trigger.py:_on_custom_rule_toggled()`에 연결 —
+  체크 시 ②~⑤를 모두 `True`로, 해제 시 모두 `False`로 강제 설정(토글마다 매번
+  사용자의 개별 조정을 덮어씀). ⑥`drop_columns`·⑦`cast_numeric`은 연동 대상 아님
+- **수정** (`5a0d665`, 사용자 피드백): "해제 시 ②~⑤도 같이 꺼지는" 동작을
+  제거 — `custom_rule`을 켤 때만 ②~⑤를 강제로 켜고(기존과 동일하게 매번
+  덮어씀), 끌 때는 ②~⑤ 상태에 아무 영향도 주지 않도록(직전 상태 유지) 변경
+- **검증**: 헤드리스 PyQt6 — 수동으로 일부 꺼둔 상태에서 `custom_rule` 재체크
+  시 강제로 다시 켜짐, 해제 시 ②~⑤ 상태 불변(직전 상태 유지), ⑥⑦ 비영향,
+  `custom_rule`을 건드리지 않으면 수동 조정이 유지됨, `_run_refine()` 회귀
+  없음 — 모든 시나리오 PASS
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-08 기준)
@@ -429,10 +516,11 @@
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `7df06b2` (PR #45) | ✅ | 미확인 |
-| `develop` | `1c10778` (PR #45 이후 미릴리스 커밋 10건 `b5721db`~`1c10778`, 위 항목 참고) | ✅ | 미확인 |
+| `develop` | `5a0d665` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`5a0d665`, 위 항목 참고) | ✅ | 미확인 |
 
-`main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격 등)이 쌓여
-있어 릴리스 대상 — 아직 release PR 미생성.
+`main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격, fill_null 사용자
+지정 치환값, 비교 탭 스크롤·정렬 동기화, 규칙 넘버링 재배치, 커스텀 규칙
+체크박스 연동 등)이 다수 쌓여 있어 릴리스 대상 — 아직 release PR 미생성.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 
