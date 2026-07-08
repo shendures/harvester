@@ -532,6 +532,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
         }
         self._drop_column_names: list[str] = []   # 제외할 컬럼명 목록
+        self._fill_null_value: str = ""            # null 치환값 (기본: 빈 값)
         self._build()
 
     def _build(self):
@@ -685,8 +686,8 @@ class MonitorPage(QWidget, MonitorPageTriggers):
              "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("remove_null_row",  "모든 필드 null 행 제거",
              "모든 필드가 null·빈 값인 행만 삭제합니다."),
-            ("fill_null",        "null → 기본값 치환",
-             "삭제 대상 외 null 값을 '—'으로 대체합니다."),
+            ("fill_null",        "null → 지정값 치환",
+             "삭제 대상 외 null 값을 지정한 값으로 대체합니다 (기본 '—')."),
             ("trim_whitespace",  "문자열 공백 trim",
              "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
             ("drop_columns",     "제외 필드 지정",
@@ -737,6 +738,16 @@ class MonitorPage(QWidget, MonitorPageTriggers):
                     f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
                 )
                 row_l.addWidget(self.drop_col_input)
+
+            if key == "fill_null":
+                self.fill_null_input = QLineEdit()
+                self.fill_null_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
+                self.fill_null_input.setFixedWidth(280)
+                self.fill_null_input.setStyleSheet(
+                    f"background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; "
+                    f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
+                )
+                row_l.addWidget(self.fill_null_input)
 
             rl.addWidget(row_w)
 

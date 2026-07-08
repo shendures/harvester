@@ -60,7 +60,7 @@ class RefineStats:
     raw_count:      int  = 0   # 원본 행 수
     refined_count:  int  = 0   # 정제 후 행 수
     removed:        int  = 0   # 제거된 행 수 (중복 + null 행 합산)
-    filled:         int  = 0   # null → "—" 치환된 값 수
+    filled:         int  = 0   # null → 지정값 치환된 값 수
     deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
     deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "전체 필드 NULL"}
     modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
@@ -91,7 +91,7 @@ DEFAULT_RULES: dict[str, bool] = {
     "custom_rule":       True,  # ⑦ 커스텀 규칙(seq_no, 있으면) 적용
     "remove_duplicate": True,   # 중복 행 제거
     "remove_null_row":  True,   # 모든 필드 null 행 제거
-    "fill_null":        True,   # null → "—" 치환
+    "fill_null":        True,   # null → 지정값 치환 (기본 "—")
     "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
     "drop_columns":     False,  # 선택 필드 제외 (기본 비활성)
     "cast_numeric":     False,  # 숫자 타입 변환  (기본 비활성)
@@ -109,7 +109,7 @@ class DataRefiner:
         ⑦ custom_rule       — 커스텀 규칙(seq_no, 있고 활성화된 경우) 적용, 나머지보다 먼저 실행
         ① remove_duplicate  — 중복 행 제거
         ② remove_null_row   — 모든 필드 null 행 제거
-        ③ fill_null         — 잔존 null → "—" 치환
+        ③ fill_null         — 잔존 null → 지정값 치환 (기본 "—")
         ④ trim_whitespace   — 문자열 공백 제거
         ⑤ drop_columns      — 지정 컬럼 제외
         ⑥ cast_numeric      — 숫자 타입 변환
@@ -120,6 +120,7 @@ class DataRefiner:
         rules:        dict[str, bool] | None = None,
         drop_columns: list[str]       | None = None,
         custom_rule:  Callable[[list[dict]], list[dict]] | None = None,
+        fill_value:   str = "—",
     ) -> None:
         """
         Args:
@@ -127,10 +128,12 @@ class DataRefiner:
             drop_columns: ⑤ drop_columns 규칙 활성 시 제외할 컬럼명 목록.
             custom_rule:  ⑦ custom_rule 규칙 활성 시 실행할 콜러블
                           (`load_custom_rule()`의 반환값). None이면 이 step은 건너뜁니다.
+            fill_value:   ③ fill_null 규칙 활성 시 null 값을 대체할 문자열. 기본 `"—"`.
         """
         self.rules:        dict[str, bool] = {**DEFAULT_RULES, **(rules or {})}
         self.drop_columns: list[str]       = drop_columns or []
         self.custom_rule:  Callable[[list[dict]], list[dict]] | None = custom_rule
+        self.fill_value:   str = fill_value
 
     # ── 공개 인터페이스 ───────────────────────────────────────────────
     def run(self, raw_data: list[dict]) -> tuple[list[dict], RefineStats]:
@@ -275,7 +278,7 @@ class DataRefiner:
             return list(new_data), stats, list(new_indices)
         return [], stats, []
 
-    # ── 규칙 ③ null → "—" 치환 ───────────────────────────────────────
+    # ── 규칙 ③ null → 지정값 치환 ─────────────────────────────────────
     def _step_fill_null(
         self, data: list[dict], stats: RefineStats
     ) -> tuple[list[dict], RefineStats]:
@@ -285,7 +288,7 @@ class DataRefiner:
         for row in data:
             for k, v in row.items():
                 if v in _NULL_VALUES:
-                    row[k] = "—"
+                    row[k] = self.fill_value
                     stats.filled += 1
         return data, stats
 

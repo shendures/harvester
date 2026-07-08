@@ -1024,6 +1024,11 @@ class MonitorPageTriggers:
             col_text = raw_drop.text().strip()
             self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
 
+        # null 치환값 파싱 (기본 텍스트 "—", 비워두면 빈 값으로 치환)
+        raw_fill = getattr(self, 'fill_null_input', None)
+        if raw_fill is not None:
+            self._fill_null_value = raw_fill.text()
+
         lm = getattr(self.window(), 'log_manager', None)
 
         # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ⑦ custom_rule step이 담당 ──
@@ -1052,6 +1057,7 @@ class MonitorPageTriggers:
             rules        = self._refine_rules,
             drop_columns = self._drop_column_names,
             custom_rule  = custom_rule_fn,
+            fill_value   = self._fill_null_value,
         )
         try:
             refined, stats = refiner.run(self._collected_data)
