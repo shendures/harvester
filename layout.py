@@ -905,6 +905,18 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         bl.addWidget(side_w, 1)
 
+        # 좌우 테이블 세로 스크롤 동기화
+        self.cmp_raw_table.verticalScrollBar().valueChanged.connect(
+            lambda v: self._sync_cmp_vscroll(self.cmp_raw_table, self.cmp_ref_table, v))
+        self.cmp_ref_table.verticalScrollBar().valueChanged.connect(
+            lambda v: self._sync_cmp_vscroll(self.cmp_ref_table, self.cmp_raw_table, v))
+
+        # 좌우 테이블 정렬 동기화 (같은 컬럼명·방향)
+        self.cmp_raw_table.horizontalHeader().sortIndicatorChanged.connect(
+            lambda idx, order: self._sync_cmp_sort(self.cmp_raw_table, self.cmp_ref_table, idx, order))
+        self.cmp_ref_table.horizontalHeader().sortIndicatorChanged.connect(
+            lambda idx, order: self._sync_cmp_sort(self.cmp_ref_table, self.cmp_raw_table, idx, order))
+
         self.tab_widget.addTab(cmp_widget, "④ Before / After 비교")
 
     # ── 동적 컬럼 목록 ───────────────────────────────────────────────

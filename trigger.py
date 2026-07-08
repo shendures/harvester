@@ -1224,6 +1224,43 @@ class MonitorPageTriggers:
         self.cmp_removed.update_value(removed)
         self.cmp_rate.update_value(rate)
 
+    # ── 비교 탭 좌우 테이블 스크롤·정렬 동기화 ──────────────────────────
+    def _sync_cmp_vscroll(self, source, target, value):
+        """비교 탭 좌우 테이블의 세로 스크롤 위치를 상호 동기화합니다."""
+        if target.verticalScrollBar().value() == value:
+            return
+        target.verticalScrollBar().setValue(value)
+
+    def _sync_cmp_sort(self, source, target, logical_index, order):
+        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향으로 동기화합니다.
+
+        Raw/Refined는 행 수·컬럼 구성이 다를 수 있어(중복/null 행 제거,
+        drop_columns) "같은 줄에 같은 원본 행"까지는 보장하지 않고, 같은
+        컬럼명·정렬 방향만 맞춥니다. 대응 컬럼이 반대쪽에 없으면(예:
+        drop_columns로 제외된 컬럼) 아무 것도 하지 않습니다.
+        """
+        header_item = source.horizontalHeaderItem(logical_index)
+        if header_item is None:
+            return
+        col_name = header_item.text()
+
+        # sortIndicatorSection()은 사용자가 아직 정렬한 적 없는 테이블에서도
+        # columnCount()와 같은 범위 밖 값을 반환할 수 있어(Qt 특성, 컬럼 수 변경 후
+        # 미갱신 상태) 반드시 상한까지 확인해야 함 (헤더 아이템 None 접근 방지)
+        target_header  = target.horizontalHeader()
+        target_sec     = target_header.sortIndicatorSection()
+        if 0 <= target_sec < target.columnCount():
+            target_item = target.horizontalHeaderItem(target_sec)
+            if (target_item is not None and target_item.text() == col_name
+                    and target_header.sortIndicatorOrder() == order):
+                return  # 이미 동일 상태 — 상호 연결로 인한 재귀 호출 종료
+
+        for i in range(target.columnCount()):
+            item = target.horizontalHeaderItem(i)
+            if item is not None and item.text() == col_name:
+                target.sortByColumn(i, order)
+                return
+
     def _show_refined_detail(self, item):
         """정제 결과 탭 행 클릭 — 상세 표시"""
         row = item.row()
