@@ -213,7 +213,7 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
      정제 규칙 참고)
   2. `remove_duplicate`: 중복 행 제거
   3. `remove_null_row`: null 포함 행 제거
-  4. `fill_null`: null → `"—"` 치환
+  4. `fill_null`: null → 지정값 치환 (GUI 입력값, 기본 빈 값; `DataRefiner` 직접 호출 시 기본값은 `"—"`)
   5. `trim_whitespace`: 문자열 앞뒤 공백 제거
   6. `drop_columns`: 지정 컬럼 제외
   7. `cast_numeric`: 문자열 숫자 → int/float 변환

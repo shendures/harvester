@@ -54,7 +54,7 @@ DataRefiner.run()
 | ⑦ | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) — **실행은 항상 맨 먼저** | 활성 |
 | ① | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
 | ② | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
-| ③ | `fill_null` | 잔존 null 값을 `"—"`로 치환 | 활성 |
+| ③ | `fill_null` | 잔존 null 값을 지정한 값으로 치환 (GUI 기본: 빈 값, `DataRefiner` 직접 호출 시 기본값은 `"—"`) | 활성 |
 | ④ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
 | ⑤ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 | 비활성 |
 | ⑥ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
