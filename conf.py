@@ -1,4 +1,4 @@
-import os, sys, json, shutil, logging
+import os, sys, json, shutil, logging, importlib.util
 from copy import deepcopy
 import customized_settings
 import utility
@@ -246,3 +246,107 @@ class BlueprintStorage:
         """
         self._blueprint = self._load()
         return self._blueprint
+
+
+# ══════════════════════════════════════════════════════
+#  CUSTOM RULE STORAGE
+# ══════════════════════════════════════════════════════
+class CustomRuleStorage:
+    """
+    seq_no별 커스텀 정제 규칙(`{seq_no}.py`)을 로드하는 싱글턴.
+
+    앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 평탄한 구성이며,
+    seed-on-first-run 정책도 동일합니다. 번들 리소스 경로(default_source)는
+    실제 소스가 `custom_rules/` 서브폴더에 있으므로 그 하위를 가리킵니다.
+    파일이 seq_no마다 다르므로 BlueprintStorage처럼 단일 값을 메모리에
+    캐싱하지 않고, 매 호출마다 해당 seq_no의 파일을 새로 읽고 실행합니다 —
+    앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
+    반영됩니다.
+    """
+    _instance = None
+
+    # ── 싱글턴 ────────────────────────────────────────
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self, app_name: str = "CollectorApp"):
+        # 최초 1회만 초기화
+        if self._initialized:
+            return
+        self._initialized = True
+        if sys.platform == 'win32':
+            self.root_path = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
+        else:
+            self.root_path = os.path.join(os.path.expanduser("~"), ".config")
+        self.app_dir = os.path.join(self.root_path, app_name)
+
+        try:
+            os.makedirs(self.app_dir, exist_ok=True)
+        except Exception as e:
+            logger.error("[CustomRuleStorage] 초기화 오류: %s", e)
+
+    # ── 경로 해석 ──────────────────────────────────────
+    def resolve_path(self, seq_no) -> str:
+        """
+        `{seq_no}.py`의 실제 경로를 결정합니다 (BlueprintStorage._initialize_storage()와
+        동일한 seed-on-first-run 정책):
+
+        - 앱 데이터 폴더에 파일이 없고 번들 리소스 경로에 기본값이 있으면 최초
+          1회 복사해 심습니다(고객별로 패키징에 포함한 기본 규칙).
+        - 이후에는 앱 데이터 폴더의 파일을 우선 사용하고, 없으면 번들 리소스
+          경로로 폴백합니다.
+        """
+        filename       = f"{seq_no}.py"
+        file_path      = os.path.join(self.app_dir, filename)
+        default_source = os.path.join(utility.resource_path(), "custom_rules", filename)
+
+        if not os.path.exists(file_path) and os.path.exists(default_source):
+            try:
+                shutil.copy2(default_source, file_path)
+            except Exception as e:
+                logger.error("[CustomRuleStorage] 시딩 실패 (seq_no=%s): %s", seq_no, e)
+
+        return file_path if os.path.exists(file_path) else default_source
+
+    # ── 존재 확인 ──────────────────────────────────────
+    def exists(self, seq_no) -> bool:
+        """
+        `{seq_no}.py` 파일의 존재 여부만 확인합니다 — load()와 달리 파일을
+        실행(exec)하지 않습니다.
+        """
+        return os.path.isfile(self.resolve_path(seq_no))
+
+    # ── 로드 ──────────────────────────────────────────
+    def load(self, seq_no):
+        """
+        `{seq_no}.py`를 로드하여 사용자 정의 정제 함수를 반환합니다.
+
+        파일에 refine(data: list[dict]) -> list[dict]가 있으면 그대로 반환하고,
+        refine_row(row: dict) -> dict만 있으면 각 행에 적용하는 함수로 감싸서
+        list[dict] -> list[dict] 형태의 콜러블로 반환합니다.
+
+        Returns:
+            callable | None — 파일이 없거나 두 함수 모두 없으면 None.
+
+        Raises:
+            파일 실행 중 발생한 예외(SyntaxError 등)는 그대로 전파합니다 —
+            "규칙 없음"(None)과 "규칙이 있는데 깨져 있음"(예외)을 호출 측이
+            구분해 다르게 안내할 수 있도록 의도한 동작입니다.
+        """
+        path = self.resolve_path(seq_no)
+        if not os.path.isfile(path):
+            return None
+
+        spec   = importlib.util.spec_from_file_location(f"custom_rule_{seq_no}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        if hasattr(module, "refine"):
+            return module.refine
+        if hasattr(module, "refine_row"):
+            row_fn = module.refine_row
+            return lambda data: [row_fn(row) for row in data]
+        return None
