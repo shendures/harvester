@@ -422,6 +422,180 @@
 - 부수 효과로 `PROJECT_REPORT.md`의 관련 서술(6규칙→7규칙, 싱글턴 2개→3개)도
   함께 현행화
 
+### fill_null 규칙에 사용자 지정 치환값 지원 (`bda1096`, `155e322`, 2026-07-08)
+
+- **배경**: ③(현 ④) `fill_null` 규칙이 `preprocess.py`에 `"—"`로 하드코딩되어
+  있어 사용자가 원하는 치환값(예: `"N/A"`, `"없음"`)을 지정할 수 없었음
+- **수정**: `DataRefiner.__init__`에 `fill_value` 인자 추가, `_step_fill_null()`이
+  하드코딩 대신 이 값을 사용. GUI는 이미 있던 `drop_columns` 체크박스의
+  "옆에 `QLineEdit`" 패턴을 그대로 재사용해 `fill_null` 체크박스 옆에 입력 필드
+  추가. 여러 차례 요구사항 조정을 거쳐 최종적으로 **GUI 기본값은 빈 값**(입력
+  칸이 처음엔 비어 있고, 지우면 빈 값 치환됨을 안내하는 placeholder만 표시)으로
+  결정 — `DataRefiner`를 직접 호출할 때(GUI를 거치지 않는 코드)의 기본값은 이
+  시점엔 `"—"`로 유지(이후 `0cda32b`에서 통일, 아래 참고)
+- **검증** (WSL uv venv, 헤드리스 PyQt6): 기본값·사용자 지정값·빈 입력 시 폴백
+  3케이스 확인
+- **문서화** (`155e322`): `PREPROCESS.md`/`PROJECT_REPORT.md`를 이 변경에 맞춰 동기화
+
+### Before/After 비교 탭 좌우 테이블 스크롤·정렬 동기화 (`b6e1a95`, 2026-07-08)
+
+- **배경**: "④ Before/After 비교" 탭의 `cmp_raw_table`/`cmp_ref_table`이 완전히
+  독립적으로 동작해, 한쪽을 스크롤하거나 정렬해도 반대쪽은 그대로였음. 사용자
+  요청으로 "같은 컬럼·방향으로만 동기화"(행 단위 정합까지는 보장하지 않는) 방식의
+  구현 가능성을 먼저 검토한 뒤 승인받아 구현
+- **수정**: 두 테이블의 `verticalScrollBar().valueChanged`를 상호 연결(같은 값이면
+  재귀 종료). `horizontalHeader().sortIndicatorChanged`도 상호 연결해, 정렬된
+  컬럼명을 반대쪽에서 이름으로 찾아 같은 방향으로 `sortByColumn()` 호출 — 컬럼
+  인덱스가 아닌 **이름 기반 매칭**(`drop_columns`로 컬럼 구성이 달라질 수 있어서),
+  대응 컬럼이 없으면 무시. Raw/Refined는 `remove_duplicate`/`remove_null_row`로
+  행 수가 달라질 수 있어 "같은 줄 = 같은 원본 행"은 보장하지 않음
+- **검증 중 실제 버그 발견**: Qt `QHeaderView.sortIndicatorSection()`이 한 번도
+  정렬한 적 없는 테이블에서 `columnCount()`와 같은 범위 밖 값을 반환하는 경우가
+  있어(컬럼 수 변경 후 내부 상태 미갱신), 가드가 `>= 0`만 확인하다가
+  `horizontalHeaderItem()`의 `None`에서 크래시. 상한(`< columnCount()`)까지
+  확인하도록 수정
+- **검증**: 헤드리스 PyQt6 — raw↔ref 스크롤 동기화(양방향), raw↔ref 정렬
+  동기화(컬럼명·방향·실제 행 순서), `drop_columns`로 대응 컬럼이 없을 때 안전
+  무시, 상호 연결로 인한 무한 재귀 없음(호출 2회로 종료) — 6개 시나리오 PASS
+
+### custom_rules/000000.py 전화번호 정규화 로직 단순화 (`418597f`, 2026-07-08)
+
+- 샤브올데이(seq_no=000000) 커스텀 정제 규칙의 `tel` 필드 정규화 로직을, 자릿수
+  기반 재조합(10/11자리 하이픈 삽입)에서 `")" → "-"` 단순 치환으로 교체(사용자
+  직접 작성)
+
+### DataRefiner 규칙 넘버링 재배치 및 fill_value 기본값 통일 (`0cda32b`, 2026-07-08)
+
+- **배경**: `preprocess.py`의 순환 숫자 라벨이 `custom_rule`을 ⑦로 표기하면서도
+  실제로는 항상 가장 먼저 실행되도록 되어 있어, 코드·문서를 처음 보는 사람에게
+  혼란을 줄 수 있는 상태였음(사용자 요청으로 확인 후 재배치)
+  - `preprocess.py` 전체(`DataRefiner` docstring·`__init__` Args·`RefineStats`
+    필드 주석·`DEFAULT_RULES`·각 `_step_*` 메서드 섹션 주석), `trigger.py` 주석
+    1건, `PREPROCESS.md`(다이어그램·규칙 표·섹션 제목), `PROJECT_REPORT.md`
+    (요약 문장)의 순환 숫자를 실제 실행/GUI 순서로 재배치:
+    `custom_rule`=①, `remove_duplicate`=②, `remove_null_row`=③, `fill_null`=④,
+    `trim_whitespace`=⑤, `drop_columns`=⑥, `cast_numeric`=⑦
+  - `PREPROCESS.md`의 `preprocess.py`/`trigger.py` 코드 라인 인용(구
+    `preprocess.py:111/210/225/228`, `trigger.py:1037/1065-1072`)이 이 세션의
+    앞선 `fill_value` 편집으로 몇 줄 밀려 있던 것도 함께 교정
+  - `DataRefiner.__init__`의 `fill_value` 파라미터 기본값을 `"—"` → `""`로 변경
+    — 이전까지 GUI 기본값(빈 값)과 `DataRefiner` 직접 호출 기본값(`"—"`)이
+    달랐던 것을 통일
+  - GUI 규칙명·부연 설명 문구 정리(사용자 피드백 반영): "커스텀 정제 규칙 적용"
+    부연 설명을 실행 순서 설명 대신 기능 자체에 대한 설명("사용자 정의 정제
+    함수를 적용합니다.")으로, `fill_null` 규칙명을 "null → 지정값 치환" →
+    "결측값(N/A) 치환"으로, 부연 설명도 "삭제 대상 외 결측값을 지정한 값으로
+    대체합니다."로 단순화
+- **검증**: 순수 로직 회귀 테스트(`DEFAULT_RULES` 키 순서 불변, `custom_rule`
+  최우선 실행 확인, 7규칙 전체 순차 적용 결과 확인, 신규 기본값(빈 값) 반영
+  확인), 헤드리스 PyQt6 e2e(`_run_refine()` 회귀 없음, 변경된 GUI 텍스트 반영
+  확인) — 주석·문서 전용 변경이라 실행 코드는 한 줄도 바뀌지 않음을 diff로도 확인
+
+### 커스텀 정제 규칙 체크박스 — 규칙 ②~⑤ 자동 연동 (`3b98ac5`, `5a0d665`, 2026-07-08)
+
+- **배경**: "커스텀 정제 규칙 적용"을 켤 때마다 함께 켜는 게 자연스러운 범용
+  규칙(②~⑤: `remove_duplicate`/`remove_null_row`/`fill_null`/`trim_whitespace`)을
+  사용자가 매번 수동으로 맞춰야 하는 번거로움 — 자동 연동 가능 여부를 먼저
+  검토한 뒤 요구사항(양방향 연동, 매번 덮어쓰기)을 확정해 구현
+- **최초 구현** (`3b98ac5`): `layout.py`에서 `custom_rule` 체크박스의
+  `stateChanged`를 새 핸들러 `trigger.py:_on_custom_rule_toggled()`에 연결 —
+  체크 시 ②~⑤를 모두 `True`로, 해제 시 모두 `False`로 강제 설정(토글마다 매번
+  사용자의 개별 조정을 덮어씀). ⑥`drop_columns`·⑦`cast_numeric`은 연동 대상 아님
+- **수정** (`5a0d665`, 사용자 피드백): "해제 시 ②~⑤도 같이 꺼지는" 동작을
+  제거 — `custom_rule`을 켤 때만 ②~⑤를 강제로 켜고(기존과 동일하게 매번
+  덮어씀), 끌 때는 ②~⑤ 상태에 아무 영향도 주지 않도록(직전 상태 유지) 변경
+- **검증**: 헤드리스 PyQt6 — 수동으로 일부 꺼둔 상태에서 `custom_rule` 재체크
+  시 강제로 다시 켜짐, 해제 시 ②~⑤ 상태 불변(직전 상태 유지), ⑥⑦ 비영향,
+  `custom_rule`을 건드리지 않으면 수동 조정이 유지됨, `_run_refine()` 회귀
+  없음 — 모든 시나리오 PASS
+
+### GUI 중복 알림·더미 데이터 제거 및 layout.py→trigger.py 메서드 이관 (`6943a23`, 2026-07-08)
+
+- **완료 알림 팝업 중복 제거**: `_on_finished()`의 정상 완료 분기에서 바로 위
+  `log_manager.append_log("info", "크롤링 완료")`가 이미 로그로 남기는데도
+  `QMessageBox.information(self, "success", "수집 완료.")`를 또 띄우고 있어
+  중복 — 팝업 삭제(`trigger.py`). 결과 0건 시 뜨는 "수집 결과 없음" 경고
+  팝업은 로그에 없는 안내 문구(URL/설정 확인)를 담고 있어 유지. 부수 효과:
+  이 팝업이 모달이라 `schedule_page.mark_done()`/`_consume_pending_queue()`
+  (다음 대기 스케줄 실행)가 사용자가 팝업을 닫아야 진행되던 구조였는데,
+  삭제로 스케줄 연속 실행이 사용자 개입 없이 바로 이어지게 됨
+- **세션 설정 프록시 목록 초기 더미 데이터 제거**: `SessionSettingsPage._seed()`
+  (`10.0.0.1` 등 4개 샘플 행을 앱 시작 시 항상 채워 넣던 메서드)와 호출부 삭제
+  — `_proxy_rows`는 빈 리스트로 시작, 사용자가 "+ 추가"/"Import"로 넣은
+  항목만 표시
+- **layout.py의 토글/트리거 성격 메서드를 trigger.py Mixin으로 이관**:
+  "layout.py = UI 구성, trigger.py = 시그널 이벤트 핸들러(Mixin)" 원칙을
+  기준으로 전수 분석한 결과, 5개 메서드가 이 원칙을 위반하고 있음을 확인
+  (분석 상세는 대화 로그 참고):
+  - `StatisticsPage.reload()` (약 90줄, `QTimer.timeout`에 연결된 데이터
+    갱신 로직) → `StatisticsPageTriggers`
+  - `SchedulerPage._manage_schedule_task()` (약 730줄, 스케줄 등록/수정
+    다이얼로그+제출 핸들러 — 동일 패턴인 `_add_proxy_dialog`/`_add_cred_dialog`는
+    이미 trigger.py에 있었음) → `SchedulerPageTriggers`
+  - `SessionSettingsPage._proxy_table_context_menu()` /
+    `_toggle_proxy_enabled()` / `_on_proxy_item_changed()` (프록시 활성/비활성
+    토글 3종 — 호출부인 `_on_proxy_row_clicked()`는 이미 trigger.py에 있어
+    같은 기능이 두 파일에 걸쳐 쪼개져 있었음) → `SessionSettingsPageTriggers`
+  - 죽은 코드 `SessionSettingsPage.load_ip_list_from_file()`도 함께 제거
+    (어디서도 연결되지 않았고, 존재하지 않는 `self.ip_proxy_table`을 참조 —
+    호출됐다면 즉시 크래시)
+  - orphan import 정리: layout.py에서 `re`/`csv`/`socket`/`defaultdict`/
+    `db_conn`/`timedelta` 제거(이관된 코드에서만 쓰이던 것). trigger.py에는
+    누락된 `QMenu`/`QSpinBox`/`QDoubleSpinBox`/`QDateEdit`/`defaultdict` 추가
+  - **이관 중 실제 버그 2건 발견·수정**: ① `_manage_schedule_task()`의
+    `request_info["callback_url"]`이 layout.py 모듈 전역변수를 참조하고
+    있어 단순 이동만으로는 `NameError` — `BlueprintStorage().read()`로
+    교체(trigger.py 다른 곳의 기존 관례와 동일). ② 위 위젯 import 누락
+    — Python은 함수가 "정의된 모듈"의 전역 네임스페이스에서 이름을
+    찾으므로, 모듈 간 메서드 이동 시 흔히 놓치기 쉬운 함정
+- **검증** (WSL uv venv, Python 3.12, 헤드리스 PyQt6): `MainWindow()` 전체
+  인스턴스화(스케줄 페이지가 실제 `SessionSettingsPage` 인스턴스를 쓰는지,
+  즉 이슈 ⑨ 수정이 유지되는지 포함) + `reload()` 실측 데이터 갱신 +
+  프록시 토글 전 구간(체크박스 클릭/우클릭 메뉴 삭제) +
+  `_manage_schedule_task()` 등록/수정 양쪽 다이얼로그 빌드 — 6개 시나리오
+  PASS. 검증용 venv/스크립트는 확인 후 삭제
+
+### 수동 수집 완료 시 모니터링-Raw 탭 자동 전환 (`e875d76`, 2026-07-08)
+
+- **배경**: 수집이 끝나도 화면은 사용자가 보고 있던 페이지 그대로 유지되어,
+  결과를 보려면 매번 사이드바에서 "모니터링" → "① Raw 수집 결과" 탭을
+  수동으로 찾아가야 했음
+- **수정**: `MainWindowTriggers._on_finished()`의 정상 완료·결과 0건 분기
+  양쪽에 `task.get("job") == "수동 실행"`일 때만 `self.stack`을
+  `monitor_page`(index 1)로, `sidebar._btns` 체크 상태를 동기화하고,
+  `monitor_page.tab_widget`을 "① Raw 수집 결과"(index 0)로 전환하는 코드
+  추가. 스케줄 실행("job"=="스케줄 실행")과 중단(interrupted) 분기는
+  그대로 두어 화면 전환 없음 — 무인 실행 중 다른 화면을 보고 있어도 갑자기
+  전환되지 않도록 범위를 수동 실행으로 한정(사용자 확인 후 결정)
+- **검증** (WSL uv venv, 헤드리스 PyQt6): `MultiprocessWorker.finished`
+  시그널을 실제로 emit해 `_on_finished`의 `self.sender()` 가드까지 포함한
+  실경로로 수동+성공/수동+0건/스케줄+성공/스케줄+0건/중단 5개 시나리오
+  9개 assertion 확인 — 수동 실행 2건만 Raw 탭으로 전환되고 나머지는
+  화면 유지됨을 확인. 검증용 venv/스크립트는 확인 후 삭제
+
+### 수집 결과 0건 완료 시 진단 정보(URL 개수·소요시간·skip 건수) 노출 (`4f87aee`, 2026-07-08)
+
+- **배경**: 수집이 완료됐지만 결과가 0건이면 항상 "URL 또는 수집 설정을
+  확인하고 다시 시도해 주세요"라는 동일한 안내만 떴음. 실제로는 원인이
+  ① URL 생성 자체 실패, ② URL은 생성됐지만 응답이 `url_list`와 매칭 안 돼
+  전량 skip, ③ 응답은 받았으나 전부 에러, ④ 정상 응답인데 추출 로직이
+  0건 파싱 등으로 갈리는데, 그중 "URL 불일치 skip" 정보는 `worker.py`에
+  이미 감지 로직이 있었지만 `logger.warning()`(개발자 로그 파일 전용)만
+  써서 실사용자에게는 절대 보이지 않는 상태였음
+- **수정**:
+  - `worker.py`: `MultiprocessWorker.__init__`에 `_skipped` 카운터 추가
+    (URL 불일치 skip만 집계, 중복 응답 skip은 정상 동작이라 제외).
+    `_emit_finished(callback_url, url_count)`로 시그니처 변경해 생성된
+    URL 개수를 받고, `summary`에 `url_count`/`skipped` 필드 추가
+  - `trigger.py`: `_on_finished()`의 0건 완료 분기 로그·팝업 문구에
+    "생성 URL {n}개 · URL 불일치 skip {n}건 · 소요 {n}s" 요약 추가
+    (소요 시간은 기존 `summary['elapsed']`를 그대로 재사용)
+- **검증** (WSL uv venv, 헤드리스 PyQt6): `_handle_line()`의 불일치/중복
+  skip 판정 분기별 카운터 증감, `_emit_finished()`가 만든 `summary`의
+  `url_count`/`skipped` 값, `_on_finished()`가 그 값을 로그·팝업 텍스트에
+  실제로 반영하는지, 수동+0건 시 Raw 탭 자동 전환이 회귀 없이 유지되는지
+  — 15개 assertion 확인. 검증 스크립트는 확인 후 삭제
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-08 기준)
@@ -429,10 +603,13 @@
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `7df06b2` (PR #45) | ✅ | 미확인 |
-| `develop` | `1c10778` (PR #45 이후 미릴리스 커밋 10건 `b5721db`~`1c10778`, 위 항목 참고) | ✅ | 미확인 |
+| `develop` | `4f87aee` (PR #45 이후 미릴리스 커밋 다수 — `b5721db`~`4f87aee`, 위 항목 참고) | ✅ | 미확인 |
 
-`main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격 등)이 쌓여
-있어 릴리스 대상 — 아직 release PR 미생성.
+`main`↔`develop` 간 실제 코드 변경(custom_rule 7번째 규칙 승격, fill_null 사용자
+지정 치환값, 비교 탭 스크롤·정렬 동기화, 규칙 넘버링 재배치, 커스텀 규칙
+체크박스 연동, 완료 알림 중복 제거, 프록시 더미 데이터 제거, layout.py→trigger.py
+메서드 이관, 수동 수집 완료 시 모니터링-Raw 탭 자동 전환, 0건 완료 시
+진단 정보 노출 등)이 다수 쌓여 있어 릴리스 대상 — 아직 release PR 미생성.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 
