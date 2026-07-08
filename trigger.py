@@ -1026,53 +1026,52 @@ class MonitorPageTriggers:
 
         lm = getattr(self.window(), 'log_manager', None)
 
-        # ── 사용자 정의 정제 규칙(있으면) — 범용 6규칙보다 먼저 적용 ──
+        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ⑦ custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
-        data_for_refine = self._collected_data
         seq_no         = self._current_task.get("seq_no")
         needs_cleaning = self._current_task.get("needs_cleaning", False)
-        custom_rule_note = ""
+        custom_rule_fn = None
 
         if needs_cleaning and seq_no:
             try:
-                custom_rule = load_custom_rule(seq_no)
+                custom_rule_fn = load_custom_rule(seq_no)
             except Exception as e:
-                custom_rule = None
+                custom_rule_fn = None
                 if lm:
                     lm.append_log("err", f"사용자 정의 정제 규칙 로드 실패 (seq_no={seq_no}): {e}")
 
-            if custom_rule is None:
-                if lm:
-                    lm.append_log(
-                        "warn",
-                        f"사용자 정의 정제 규칙 파일을 찾을 수 없습니다 (seq_no={seq_no}). "
-                        f"범용 규칙만 적용합니다."
-                    )
-            else:
-                try:
-                    data_for_refine = custom_rule(self._collected_data)
-                    custom_rule_note = f", 사용자 정의 규칙(seq_no={seq_no}) 적용됨"
-                except Exception as e:
-                    data_for_refine = self._collected_data
-                    if lm:
-                        lm.append_log(
-                            "err",
-                            f"사용자 정의 정제 규칙 실행 실패 (seq_no={seq_no}): {e}. "
-                            f"원본 데이터로 계속합니다."
-                        )
+            if custom_rule_fn is None and lm:
+                lm.append_log(
+                    "warn",
+                    f"사용자 정의 정제 규칙 파일을 찾을 수 없습니다 (seq_no={seq_no}). "
+                    f"범용 규칙만 적용합니다."
+                )
 
         # DataRefiner 구성 및 실행
         refiner = DataRefiner(
             rules        = self._refine_rules,
             drop_columns = self._drop_column_names,
+            custom_rule  = custom_rule_fn,
         )
         try:
-            refined, stats = refiner.run(data_for_refine)
+            refined, stats = refiner.run(self._collected_data)
         except (TypeError, ValueError) as e:
             QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
             return
 
         self._refined_data = refined
+
+        custom_rule_note = ""
+        if stats.custom_rule_applied:
+            custom_rule_note = f", 사용자 정의 규칙(seq_no={seq_no}) 적용됨"
+        elif stats.custom_rule_error:
+            custom_rule_note = f", 사용자 정의 규칙 실행 실패(seq_no={seq_no})"
+            if lm:
+                lm.append_log(
+                    "err",
+                    f"사용자 정의 정제 규칙 실행 실패 (seq_no={seq_no}): {stats.custom_rule_error}. "
+                    f"원본 데이터로 계속합니다."
+                )
 
         # UI 갱신
         self._populate_refined_table(refined)

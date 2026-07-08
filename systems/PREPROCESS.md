@@ -8,33 +8,50 @@
 
 ## 1. 정제 파이프라인 개요
 
-한 수집(task)의 정제는 두 단계로 구성됩니다.
+`DataRefiner`가 7개 규칙을 모두 소유하고 순차 적용합니다. 커스텀 규칙(`custom_rule`,
+seq_no별 플러그인)은 코드상 "규칙 ⑦"로 표기되지만 **실행 순서는 항상 맨 먼저**입니다 —
+사이트별 원시 데이터를 정규화한 뒤, 그 위에서 범용 규칙(중복 제거 등)을 적용하기 위함
+(`preprocess.py:111` 주석 참고).
 
 ```
 raw 수집 데이터
     │
     ▼
-① 커스텀 정제 규칙 (seq_no별, 선택)  ── needs_cleaning=true 이고
-    │                                    {seq_no}.py가 있을 때만 적용
-    ▼
-② DataRefiner의 범용 규칙 6종 (항상 적용 가능, 개별 on/off)
+DataRefiner.run()
+    ├─ ⑦ custom_rule       (seq_no별, 있고 활성화된 경우에만 — 항상 맨 먼저 실행)
+    ├─ ① remove_duplicate
+    ├─ ② remove_null_row
+    ├─ ③ fill_null
+    ├─ ④ trim_whitespace
+    ├─ ⑤ drop_columns
+    └─ ⑥ cast_numeric
     │
     ▼
 정제된 데이터 + RefineStats
 ```
 
-커스텀 규칙은 사이트별 원시 데이터를 정규화하는 전처리 성격이라 **범용
-규칙보다 먼저** 적용하는 것이 권장 순서입니다 (`trigger.py:1029` 배선 기준).
+`custom_rule` 단계가 실제로 실행되려면 두 조건을 모두 만족해야 합니다:
+1. `trigger.py`의 `_run_refine()`이 `needs_cleaning=True`이고 `seq_no`가 있는 수집에
+   한해 `load_custom_rule(seq_no)`로 규칙 함수를 로드해 `DataRefiner(custom_rule=...)`에
+   전달 (파일이 없거나 로드 실패 시 `None` 전달, §3.3 참고).
+2. `DataRefiner.rules["custom_rule"]`이 켜져 있어야 함 — GUI "② 정제 규칙 설정" 탭의
+   "커스텀 정제 규칙 적용" 체크박스로 나머지 6개 규칙과 동일하게 개별 on/off 가능
+   (`layout.py:525` `_refine_rules`, 기본값 `True`).
+
+둘 중 하나라도 해당 안 되면(파일 없음 / 체크박스 꺼짐) 이 단계는 조용히 건너뛰고
+범용 6규칙만 적용됩니다.
 
 ---
 
-## 2. 범용 정제 규칙 (`DataRefiner`, 6종)
+## 2. 범용 정제 규칙 (`DataRefiner`, ①~⑥)
 
 `preprocess.DataRefiner`가 아래 순서대로 적용합니다. **순서를 바꾸면 결과가
-달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:107` 주석 참고).
+달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:111` 주석 참고). 커스텀
+규칙(⑦ `custom_rule`)은 이 6종보다 먼저 실행되며 상세는 §3 참고.
 
 | # | 규칙 키 | 내용 | 기본값 |
 |---|---|---|---|
+| ⑦ | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) — **실행은 항상 맨 먼저** | 활성 |
 | ① | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
 | ② | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
 | ③ | `fill_null` | 잔존 null 값을 `"—"`로 치환 | 활성 |
@@ -43,7 +60,8 @@ raw 수집 데이터
 | ⑥ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
 
 - 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:525`
-  `_refine_rules`)로 수집 단위 개별 제어.
+  `_refine_rules`)로 수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
+  있음(`layout.py:682`).
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
@@ -68,8 +86,10 @@ raw 수집 데이터
   - 앱 데이터 폴더(`LOCALAPPDATA/CollectorApp` 등)에 파일이 없으면 최초
     실행 시 번들 기본값을 그대로 복사(seed)하고, 이후에는 앱 데이터 폴더
     사본을 우선 사용 — 고객 PC에서 직접 수정 가능.
-  - `preprocess.py`의 `_resolve_custom_rule_path()`/`_app_dir()`는 이 평면
-    경로만 알고 있으며, 아래 §3.1a의 개발용 폴더 구조와는 무관합니다.
+  - 경로 해석·시딩·로드는 `conf.CustomRuleStorage`(`resolve_path()`/`exists()`/
+    `load()`)가 전담합니다 — `BlueprintStorage`와 동일한 패턴으로
+    `preprocess.py`에서 이관(`3a10fab`, 2026-07-08). 이 평면 경로만 알고
+    있으며, 아래 §3.1a의 개발용 폴더 구조와는 무관합니다.
 
 #### 3.1a 개발 시점 관리 폴더: `custom_rules/`
 
@@ -95,19 +115,30 @@ def refine(data: list[dict]) -> list[dict]: ...   # 전체 목록 단위, 있으
 def refine_row(row: dict) -> dict: ...             # 행 단위
 ```
 
-### 3.3 적용 조건과 실패 처리 (`trigger.py:1029-1060`)
+### 3.3 적용 조건과 실패 처리
 
-- 적용 조건: 해당 수집(task)의 `needs_cleaning=True` **그리고** `seq_no`가
-  존재할 때만 커스텀 규칙을 찾습니다.
-- `{seq_no}.py`가 없으면 `load_custom_rule()`이 `None`을 반환 → 경고 로그
-  후 범용 규칙만 적용.
-- 로드 중 예외(문법 오류 등) 또는 실행 중 예외는 각각 잡아서 **원본
-  데이터로 폴백**하고 `err` 로그를 남깁니다 — 커스텀 규칙의 버그가 수집
-  자체를 막지는 않지만, 배포 전 테스트하지 않으면 실패가 로그로만 조용히
-  남고 지나갈 수 있습니다.
+로드(파일 찾기·`exec`)와 실행(호출·검증)이 서로 다른 계층에서 처리됩니다.
+
+- **로드** (`trigger.py:1037`, `_run_refine()`): 해당 수집(task)의
+  `needs_cleaning=True` **그리고** `seq_no`가 존재할 때만
+  `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
+  반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
+  지점에서 잡아 `err` 로그를 남기고 `custom_rule_fn = None`으로 진행합니다.
+- **실행** (`preprocess.py:210` `DataRefiner._step_custom_rule()`): 로드된
+  콜러블은 `DataRefiner(custom_rule=...)`로 전달되고, `rules["custom_rule"]`이
+  켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
+  입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
+  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:225`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:228`).
+- `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
+  `custom_rule_error`를 보고 로그·요약 문구를 결정합니다(`trigger.py:1065-1072`)
+  — 커스텀 규칙의 버그가 수집 자체를 막지는 않지만, 배포 전 테스트하지
+  않으면 실패가 로그로만 조용히 남고 지나갈 수 있습니다.
 - GUI는 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데
   `custom_rule_exists(seq_no)`가 `False`이면 1회 경고 팝업으로 안내합니다
-  (`layout.py:580`, `trigger.py:982`).
+  (`layout.py:582`, `trigger.py:983`). 이 팝업은 파일 존재 여부만 확인하며,
+  "커스텀 정제 규칙 적용" 체크박스(§1)가 꺼져 있는 경우는 별도로 안내하지
+  않습니다.
 
 ### 3.4 보안 관찰
 
@@ -138,8 +169,9 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
    (`utility.resource_path()` 위치)로 복사한 뒤 패키징 — 최초 실행 시 앱
    데이터 폴더로 자동 시딩됨.
 6. **GUI 통합 확인**: "② 정제 규칙 설정" 탭 진입 시 경고 팝업이 뜨지
-   않는지, 실제 수집 1회 실행 후 로그에 `"사용자 정의 규칙(seq_no=...)
-   적용됨"` 문구가 남는지, 결과 데이터가 기대대로 정규화됐는지 확인.
+   않는지, "커스텀 정제 규칙 적용" 체크박스가 켜져 있는지, 실제 수집 1회
+   실행 후 로그에 `"사용자 정의 규칙(seq_no=...) 적용됨"` 문구가 남는지,
+   결과 데이터가 기대대로 정규화됐는지 확인.
 7. **정리**: 검증용 임시 스크립트/파일 삭제. `custom_rules/{seq_no}.py`
    원본은 유지, 레포 루트로 복사했던 배포용 사본은 배포 산출물이므로
    그대로 두거나 다음 고객 빌드 전 정리.
