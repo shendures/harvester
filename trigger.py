@@ -1004,6 +1004,19 @@ class MonitorPageTriggers:
                 f"범용 규칙만 적용됩니다."
             )
 
+    # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
+    def _on_custom_rule_toggled(self, state):
+        """"커스텀 정제 규칙 적용"(①) 토글 시 규칙 ②~⑤(remove_duplicate/
+        remove_null_row/fill_null/trim_whitespace)를 동일 상태로 자동 설정합니다.
+        켤 때/끌 때 모두 연동되며, 토글할 때마다 사용자가 개별적으로 조정해둔
+        상태를 덮어씁니다.
+        """
+        checked = state == Qt.CheckState.Checked.value
+        for key in ("remove_duplicate", "remove_null_row", "fill_null", "trim_whitespace"):
+            cb = self._rule_checkboxes.get(key)
+            if cb is not None:
+                cb.setChecked(checked)
+
     # ── 정제 실행 ─────────────────────────────────────────────────────
     def _run_refine(self):
         """
