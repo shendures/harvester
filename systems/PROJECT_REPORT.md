@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-08
+- **최신 갱신**: 2026-07-09
 
 ---
 
@@ -23,9 +23,9 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 3,050줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 2,801줄 |
-| 수집 워커 (QThread + multiprocessing) | `worker.py` | 493줄 |
+| GUI 레이아웃 | `layout.py` | 2,050줄 |
+| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,737줄 |
+| 수집 워커 (QThread + multiprocessing) | `worker.py` | 499줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 441줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
 | 데이터 정제 | `preprocess.py` | 349줄 |
@@ -99,7 +99,7 @@ GUI 시작 버튼
 ### GUI 레이어
 
 #### `layout.py`
-GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (3000+ 줄).
+GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ 줄).
 
 | 클래스 | 역할 |
 |---|---|
@@ -129,9 +129,9 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (3000+ 줄
 | `GlobalToolbarTriggers` | 시작/중지 버튼, URL 복사 |
 | `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 |
 | `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 |
-| `StatisticsPageTriggers` | 통계 데이터 리로드 |
+| `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 |
 | `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행 |
-| `SessionSettingsPageTriggers` | 세션 설정 저장 |
+| `SessionSettingsPageTriggers` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글 |
 | `AuthManagerPageTriggers` | 인증 정보 저장 |
 | `TrayManagerTriggers` | 시스템 트레이 아이콘 관리 |
 | `MainWindowTriggers` | 윈도우 레벨 이벤트 |
@@ -268,7 +268,9 @@ Scrapy 프레임워크 설정 파일.
 - `CONCURRENT_REQUESTS = 32` / `CONCURRENT_REQUESTS_PER_DOMAIN = 8`
 - `RANDOMIZE_DOWNLOAD_DELAY = True`
 - `ITEM_PIPELINES`: 기본 `LoadItemPipeline` (GUI 실행 시에도 동일 파이프라인으로 재설정)
-- `DOWNLOADER_MIDDLEWARES`: 프록시, User-Agent 랜덤화, 레이턴시 추적, Selenium 실행 순서로 구성
+- `DOWNLOADER_MIDDLEWARES`: 프록시, User-Agent 랜덤화, 레이턴시 추적 순서로 구성
+  (`scrapy_selenium.SeleniumMiddleware`는 죽은 의존성이라 `ISSUES.md` 이슈 ⑬에서
+  제거됨 — 렌더링은 `spirenderer.py`가 자체 Chrome 드라이버로 전담)
 
 #### `middlewares.py`
 Scrapy 다운로더/스파이더 미들웨어 모음.
@@ -416,7 +418,7 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 |---|---|
 | `Scrapy` | 비동기 웹 크롤링 엔진 |
 | `PyQt6` | 데스크톱 GUI 프레임워크 |
-| `scrapy-selenium` / `selenium` | JavaScript 렌더링 페이지 수집 |
+| `selenium` | JavaScript 렌더링 페이지 수집 (`spirenderer.py`가 직접 구동, `scrapy-selenium`은 이슈 ⑬로 제거됨) |
 | `webdriver-manager` | Chrome 드라이버 자동 설치 |
 | `lxml` / `parsel` | HTML/XML 파싱 |
 | `pymongo` | MongoDB 연결 |
