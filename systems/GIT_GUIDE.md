@@ -55,6 +55,8 @@ gh pr create --base main --head develop --title "..." --body "..."
 ## 5. Which Branch to Commit/Push/Pull On
 **Before any commit/push/pull:** run `git status` + `git branch -vv` — never act blind.
 
+**Report before acting:** before executing any commit, push, or pull, explicitly state to the user which branch the operation will run on (e.g. "Committing on `feature/search`", "Pushing `develop` → `origin/develop`", "Pulling `origin/main` into local `main`"). Do this even when the branch seems obvious — it catches mistakes before they happen, not after.
+
 | Branch | Commit | Push | Pull |
 |---|---|---|---|
 | `main` | Only merges from verified `develop` — never new/WIP work directly | Only clean, merged commits; ask user if unsure | Safe anytime, do before merging `develop` in |
@@ -103,6 +105,7 @@ Full history removal: `git filter-repo` or BFG, backup first.
 - [ ] `develop`/`main` receive changes via PR (`gh pr create`), never direct push
 - [ ] Meaningful commit per completed unit; push regularly
 - [ ] Before commit/push/pull: confirm branch + role; ask user if unclear
+- [ ] Before commit/push/pull: report to the user which branch the operation targets
 - [ ] Before switching WSL ↔ Windows: push first; pull before starting work
 - [ ] Force push / hard reset always reviewed by a human first
 - [ ] Rotate credentials immediately if a secret is committed
