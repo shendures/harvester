@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-07
+- **최신 갱신**: 2026-07-08
 
 ---
 
@@ -356,16 +356,75 @@
   PR(#19, #21, #23, #25, #27, #29, #31, #33, #35, #37, #39) 항목에 이미
   기록되어 있어 별도 소급 기록은 생략
 
+### `PREPROCESS.md` 문서 신설 (`1faa6c1`, 2026-07-07)
+
+- PR #41/#42로 구현된 커스텀 정제 규칙 플러그인의 규칙 정리·개발 프로세스
+  지침을 `systems/PREPROCESS.md`로 신설 — 범용 규칙 표, 커스텀 규칙 파일
+  규약, 개발용 `custom_rules/` 폴더(`request_info.json`과 달리 git 추적)
+  정책, 배포 시 레포 루트로 복사하는 워크플로 등을 기록
+- `.gitignore`에 `systems/STUDY.md`(개인 학습 노트, HISTORY.md/ISSUES.md와
+  별도 관리) 제외 추가
+- 직후 `custom_rules/` 개발 폴더 정책 서술을 뺐다가(`3b6ae0b`) 바로
+  되돌리는(`d638788`) 왕복이 있었으나 최종 내용은 최초 커밋과 동일(net no-op)
+
+### `custom_rules/` 저장소 추적 전환 (`b5721db`, 2026-07-08)
+
+- `PREPROCESS.md` §3.1a 정책에 따라 `custom_rules/000000.py`(샤브올데이
+  정제 규칙)와 `custom_rules/__init__.py`를 git 추적 대상으로 전환 — 정제
+  규칙은 설정값이 아니라 코드이므로 `request_info.json`(gitignore 대상)과
+  달리 이력 관리가 필요하다는 판단
+
+### 로컬 개발 환경 정비 (`6bd7490`~`34cb288`, 2026-07-08)
+
+- Windows 짝 스크립트 `git-setup-windows.ps1`을 저장소에 추가(WSL용
+  `git-setup-wsl.sh`의 대응) — 아래 "현재 브랜치 상태"에 있던 기존 미결
+  사항(Windows 클론 스크립트 untracked) 해소
+- uv 기반 로컬 개발 환경 재현을 위해 `.python-version`/`pyproject.toml`/
+  `uv.lock`을 한 차례 추적했다가(`6bd7490`), `requirements.txt`를 유일한
+  의존성 출처로 유지하기 위해 다시 추적 해제(`a084d28`)하고 `.gitignore`에
+  등록(`4625fd2`) — 파일 자체는 로컬에 남되 git 대상에서만 제외
+- `.gitignore`의 uv 커스텀 블록이 pyenv 템플릿의 기존 `.python-version`
+  라인과 중복 등록돼 있던 것을 정리(`34cb288`)
+
+### GIT_GUIDE: 커밋/푸시/풀 전 대상 브랜치 명시 규칙 추가 (`c6bb30f`, 2026-07-08)
+
+- §5와 체크리스트에 "실행 전 어떤 브랜치를 대상으로 하는지 사용자에게
+  명시적으로 보고" 규칙 추가 — 브랜치가 명백해 보이는 경우에도 사전에
+  밝혀 실수를 사후가 아닌 사전에 잡기 위함
+
+### 커스텀 정제 규칙을 `DataRefiner`의 7번째 규칙으로 승격 (`1bfbeef`, `5cc8914`, `3a10fab`, 2026-07-08)
+
+- **배경**: PR #41 도입 당시 커스텀 규칙은 `trigger.py`가 `DataRefiner.run()`
+  호출 전 별도 단계로 직접 실행 — 범용 6규칙과 다른 계층에 있어 on/off
+  제어나 결과 반영 방식이 비대칭적이었음
+- **수정** (`1bfbeef`): `DataRefiner`가 `custom_rule` 콜러블을 생성자로 받아
+  `_step_custom_rule()`로 나머지 6규칙보다 먼저 실행하는 "규칙 ⑦"로 흡수.
+  `RefineStats`에 `custom_rule_applied`/`custom_rule_error` 필드 추가
+  (반환값이 입력과 동일 길이의 list가 아니거나 예외 발생 시 원본 데이터로
+  폴백). `layout.py`에 "커스텀 정제 규칙 적용" 체크박스를 추가해 나머지
+  6규칙과 동일하게 토글 가능. `trigger.py`의 `_run_refine()`은 이제 규칙
+  로드만 담당하고 실행·폴백 판단은 `DataRefiner`에 위임
+- **문서화** (`5cc8914`): `PREPROCESS.md`를 이 구조 변경에 맞춰 갱신 —
+  2단계 파이프라인 설명을 "7규칙 단일 파이프라인, ⑦이 항상 먼저 실행"으로
+  정정, 새 체크박스·`RefineStats` 필드·오래된 줄 번호 참조 갱신
+- **리팩터** (`3a10fab`): custom_rule 파일의 경로 해석·시딩·로드 로직을
+  `preprocess.py`에서 `conf.CustomRuleStorage`(신설 싱글턴)로 이관 —
+  `BlueprintStorage`와 동일한 구조로 통일. 번들 기본 경로도
+  `custom_rules/{seq_no}.py`로 수정(기존에는 평탄한 프로젝트 루트를
+  가리켜 실제 배치 위치와 불일치했음)
+- 부수 효과로 `PROJECT_REPORT.md`의 관련 서술(6규칙→7규칙, 싱글턴 2개→3개)도
+  함께 현행화
+
 ---
 
-## 현재 브랜치 상태 (2026-07-07 기준)
+## 현재 브랜치 상태 (2026-07-08 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
 | `main` | `90ef5ab` (PR #43) | ✅ | 미확인 |
-| `develop` | `90ef5ab` (PR #43과 동기화) | ✅ | 미확인 |
+| `develop` | `3a10fab` (PR #43 이후 미릴리스 커밋 12건 포함, 위 항목 참고) | ✅ | 미확인 |
 
-미결 사항: Windows 클론의 `git-setup-windows.ps1`이 untracked —
-저장소 포함(권장, `git-setup-wsl.sh`의 짝) 또는 `.gitignore` 등록 중 선택 필요.
-(2026-07-07 재확인: 여전히 미해결)
+미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
+`custom_rules/000000.py`에 미커밋 수정(전화번호 정제 로직 변경) 존재 —
+별도 확인 필요.
 

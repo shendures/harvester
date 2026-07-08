@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-05
+- **최신 갱신**: 2026-07-08
 
 ---
 
@@ -23,12 +23,13 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 3,010줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 2,660줄 |
-| 수집 워커 (QThread + multiprocessing) | `worker.py` | 511줄 |
-| 요청 생성·데이터 추출 | `engine.py` | 426줄 |
+| GUI 레이아웃 | `layout.py` | 3,023줄 |
+| 이벤트 핸들러 (Mixin) | `trigger.py` | 2,744줄 |
+| 수집 워커 (QThread + multiprocessing) | `worker.py` | 493줄 |
+| 요청 생성·데이터 추출 | `engine.py` | 441줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
-| 데이터 정제 | `preprocess.py` | 279줄 |
+| 데이터 정제 | `preprocess.py` | 346줄 |
+| 설정·상태 공유 (싱글턴 3종) | `conf.py` | 352줄 |
 | 프로토타입 잔재 (정리 대상) | `frames_tmp.py` | 5,796줄 (git 추적 중) |
 
 ---
@@ -60,6 +61,7 @@
 
 [설정 관리]
     request_info.json  →  BlueprintStorage (싱글턴)
+    custom_rules/{seq_no}.py  →  CustomRuleStorage (싱글턴)
     customized_settings.py (기본값 정의)
     settings.py (Scrapy 설정)
 ```
@@ -204,26 +206,44 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 수집된 raw 데이터를 정제하는 로직 전담 모듈.
 
-- **`DataRefiner`**: 6가지 정제 규칙을 순서대로 적용합니다.
-  1. `remove_duplicate`: 중복 행 제거
-  2. `remove_null_row`: null 포함 행 제거
-  3. `fill_null`: null → `"—"` 치환
-  4. `trim_whitespace`: 문자열 앞뒤 공백 제거
-  5. `drop_columns`: 지정 컬럼 제외
-  6. `cast_numeric`: 문자열 숫자 → int/float 변환
+- **`DataRefiner`**: 7가지 정제 규칙을 순서대로 적용합니다. `custom_rule`(⑦)은
+  나머지 6개(①~⑥)보다 항상 먼저 실행됩니다 (PR #41, 이후 `1bfbeef`에서 트리거의
+  별도 전처리 단계 대신 `DataRefiner` 자체의 규칙으로 승격).
+  1. `custom_rule`: seq_no별 커스텀 정제 함수 적용 (있고 활성화된 경우만, §커스텀
+     정제 규칙 참고)
+  2. `remove_duplicate`: 중복 행 제거
+  3. `remove_null_row`: null 포함 행 제거
+  4. `fill_null`: null → `"—"` 치환
+  5. `trim_whitespace`: 문자열 앞뒤 공백 제거
+  6. `drop_columns`: 지정 컬럼 제외
+  7. `cast_numeric`: 문자열 숫자 → int/float 변환
 
-- **`RefineStats`**: 정제 결과 통계(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수)를 담는 dataclass.
+- **`RefineStats`**: 정제 결과 통계(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수,
+  `custom_rule_applied`/`custom_rule_error`)를 담는 dataclass.
+
+- **커스텀 정제 규칙 (`custom_rule`, "7번째 규칙")**: 수집물(blueprint)마다 원시
+  데이터 형식이 달라 범용 규칙만으로 커버되지 않는 경우를 위한 플러그인 메커니즘.
+  `{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를 정의하면
+  `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에 전달합니다.
+  경로 해석·시딩·실제 로드는 `conf.CustomRuleStorage`가 전담(§`conf.py` 참고).
+  상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
 
 ---
 
 ### 설정 및 상태 관리
 
 #### `conf.py`
-앱 전체에서 데이터를 공유하는 두 개의 싱글턴 클래스.
+앱 전체에서 데이터를 공유하는 세 개의 싱글턴 클래스.
 
 - **`DataStore`**: 수집된 행(`_rows`), URL 맵(`_url_map_list`), 세션 이력(`_sessions`), 스케줄(`_schedules`)을 메모리에 보관합니다. 메인 프로세스에서만 유효합니다.
 
 - **`BlueprintStorage`**: `request_info.json`을 로드하여 수집 청사진을 관리합니다. 최초 1회 초기화 후 `reload()`로 갱신할 수 있습니다.
+
+- **`CustomRuleStorage`**: seq_no별 커스텀 정제 규칙(`{seq_no}.py`)을 로드합니다
+  (`3a10fab`, `preprocess.py`에서 이관). `BlueprintStorage`와 동일한
+  seed-on-first-run 정책(앱 데이터 폴더에 없으면 번들 리소스에서 최초 1회 복사)을
+  쓰지만, seq_no마다 파일이 다르므로 단일 값을 캐싱하지 않고 매 호출마다 새로
+  읽고 실행합니다. 번들 리소스 경로는 `custom_rules/{seq_no}.py`.
 
 #### `customized_settings.py`
 각 설정 딕셔너리의 기본값을 반환하는 팩토리 함수 모음.

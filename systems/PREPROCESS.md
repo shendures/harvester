@@ -86,8 +86,10 @@ DataRefiner.run()
   - 앱 데이터 폴더(`LOCALAPPDATA/CollectorApp` 등)에 파일이 없으면 최초
     실행 시 번들 기본값을 그대로 복사(seed)하고, 이후에는 앱 데이터 폴더
     사본을 우선 사용 — 고객 PC에서 직접 수정 가능.
-  - `preprocess.py`의 `_resolve_custom_rule_path()`/`_app_dir()`는 이 평면
-    경로만 알고 있으며, 아래 §3.1a의 개발용 폴더 구조와는 무관합니다.
+  - 경로 해석·시딩·로드는 `conf.CustomRuleStorage`(`resolve_path()`/`exists()`/
+    `load()`)가 전담합니다 — `BlueprintStorage`와 동일한 패턴으로
+    `preprocess.py`에서 이관(`3a10fab`, 2026-07-08). 이 평면 경로만 알고
+    있으며, 아래 §3.1a의 개발용 폴더 구조와는 무관합니다.
 
 #### 3.1a 개발 시점 관리 폴더: `custom_rules/`
 
@@ -122,12 +124,12 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
   지점에서 잡아 `err` 로그를 남기고 `custom_rule_fn = None`으로 진행합니다.
-- **실행** (`preprocess.py:213` `DataRefiner._step_custom_rule()`): 로드된
+- **실행** (`preprocess.py:210` `DataRefiner._step_custom_rule()`): 로드된
   콜러블은 `DataRefiner(custom_rule=...)`로 전달되고, `rules["custom_rule"]`이
   켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
   입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
-  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:228`).
-  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:231`).
+  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:225`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:228`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
   `custom_rule_error`를 보고 로그·요약 문구를 결정합니다(`trigger.py:1065-1072`)
   — 커스텀 규칙의 버그가 수집 자체를 막지는 않지만, 배포 전 테스트하지
