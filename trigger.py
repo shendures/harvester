@@ -58,6 +58,12 @@ RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
 
+# 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
+VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
+
+# DB 타입별 기본 포트 (프록시/스케줄 DB 저장 다이얼로그 공용)
+DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
+
 
 # ══════════════════════════════════════════════════════
 #  SEARCH LINE EDIT  (한국어 IME 조합 중 텍스트 즉시 감지)
@@ -524,7 +530,6 @@ class GlobalToolbarTriggers:
             self._start_cancelled = True
             self.stop_requested.emit()
             self.set_running(False)
-            self._update_step_ui(0)
             mw = self._main_window()
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
@@ -540,13 +545,11 @@ class GlobalToolbarTriggers:
 
         if self.dashboard is None or self.session_page is None or self.monitor_page is None:
             self._log("err", "페이지 초기화가 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.")
-            self._update_step_ui(0)
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
             self.set_running(False)
             return
 
-        self._update_step_ui(1)
         if mw is not None:
             mw.dashboard._update_step_ui(1)
 
@@ -590,7 +593,6 @@ class GlobalToolbarTriggers:
 
         except Exception as e:
             self._log("err", f"설정 로드 실패: {e}")
-            self._update_step_ui(0)
             self.set_running(False)
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
@@ -605,8 +607,6 @@ class GlobalToolbarTriggers:
             self.dashboard._reset_dashboard()
         if self.monitor_page is not None:
             self.monitor_page._reset_monitor_page()
-
-        self._update_step_ui(0)
 
         mw = self._main_window()
         if mw is not None:
@@ -798,7 +798,6 @@ class DashboardPageTriggers:
         row = item.row()
         columns = self._get_result_columns()
         parts_list = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.result_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1285,7 +1284,6 @@ class MonitorPageTriggers:
         if self._refine_rules.get("drop_columns") and self._drop_column_names:
             columns = [c for c in columns if c not in self._drop_column_names]
         detail_parts = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.refined_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1325,7 +1323,6 @@ class MonitorPageTriggers:
         row = item.row()
         columns = self._get_result_columns()
         detail_parts = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.result_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1501,7 +1498,6 @@ class MonitorPageTriggers:
             e.setPlaceholderText(ph)
             return e
 
-        DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
         grid = QGridLayout()
         grid.setSpacing(8)
         grid.setColumnStretch(1, 1)
@@ -2595,7 +2591,6 @@ class SchedulerPageTriggers:
             e.setPlaceholderText(ph)
             return e
 
-        DB_PORTS_S = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
         sgrid = QGridLayout()
         sgrid.setSpacing(8)
         sgrid.setColumnStretch(1, 1)
@@ -2632,7 +2627,7 @@ class SchedulerPageTriggers:
             sgrid.addWidget(_slbl(_label), _row_i, 0)
             sgrid.addWidget(_widget, _row_i, 1)
 
-        _sdb_type.currentTextChanged.connect(lambda t: _sdb_port.setText(DB_PORTS_S.get(t, "")))
+        _sdb_type.currentTextChanged.connect(lambda t: _sdb_port.setText(DB_PORTS.get(t, "")))
         sdp.addLayout(sgrid)
 
         sched_test_row = QHBoxLayout()

@@ -101,8 +101,6 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
         super().__init__(parent)
         self._running = False
         self._start_cancelled = False   # 중지 시 QTimer 예약 콜백을 막는 플래그
-        self.step_circles = []
-        self.step_labels = []
         # 실제 페이지 인스턴스는 MainWindow._build()에서 set_pages()로 주입됩니다.
         self.dashboard = None
         self.monitor_page = None
@@ -143,36 +141,6 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
         self._style_run_btn(False)
         lay.addWidget(self.run_btn)
 
-    # ── 내부 메서드 ───────────────────────────────────
-
-    # 단계 사이 (선)
-    def _update_step_ui(self, step_idx):
-        """
-        현재 인덱스에 해당하는 단계만 주인공으로 만들고,
-        나머지는 과거/미래 상관없이 모두 배경으로 보냅니다.
-        """
-        for i in range(len(self.step_circles)):
-            # 현재 활성화된 단계 (Accent Color)
-            if i == step_idx:
-                circle_style = f"""
-                    background: {ACCENT};
-                    border: 2px solid {ACCENT_LIGHT};
-                    color: white;
-                """
-                label_style = f"color: {TEXT_PRIMARY}; font-weight: bold;"
-
-            # 그 외 모든 단계 (Muted Color)
-            else:
-                label_style = f"color: {TEXT_MUTED}; font-weight: normal;"
-                circle_style = f"""
-                    background: {BG_SECONDARY};
-                    border: 2px solid {BORDER};
-                    color: {TEXT_MUTED};
-                """
-
-            # 스타일 적용
-            self.step_circles[i].setStyleSheet(circle_style + "border-radius: 14px; font-weight: bold;")
-            self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
 
 # ══════════════════════════════════════════════════════
 #  SIDEBAR
