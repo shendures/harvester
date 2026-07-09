@@ -19,6 +19,7 @@ git push -u origin main
 - Checkpoint → Claude Code works → review diff → commit (or `git reset --hard HEAD~1` to undo).
 - Format: Conventional Commits `<type>[scope]: <description>`
   `feat` `fix` `refactor` `style` `docs` `test` `chore` `wip` `ci`
+- Language: `type` and `scope` in English; `description` (title and body) in Korean.
 - Claude Code may write the commit message from the diff, but you review the diff first.
 - Multiple features touched in one session → commit each separately.
 
