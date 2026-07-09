@@ -651,10 +651,14 @@ class GlobalToolbarTriggers:
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:
         """MainWindow 초기화 후 실제 페이지 인스턴스를 주입합니다."""
-        if dashboard    is not None: self.dashboard    = dashboard
-        if monitor_page is not None: self.monitor_page = monitor_page
-        if session_page is not None: self.session_page = session_page
-        if auth_page    is not None: self.auth_page    = auth_page
+        if dashboard    is not None:
+            self.dashboard    = dashboard
+        if monitor_page is not None:
+            self.monitor_page = monitor_page
+        if session_page is not None:
+            self.session_page = session_page
+        if auth_page    is not None:
+            self.auth_page    = auth_page
 
     def set_log_manager(self, log_manager) -> None:
         """MainWindow 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
@@ -1833,7 +1837,8 @@ class StatisticsPageTriggers:
 
         # Donut ( 통계 분석 - 상태 코드 분포 )
         status_cnt = defaultdict(int)
-        for r in rows: status_cnt[str(r["status_code"])] += 1
+        for r in rows:
+            status_cnt[str(r["status_code"])] += 1
         # ── 수정: COLOR_MAP 키를 str 로 통일하여 단일 응답 시 Gray 오류 해소 ──
         COLOR_MAP = {"200": GREEN, "301": BLUE, "404": AMBER, "429": PURPLE, "500": RED}
         segments = [(k, v, COLOR_MAP.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
@@ -1841,7 +1846,8 @@ class StatisticsPageTriggers:
         # rebuild legend
         for i in reversed(range(self.legend_lay.count())):
             w = self.legend_lay.itemAt(i).widget()
-            if w: w.deleteLater()
+            if w:
+                w.deleteLater()
         for k, v, color in segments:
             row_w = QWidget()
             row_w.setStyleSheet("background:transparent;")
@@ -1882,7 +1888,7 @@ class StatisticsPageTriggers:
                         hour_ok[bucket] += 1
                     else:
                         hour_err[bucket] += 1
-            except:
+            except (ValueError, KeyError, TypeError):
                 pass
         hours = [(now - timedelta(hours=11 - i)).hour for i in range(12)]
         ok_vals = [hour_ok.get(h, 0) for h in hours]
@@ -1948,10 +1954,14 @@ class SchedulerPageTriggers:
             msg.exec()
 
         errors = []
-        if not name_val:    errors.append("• Task Name을 입력해 주세요.")
-        if not url_val:     errors.append("• Target URL을 입력해 주세요.")
-        if iv_idx == 0:     errors.append("• Interval(주기)을 선택해 주세요.")
-        if svtype_idx == 0: errors.append("• 저장 방식을 선택해 주세요.")
+        if not name_val:
+            errors.append("• Task Name을 입력해 주세요.")
+        if not url_val:
+            errors.append("• Target URL을 입력해 주세요.")
+        if iv_idx == 0:
+            errors.append("• Interval(주기)을 선택해 주세요.")
+        if svtype_idx == 0:
+            errors.append("• 저장 방식을 선택해 주세요.")
 
         if self.session_page._global_cb.isChecked():
 
@@ -2330,9 +2340,12 @@ class SchedulerPageTriggers:
             return row
 
         def hms_combos():
-            h = QComboBox(); h.addItems([f"{t:02d}" for t in range(24)])
-            m = QComboBox(); m.addItems([f"{t:02d}" for t in range(60)])
-            sc = QComboBox(); sc.addItems([f"{t:02d}" for t in range(60)])
+            h = QComboBox()
+            h.addItems([f"{t:02d}" for t in range(24)])
+            m = QComboBox()
+            m.addItems([f"{t:02d}" for t in range(60)])
+            sc = QComboBox()
+            sc.addItems([f"{t:02d}" for t in range(60)])
             hms_style = f"""
                 QComboBox {{
                     background:{BG_PRIMARY}; color:{TEXT_PRIMARY};
@@ -2780,7 +2793,8 @@ class SchedulerPageTriggers:
         # 매일
         self.d_h, self.d_m, self.d_s = hms_combos()
         dl = QHBoxLayout(container_daily)
-        dl.setContentsMargins(0, 0, 0, 0); dl.setSpacing(6)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(6)
         dl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         dl.addWidget(iv_lbl("시간"), 0, Qt.AlignmentFlag.AlignVCenter)
         dl.addWidget(self.d_h, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2793,10 +2807,12 @@ class SchedulerPageTriggers:
         # 매주
         self.w_day = QComboBox()
         self.w_day.addItems(["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"])
-        self.w_day.setFixedWidth(76); self.w_day.setStyleSheet(theme.CB_STYLE)
+        self.w_day.setFixedWidth(76)
+        self.w_day.setStyleSheet(theme.CB_STYLE)
         self.w_h, self.w_m, self.w_s = hms_combos()
         wl = QHBoxLayout(container_weekly)
-        wl.setContentsMargins(0, 0, 0, 0); wl.setSpacing(6)
+        wl.setContentsMargins(0, 0, 0, 0)
+        wl.setSpacing(6)
         wl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         wl.addWidget(iv_lbl("매주"), 0, Qt.AlignmentFlag.AlignVCenter)
         wl.addWidget(self.w_day, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2812,10 +2828,12 @@ class SchedulerPageTriggers:
         # 매월
         self.m_day = QComboBox()
         self.m_day.addItems([str(d) for d in range(1, 32)])
-        self.m_day.setFixedWidth(50); self.m_day.setStyleSheet(theme.CB_STYLE)
+        self.m_day.setFixedWidth(50)
+        self.m_day.setStyleSheet(theme.CB_STYLE)
         self.m_h, self.m_m, self.m_s = hms_combos()
         ml = QHBoxLayout(container_monthly)
-        ml.setContentsMargins(0, 0, 0, 0); ml.setSpacing(6)
+        ml.setContentsMargins(0, 0, 0, 0)
+        ml.setSpacing(6)
         ml.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         ml.addWidget(iv_lbl("매월"), 0, Qt.AlignmentFlag.AlignVCenter)
         ml.addWidget(self.m_day, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2871,7 +2889,8 @@ class SchedulerPageTriggers:
 
         self.dat_h, self.dat_m, self.dat_s = hms_combos()
         datl = QHBoxLayout(container_date)
-        datl.setContentsMargins(0, 0, 0, 0); datl.setSpacing(6)
+        datl.setContentsMargins(0, 0, 0, 0)
+        datl.setSpacing(6)
         datl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         datl.addWidget(iv_lbl("날짜"), 0, Qt.AlignmentFlag.AlignVCenter)
         datl.addWidget(self.date_edit, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2927,7 +2946,8 @@ class SchedulerPageTriggers:
 
         # ── 주기 선택 행 ──────────────────────────────────
         iv_row = QHBoxLayout()
-        iv_row.setSpacing(8); iv_row.setContentsMargins(0, 0, 0, 0)
+        iv_row.setSpacing(8)
+        iv_row.setContentsMargins(0, 0, 0, 0)
         iv_row.addWidget(iv_lbl("주기"), 0, Qt.AlignmentFlag.AlignVCenter)
         iv_row.addWidget(sched_interval, 0, Qt.AlignmentFlag.AlignVCenter)
         iv_row.addStretch()
@@ -2935,7 +2955,8 @@ class SchedulerPageTriggers:
         detail_wrap = QWidget()
         detail_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         detail_lay = QHBoxLayout(detail_wrap)
-        detail_lay.setContentsMargins(8, 0, 0, 0); detail_lay.setSpacing(6)
+        detail_lay.setContentsMargins(8, 0, 0, 0)
+        detail_lay.setSpacing(6)
         for c in [container_daily, container_weekly, container_monthly, container_date]:
             detail_lay.addWidget(c, 0, Qt.AlignmentFlag.AlignVCenter)
         detail_lay.addStretch()

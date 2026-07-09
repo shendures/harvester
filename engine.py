@@ -17,6 +17,7 @@ from scrapy.selector import Selector
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -98,12 +99,12 @@ def get_scrapy_request(url, conditions, callback):
         request_kwargs['url'] = processed_url
 
         # 3. 데이터 전송 방식에 따른 분기 (FormRequest vs. Request with Body)
-        if conditions.get("payload") == False:
+        if conditions.get("payload") is False:
             request_kwargs['formdata'] = body
             # Form Data 전송 (application/x-www-form-urlencoded)
             return scrapy.FormRequest(**request_kwargs)
 
-        elif conditions.get("payload") == True:  # conditions["payload"] == True (JSON Body 또는 Raw Body)
+        elif conditions.get("payload") is True:  # conditions["payload"] == True (JSON Body 또는 Raw Body)
             request_kwargs['data'] = body
             return JsonRequest(**request_kwargs)
 
@@ -118,7 +119,7 @@ def set_chrome_webdriver(headless=False):
     options = webdriver.ChromeOptions()
 
     # 브라우저창 없이 실행 시
-    if headless == True:
+    if headless:
         options.add_argument('headless')
     options.add_argument('window-size=1920x1080')
     options.add_argument("disable-gpu")
@@ -206,14 +207,14 @@ def get_render_result(seq_no, driver, selectors, _items):
 
                 try:
                     value = driver.find_element(By.XPATH, relative_xpath).text
-                except:
+                except NoSuchElementException:
                     value = None
 
                 data[column_name] = value
 
-            if type(data) == dict:
+            if type(data) is dict:
                 result = result + [data]
-            elif type(data) == list:
+            elif type(data) is list:
                 result = result + data
 
             time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
@@ -231,9 +232,9 @@ def get_result(collect_info, target, _items):
         for row in target:
             datas = extract_data_from_root(row, _items)
             for data in datas:
-                if type(data) == dict:
+                if type(data) is dict:
                     result = result + [data]
-                elif type(data) == list:
+                elif type(data) is list:
                     result = result + data
 
     elif collect_info["conditions"]["dataFormat"] == "json" or collect_info["conditions"]["dataFormat"] == "xml":
@@ -371,7 +372,7 @@ def make_form_data_for_url_args(url):
     keys = args.keys()
     for key in keys:
         try:
-            if type(json.loads(args.get(key))) == int:
+            if type(json.loads(args.get(key))) is int:
                 result_dict[key] = str(json.loads(args.get(key)))
             else:
                 result_dict[key] = json.loads(args.get(key))

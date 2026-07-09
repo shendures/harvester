@@ -333,7 +333,8 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         c1w, c1 = parts.card_widget("수집 설정")
 
         # Row 1 — 딜레이 / 스레드
-        r1 = QHBoxLayout(); r1.setSpacing(8)
+        r1 = QHBoxLayout()
+        r1.setSpacing(8)
         r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
         self.delay_spin = QDoubleSpinBox()
         self.delay_spin.setRange(0.5, 10.0)
@@ -998,11 +999,13 @@ class BarChart(QWidget):
     def set_data(self, labels, values, color=None):
         self.labels = labels
         self.values = values
-        if color: self.color = QColor(color)
+        if color:
+            self.color = QColor(color)
         self.update()
 
     def paintEvent(self, e):
-        if not self.values: return
+        if not self.values:
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
@@ -1066,7 +1069,8 @@ class LineChart(QWidget):
         self.update()
 
     def paintEvent(self, e):
-        if not self.datasets: return
+        if not self.datasets:
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
@@ -1091,7 +1095,8 @@ class LineChart(QWidget):
         step = cw / max(n - 1, 1)
 
         for label, vals, color in self.datasets:
-            if not vals: continue
+            if not vals:
+                continue
             qc = QColor(color)
             points = []
             for i, v in enumerate(vals):
@@ -1980,7 +1985,8 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.stack = QStackedWidget()
         self.dashboard = DashboardPage()
         self.monitor_page = MonitorPage()
-        self.schedule_page = SchedulerPage(); self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
+        self.schedule_page = SchedulerPage()
+        self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()
         self.session_page = SessionSettingsPage()
         self.schedule_page.session_page = self.session_page
