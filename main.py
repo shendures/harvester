@@ -3,7 +3,8 @@ DataCrawler v2.0  —  PyQt6
 대시보드 / 스케줄러 / 모니터링 / 통계 분석 완성본
 """
 
-import sys, ctypes
+import sys
+import ctypes
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication
 from layout import MainWindow, theme

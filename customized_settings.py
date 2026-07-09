@@ -195,7 +195,7 @@ def get_settting_frame(task_id: str | None = None):
 def set_ip_settings(request_info):
 
     if "proxy" in request_info.keys():
-        if request_info["proxy"]["enabled"] == True:
+        if request_info["proxy"]["enabled"]:
             # GUI 프록시 테이블 행(dict: host/port/protocol/enabled)을
             # Scrapy request.meta['proxy']가 요구하는 URL 문자열로 변환
             ip_list = []
@@ -213,7 +213,7 @@ def set_ip_settings(request_info):
             proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
 
             return proxy_req_info
-        elif request_info["proxy"]["enabled"] == False:
+        elif not request_info["proxy"]["enabled"]:
             return None
         else:
             return None
@@ -228,11 +228,11 @@ def set_downloader_middlewares(request_info):
     # IP 설정
     if "proxy" in request_info.keys():
 
-        if request_info["proxy"]["enabled"] == True:
+        if request_info["proxy"]["enabled"]:
             # 프록시 IP
             downloader_middlewares["middlewares.RateLimitedProxyMiddleware"] = 100
 
-        elif request_info["proxy"]["enabled"] == False:
+        elif not request_info["proxy"]["enabled"]:
             downloader_middlewares["scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware"] = 110
 
     else:

@@ -5,7 +5,7 @@
 
 import scrapy
 from scrapy.loader import ItemLoader
-from itemloaders.processors import TakeFirst, Identity, MapCompose
+from itemloaders.processors import TakeFirst, Identity
 
 
 class DefaultItem(scrapy.Item):

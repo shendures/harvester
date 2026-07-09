@@ -315,25 +315,6 @@ class StatCard(QWidget):
         self._val.setText(str(v))
 
 
-# class StatCard(QWidget):
-#     def __init__(self, label, value, color=TEXT_PRIMARY):
-#         super().__init__()
-#         self.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-#         lay = QVBoxLayout(self)
-#         lay.setContentsMargins(10, 8, 10, 8)
-#         lay.setSpacing(2)
-#         self._val = QLabel(value)
-#         self._val.setStyleSheet(
-#             f"color:{color}; font-size:20px; font-weight:bold; border:none; background:transparent;")
-#         self._lbl = QLabel(label)
-#         self._lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:10px; border:none; background:transparent;")
-#         lay.addWidget(self._val)
-#         lay.addWidget(self._lbl)
-#
-#     def update_value(self, v):
-#         self._val.setText(str(v))
-
-
 # ──────────────────────────────────────────────────────
 #  EqualSpacingTable
 #  — Initial Equal distribution · Free resize + H-scroll · Double-click auto-fit

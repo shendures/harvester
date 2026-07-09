@@ -58,6 +58,12 @@ RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
 
+# 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
+VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
+
+# DB 타입별 기본 포트 (프록시/스케줄 DB 저장 다이얼로그 공용)
+DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
+
 
 # ══════════════════════════════════════════════════════
 #  SEARCH LINE EDIT  (한국어 IME 조합 중 텍스트 즉시 감지)
@@ -524,7 +530,6 @@ class GlobalToolbarTriggers:
             self._start_cancelled = True
             self.stop_requested.emit()
             self.set_running(False)
-            self._update_step_ui(0)
             mw = self._main_window()
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
@@ -540,13 +545,11 @@ class GlobalToolbarTriggers:
 
         if self.dashboard is None or self.session_page is None or self.monitor_page is None:
             self._log("err", "페이지 초기화가 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.")
-            self._update_step_ui(0)
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
             self.set_running(False)
             return
 
-        self._update_step_ui(1)
         if mw is not None:
             mw.dashboard._update_step_ui(1)
 
@@ -590,7 +593,6 @@ class GlobalToolbarTriggers:
 
         except Exception as e:
             self._log("err", f"설정 로드 실패: {e}")
-            self._update_step_ui(0)
             self.set_running(False)
             if mw is not None:
                 mw.dashboard._update_step_ui(0)
@@ -605,8 +607,6 @@ class GlobalToolbarTriggers:
             self.dashboard._reset_dashboard()
         if self.monitor_page is not None:
             self.monitor_page._reset_monitor_page()
-
-        self._update_step_ui(0)
 
         mw = self._main_window()
         if mw is not None:
@@ -651,10 +651,14 @@ class GlobalToolbarTriggers:
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:
         """MainWindow 초기화 후 실제 페이지 인스턴스를 주입합니다."""
-        if dashboard    is not None: self.dashboard    = dashboard
-        if monitor_page is not None: self.monitor_page = monitor_page
-        if session_page is not None: self.session_page = session_page
-        if auth_page    is not None: self.auth_page    = auth_page
+        if dashboard    is not None:
+            self.dashboard    = dashboard
+        if monitor_page is not None:
+            self.monitor_page = monitor_page
+        if session_page is not None:
+            self.session_page = session_page
+        if auth_page    is not None:
+            self.auth_page    = auth_page
 
     def set_log_manager(self, log_manager) -> None:
         """MainWindow 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
@@ -794,7 +798,6 @@ class DashboardPageTriggers:
         row = item.row()
         columns = self._get_result_columns()
         parts_list = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.result_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1084,9 +1087,9 @@ class MonitorPageTriggers:
 
         custom_rule_note = ""
         if stats.custom_rule_applied:
-            custom_rule_note = f", 사용자 정의 규칙(seq_no={seq_no}) 적용됨"
+            custom_rule_note = ", 사용자 정의 규칙 적용됨"
         elif stats.custom_rule_error:
-            custom_rule_note = f", 사용자 정의 규칙 실행 실패(seq_no={seq_no})"
+            custom_rule_note = ", 사용자 정의 규칙 실행 실패"
             if lm:
                 lm.append_log(
                     "err",
@@ -1151,9 +1154,7 @@ class MonitorPageTriggers:
         stats(RefineStats)가 주어지면 삭제된 Raw 행은 빨간 음영,
         값이 변경된 Refined 행만 초록 음영으로 표시됩니다.
         """
-        CLR_DEL_BG = QColor(100, 22, 22)  # 어두운 빨강 배경
         CLR_DEL_FG = QColor(RED)
-        CLR_REF_BG = QColor(10,  65, 35)  # 어두운 초록 배경
         CLR_REF_FG = QColor(GREEN)
 
         deleted_set      = set(stats.deleted_indices) if stats else set()
@@ -1283,7 +1284,6 @@ class MonitorPageTriggers:
         if self._refine_rules.get("drop_columns") and self._drop_column_names:
             columns = [c for c in columns if c not in self._drop_column_names]
         detail_parts = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.refined_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1323,7 +1323,6 @@ class MonitorPageTriggers:
         row = item.row()
         columns = self._get_result_columns()
         detail_parts = []
-        VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
         for col_idx, col_name in enumerate(columns):
             cell = self.result_table.item(row, col_idx + 1)
             val = cell.text() if cell else "—"
@@ -1499,7 +1498,6 @@ class MonitorPageTriggers:
             e.setPlaceholderText(ph)
             return e
 
-        DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
         grid = QGridLayout()
         grid.setSpacing(8)
         grid.setColumnStretch(1, 1)
@@ -1651,7 +1649,7 @@ class MonitorPageTriggers:
                 self.output_info["extract"]["auto_save"] = is_auto_save_chk
 
                 if self._out_mode == "FILE":
-                    file_path      = utility.update_slash(os.path.normpath(path_edit.text()), False)
+                    file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
                     file_name      = utility.update_empty_value(file_nm.text())
                     file_format    = utility.update_empty_value(fmt_combo.currentText())
                     file_encoding  = utility.update_empty_value(enc_combo.currentText())
@@ -1835,7 +1833,8 @@ class StatisticsPageTriggers:
 
         # Donut ( 통계 분석 - 상태 코드 분포 )
         status_cnt = defaultdict(int)
-        for r in rows: status_cnt[str(r["status_code"])] += 1
+        for r in rows:
+            status_cnt[str(r["status_code"])] += 1
         # ── 수정: COLOR_MAP 키를 str 로 통일하여 단일 응답 시 Gray 오류 해소 ──
         COLOR_MAP = {"200": GREEN, "301": BLUE, "404": AMBER, "429": PURPLE, "500": RED}
         segments = [(k, v, COLOR_MAP.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
@@ -1843,18 +1842,19 @@ class StatisticsPageTriggers:
         # rebuild legend
         for i in reversed(range(self.legend_lay.count())):
             w = self.legend_lay.itemAt(i).widget()
-            if w: w.deleteLater()
+            if w:
+                w.deleteLater()
         for k, v, color in segments:
-            row_w = QWidget();
+            row_w = QWidget()
             row_w.setStyleSheet("background:transparent;")
-            rl = QHBoxLayout(row_w);
-            rl.setContentsMargins(0, 0, 0, 0);
+            rl = QHBoxLayout(row_w)
+            rl.setContentsMargins(0, 0, 0, 0)
             rl.setSpacing(6)
-            dot = QLabel("●");
+            dot = QLabel("●")
             dot.setStyleSheet(f"color:{color}; font-size:12px;")
             txt = parts.make_label(f"{k}  {v}", TEXT_SECONDARY, 11)
-            rl.addWidget(dot);
-            rl.addWidget(txt);
+            rl.addWidget(dot)
+            rl.addWidget(txt)
             rl.addStretch()
             self.legend_lay.addWidget(row_w)
         self.legend_lay.addStretch()
@@ -1884,7 +1884,7 @@ class StatisticsPageTriggers:
                         hour_ok[bucket] += 1
                     else:
                         hour_err[bucket] += 1
-            except:
+            except (ValueError, KeyError, TypeError):
                 pass
         hours = [(now - timedelta(hours=11 - i)).hour for i in range(12)]
         ok_vals = [hour_ok.get(h, 0) for h in hours]
@@ -1950,10 +1950,14 @@ class SchedulerPageTriggers:
             msg.exec()
 
         errors = []
-        if not name_val:    errors.append("• Task Name을 입력해 주세요.")
-        if not url_val:     errors.append("• Target URL을 입력해 주세요.")
-        if iv_idx == 0:     errors.append("• Interval(주기)을 선택해 주세요.")
-        if svtype_idx == 0: errors.append("• 저장 방식을 선택해 주세요.")
+        if not name_val:
+            errors.append("• Task Name을 입력해 주세요.")
+        if not url_val:
+            errors.append("• Target URL을 입력해 주세요.")
+        if iv_idx == 0:
+            errors.append("• Interval(주기)을 선택해 주세요.")
+        if svtype_idx == 0:
+            errors.append("• 저장 방식을 선택해 주세요.")
 
         if self.session_page._global_cb.isChecked():
 
@@ -2079,8 +2083,8 @@ class SchedulerPageTriggers:
             "extract": {
                 "file": {
                     "enabled":      is_file,
-                    "file_path":    (utility.update_slash(
-                                        os.path.normpath(sched_info_dict["path_edit"].text()), False)
+                    "file_path":    (utility.to_forward_slash(
+                                        os.path.normpath(sched_info_dict["path_edit"].text()))
                                      if is_file and sched_info_dict["path_edit"].text() else None),
                     "file_name":    _val(sched_info_dict["file_nm"]) if is_file else None,
                     "file_format":  _val(sched_info_dict["fmt_combo"], "currentText") if is_file else None,
@@ -2332,9 +2336,12 @@ class SchedulerPageTriggers:
             return row
 
         def hms_combos():
-            h = QComboBox(); h.addItems([f"{t:02d}" for t in range(24)])
-            m = QComboBox(); m.addItems([f"{t:02d}" for t in range(60)])
-            sc = QComboBox(); sc.addItems([f"{t:02d}" for t in range(60)])
+            h = QComboBox()
+            h.addItems([f"{t:02d}" for t in range(24)])
+            m = QComboBox()
+            m.addItems([f"{t:02d}" for t in range(60)])
+            sc = QComboBox()
+            sc.addItems([f"{t:02d}" for t in range(60)])
             hms_style = f"""
                 QComboBox {{
                     background:{BG_PRIMARY}; color:{TEXT_PRIMARY};
@@ -2584,7 +2591,6 @@ class SchedulerPageTriggers:
             e.setPlaceholderText(ph)
             return e
 
-        DB_PORTS_S = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
         sgrid = QGridLayout()
         sgrid.setSpacing(8)
         sgrid.setColumnStretch(1, 1)
@@ -2621,7 +2627,7 @@ class SchedulerPageTriggers:
             sgrid.addWidget(_slbl(_label), _row_i, 0)
             sgrid.addWidget(_widget, _row_i, 1)
 
-        _sdb_type.currentTextChanged.connect(lambda t: _sdb_port.setText(DB_PORTS_S.get(t, "")))
+        _sdb_type.currentTextChanged.connect(lambda t: _sdb_port.setText(DB_PORTS.get(t, "")))
         sdp.addLayout(sgrid)
 
         sched_test_row = QHBoxLayout()
@@ -2782,7 +2788,8 @@ class SchedulerPageTriggers:
         # 매일
         self.d_h, self.d_m, self.d_s = hms_combos()
         dl = QHBoxLayout(container_daily)
-        dl.setContentsMargins(0, 0, 0, 0); dl.setSpacing(6)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(6)
         dl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         dl.addWidget(iv_lbl("시간"), 0, Qt.AlignmentFlag.AlignVCenter)
         dl.addWidget(self.d_h, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2795,10 +2802,12 @@ class SchedulerPageTriggers:
         # 매주
         self.w_day = QComboBox()
         self.w_day.addItems(["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"])
-        self.w_day.setFixedWidth(76); self.w_day.setStyleSheet(theme.CB_STYLE)
+        self.w_day.setFixedWidth(76)
+        self.w_day.setStyleSheet(theme.CB_STYLE)
         self.w_h, self.w_m, self.w_s = hms_combos()
         wl = QHBoxLayout(container_weekly)
-        wl.setContentsMargins(0, 0, 0, 0); wl.setSpacing(6)
+        wl.setContentsMargins(0, 0, 0, 0)
+        wl.setSpacing(6)
         wl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         wl.addWidget(iv_lbl("매주"), 0, Qt.AlignmentFlag.AlignVCenter)
         wl.addWidget(self.w_day, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2814,10 +2823,12 @@ class SchedulerPageTriggers:
         # 매월
         self.m_day = QComboBox()
         self.m_day.addItems([str(d) for d in range(1, 32)])
-        self.m_day.setFixedWidth(50); self.m_day.setStyleSheet(theme.CB_STYLE)
+        self.m_day.setFixedWidth(50)
+        self.m_day.setStyleSheet(theme.CB_STYLE)
         self.m_h, self.m_m, self.m_s = hms_combos()
         ml = QHBoxLayout(container_monthly)
-        ml.setContentsMargins(0, 0, 0, 0); ml.setSpacing(6)
+        ml.setContentsMargins(0, 0, 0, 0)
+        ml.setSpacing(6)
         ml.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         ml.addWidget(iv_lbl("매월"), 0, Qt.AlignmentFlag.AlignVCenter)
         ml.addWidget(self.m_day, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2873,7 +2884,8 @@ class SchedulerPageTriggers:
 
         self.dat_h, self.dat_m, self.dat_s = hms_combos()
         datl = QHBoxLayout(container_date)
-        datl.setContentsMargins(0, 0, 0, 0); datl.setSpacing(6)
+        datl.setContentsMargins(0, 0, 0, 0)
+        datl.setSpacing(6)
         datl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         datl.addWidget(iv_lbl("날짜"), 0, Qt.AlignmentFlag.AlignVCenter)
         datl.addWidget(self.date_edit, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -2929,7 +2941,8 @@ class SchedulerPageTriggers:
 
         # ── 주기 선택 행 ──────────────────────────────────
         iv_row = QHBoxLayout()
-        iv_row.setSpacing(8); iv_row.setContentsMargins(0, 0, 0, 0)
+        iv_row.setSpacing(8)
+        iv_row.setContentsMargins(0, 0, 0, 0)
         iv_row.addWidget(iv_lbl("주기"), 0, Qt.AlignmentFlag.AlignVCenter)
         iv_row.addWidget(sched_interval, 0, Qt.AlignmentFlag.AlignVCenter)
         iv_row.addStretch()
@@ -2937,7 +2950,8 @@ class SchedulerPageTriggers:
         detail_wrap = QWidget()
         detail_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         detail_lay = QHBoxLayout(detail_wrap)
-        detail_lay.setContentsMargins(8, 0, 0, 0); detail_lay.setSpacing(6)
+        detail_lay.setContentsMargins(8, 0, 0, 0)
+        detail_lay.setSpacing(6)
         for c in [container_daily, container_weekly, container_monthly, container_date]:
             detail_lay.addWidget(c, 0, Qt.AlignmentFlag.AlignVCenter)
         detail_lay.addStretch()

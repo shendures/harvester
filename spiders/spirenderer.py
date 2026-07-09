@@ -2,20 +2,13 @@ import time
 import scrapy
 import glean
 import engine
-from http import HTTPStatus
 
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
-
-import utility
-from items import DonasItem, DonasItemLoader
 
 # Chrome WebDriver를 Scrapy의 응답 객체(Response object)로 사용할 수 있도록 준비합니다.
+
+PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
+
 
 class HtmlSeleniumSpider(scrapy.Spider):
 
@@ -64,13 +57,10 @@ class HtmlSeleniumSpider(scrapy.Spider):
             driver = engine.set_chrome_webdriver()
 
             try:
-                # 웹페이지 로드를 위한 대기 시간 설정 (최대 10초)
-                wait = WebDriverWait(driver, 10)
-
                 # 웹 페이지 실행
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
                 driver.get(response.url)
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 root = self.request_info["conditions"]["items"]["root"]
                 _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
@@ -80,7 +70,7 @@ class HtmlSeleniumSpider(scrapy.Spider):
                     login_info = self.request_info["conditions"]["login"]
                     engine.run_login(driver, self.request_info["seq_no"], login_info)
 
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 selectors = driver.find_elements(By.XPATH, root)
                 result = engine.get_render_result(self.request_info["seq_no"], driver, selectors, _items)
@@ -89,14 +79,6 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 loader = engine.set_item_loader(response, self.request_info, result)
 
                 yield loader.load_item()
-
-                # # 맨 마지막에 연 윈도우창 종료
-                # window_handles = driver.window_handles
-                # new_window_handle = window_handles[-1]
-                # driver.switch_to.window(new_window_handle)
-                # driver.close()
-                # original_window_handle = window_handles[0]
-                # driver.switch_to.window(original_window_handle)
             finally:
                 driver.quit()
 
