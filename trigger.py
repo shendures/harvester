@@ -1653,7 +1653,7 @@ class MonitorPageTriggers:
                 self.output_info["extract"]["auto_save"] = is_auto_save_chk
 
                 if self._out_mode == "FILE":
-                    file_path      = utility.update_slash(os.path.normpath(path_edit.text()), False)
+                    file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
                     file_name      = utility.update_empty_value(file_nm.text())
                     file_format    = utility.update_empty_value(fmt_combo.currentText())
                     file_encoding  = utility.update_empty_value(enc_combo.currentText())
@@ -2087,8 +2087,8 @@ class SchedulerPageTriggers:
             "extract": {
                 "file": {
                     "enabled":      is_file,
-                    "file_path":    (utility.update_slash(
-                                        os.path.normpath(sched_info_dict["path_edit"].text()), False)
+                    "file_path":    (utility.to_forward_slash(
+                                        os.path.normpath(sched_info_dict["path_edit"].text()))
                                      if is_file and sched_info_dict["path_edit"].text() else None),
                     "file_name":    _val(sched_info_dict["file_nm"]) if is_file else None,
                     "file_format":  _val(sched_info_dict["fmt_combo"], "currentText") if is_file else None,

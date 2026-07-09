@@ -163,7 +163,7 @@ def get_response_status(response):
 def run_login(driver, seq_no, login_info):
 
     if seq_no == "999999":
-        ""
+        pass  # 테스트용 seq_no — 로그인 없음
     # 네이버
     elif seq_no == "000013":
 
@@ -171,18 +171,18 @@ def run_login(driver, seq_no, login_info):
         driver.find_element(By.ID, "account").click()
 
         # 아이디
-        ID = driver.find_element(By.ID, "id")
+        id_input = driver.find_element(By.ID, "id")
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        ID.click()
+        id_input.click()
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        ID.send_keys(login_info["id"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
+        id_input.send_keys(login_info["id"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
 
         # 비밀번호
-        PWD = driver.find_element(By.ID, "pw")
+        pwd_input = driver.find_element(By.ID, "pw")
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        PWD.click()
+        pwd_input.click()
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        PWD.send_keys(login_info["password"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
+        pwd_input.send_keys(login_info["password"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
 
         driver.find_element(By.ID, "log.login").click()
 
@@ -222,6 +222,9 @@ def get_render_result(seq_no, driver, selectors, _items):
             # 닫기 버튼 클릭
             driver.find_element(By.XPATH, '//*[@id="container"]/div[2]/section/div/button').click()
 
+    else:
+        raise ValueError(f"'{seq_no}'에 대한 렌더링 결과 추출 로직이 구현되어 있지 않습니다.")
+
     return result
 
 
@@ -248,6 +251,9 @@ def get_result(collect_info, target, _items):
                 result.append(data)
         else:
             result = target
+
+    else:
+        raise ValueError(f"지원하지 않는 dataFormat 값입니다: {collect_info['conditions']['dataFormat']!r} (html/json/xml만 지원)")
 
     return result
 
@@ -379,6 +385,5 @@ def make_form_data_for_url_args(url):
         except Exception as e:
             print(e)
             result_dict[key] = args.get(key)
-            pass
     return result_dict
 

@@ -50,13 +50,9 @@ def update_empty_value(value):
     return value
 
 
-def update_slash(value, reverse=True):
-    # 슬래쉬(/)를 역슬래쉬(\)로 변경
-    if reverse is True:
-        return value.replace("/", "\\")
+def to_forward_slash(value):
     # 역슬래쉬(\)를 슬래쉬(/)로 변경
-    elif reverse is False:
-        return value.replace("\\", "/")
+    return value.replace("\\", "/")
 
 
 def generate_combined_urls(url_template):
