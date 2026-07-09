@@ -1084,9 +1084,9 @@ class MonitorPageTriggers:
 
         custom_rule_note = ""
         if stats.custom_rule_applied:
-            custom_rule_note = f", 사용자 정의 규칙(seq_no={seq_no}) 적용됨"
+            custom_rule_note = ", 사용자 정의 규칙 적용됨"
         elif stats.custom_rule_error:
-            custom_rule_note = f", 사용자 정의 규칙 실행 실패(seq_no={seq_no})"
+            custom_rule_note = ", 사용자 정의 규칙 실행 실패"
             if lm:
                 lm.append_log(
                     "err",
