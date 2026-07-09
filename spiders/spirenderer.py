@@ -7,6 +7,9 @@ from selenium.webdriver.common.by import By
 
 # Chrome WebDriver를 Scrapy의 응답 객체(Response object)로 사용할 수 있도록 준비합니다.
 
+PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
+
+
 class HtmlSeleniumSpider(scrapy.Spider):
 
     name = "spider_html_selenium"
@@ -55,9 +58,9 @@ class HtmlSeleniumSpider(scrapy.Spider):
 
             try:
                 # 웹 페이지 실행
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
                 driver.get(response.url)
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 root = self.request_info["conditions"]["items"]["root"]
                 _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
@@ -67,7 +70,7 @@ class HtmlSeleniumSpider(scrapy.Spider):
                     login_info = self.request_info["conditions"]["login"]
                     engine.run_login(driver, self.request_info["seq_no"], login_info)
 
-                time.sleep(3)
+                time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 selectors = driver.find_elements(By.XPATH, root)
                 result = engine.get_render_result(self.request_info["seq_no"], driver, selectors, _items)

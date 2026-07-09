@@ -38,7 +38,7 @@ class DetailExtractorSpider(scrapy.Spider):
                 return
 
             # 상세 페이지 요청할 정보가 있는 메인 페이지
-            mainUrl = self.request_info["conditions"]["mainUrl"]
+            main_url = self.request_info["conditions"]["mainUrl"]
 
             # 상세 페이지 요청할 정보가 있는 메인 페이지가 "HTML"
             if self.request_info["conditions"]["mainFormat"] == "html":
@@ -46,7 +46,7 @@ class DetailExtractorSpider(scrapy.Spider):
                 detail_selectors = response.xpath(detail)
                 for detail_selector in detail_selectors:
                     detail_param = detail_selector.get().strip()
-                    detail_url = mainUrl.format(detail_kwd=str(detail_param))
+                    detail_url = main_url.format(detail_kwd=str(detail_param))
                     yield engine.get_scrapy_request(detail_url, self.request_info["conditions"], callback=self.parse)
 
             # 상세 페이지 요청할 정보가 있는 메인 페이지가 "JSON"
@@ -57,7 +57,7 @@ class DetailExtractorSpider(scrapy.Spider):
 
                 for detail_selector in detail_selectors:
                     detail_param = utility.get_target(detail_selector, self.request_info["conditions"]["items"]["detail"])
-                    detail_url = mainUrl.format(detail_kwd=str(detail_param))
+                    detail_url = main_url.format(detail_kwd=str(detail_param))
                     yield engine.get_scrapy_request(detail_url, self.request_info["conditions"], callback=self.parse)
 
 
@@ -77,7 +77,8 @@ class DetailExtractorSpider(scrapy.Spider):
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
                 return
 
-            _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'detail_root' and key != 'detail' and key != 'main_root' and key != 'root'}
+            excluded_keys = {'detail_root', 'detail', 'main_root', 'root'}
+            _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key not in excluded_keys}
 
             # 데이터 생성
             if self.request_info["conditions"]["mainFormat"] == "html":
