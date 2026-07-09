@@ -6,8 +6,6 @@ import json
 import scrapy
 from scrapy.http import JsonRequest
 from furl import furl
-import db_conn
-from datetime import datetime as dt
 from typing import List, Dict, Any
 import utility
 from http import HTTPStatus
@@ -19,8 +17,6 @@ from scrapy.selector import Selector
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -37,14 +33,6 @@ def get_json_form(url, payload_yn):
 
     processed_url = re.search(r".*(?=\?)", url)[0]
     body = json.loads(re.search(r"(?<=\?).*", url)[0])
-
-    # if payload_yn == False:
-    #     _body = json.loads(body)
-    #     return processed_url, _body
-    #
-    # elif payload_yn == True:
-    #     _body = json.dumps(body).encode('utf-8')
-    #     return processed_url, _body
 
     return processed_url, body
 
@@ -116,14 +104,6 @@ def get_scrapy_request(url, conditions, callback):
             return scrapy.FormRequest(**request_kwargs)
 
         elif conditions.get("payload") == True:  # conditions["payload"] == True (JSON Body 또는 Raw Body)
-
-            ## Case 1
-            # request_kwargs['body'] = body
-            # # request_kwargs["headers"]["Accept"] = "application/json"
-            # # request_kwargs["headers"]["Content-Type"] = "application/json"
-            # return scrapy.Request(**request_kwargs)
-
-            ## Case 2
             request_kwargs['data'] = body
             return JsonRequest(**request_kwargs)
 
@@ -187,11 +167,9 @@ def run_login(driver, seq_no, login_info):
     elif seq_no == "000013":
 
         # 로그인 박스 클릭
-        # driver.find_element(By.XPATH, '//*[@id="account"]/div/a').click()
         driver.find_element(By.ID, "account").click()
 
         # 아이디
-        # ID = driver.find_element(By.XPATH, '//*[@id="id"]')
         ID = driver.find_element(By.ID, "id")
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
         ID.click()
@@ -199,14 +177,12 @@ def run_login(driver, seq_no, login_info):
         ID.send_keys(login_info["id"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
 
         # 비밀번호
-        # PWD = driver.find_element(By.XPATH, '//*[@id="pw"]')
         PWD = driver.find_element(By.ID, "pw")
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
         PWD.click()
         time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
         PWD.send_keys(login_info["password"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
 
-        # driver.find_element(By.XPATH, '//*[@id="log.login"]').click()
         driver.find_element(By.ID, "log.login").click()
 
     print('✅ 로그인 성공')
@@ -268,8 +244,6 @@ def get_result(collect_info, target, _items):
             result = []
             for row in target:
                 data = { k:utility.get_target(row, v) for k,v in _items.items() }
-                # rename_map = {v: k for k, v in _items.items()}
-                # filtered_result = utility.rename_keys(filtered_data, rename_map)
                 result.append(data)
         else:
             result = target
@@ -300,7 +274,6 @@ def extract_data_from_root(root: Selector, _items: Dict[str, str]) -> List[Dict[
         # XPath가 'text()'를 포함하지 않는 경우를 대비해, 추출된 노드를 다시 .get()하여 내부 HTML/텍스트를 가져옵니다.
         extracted_nodes = root.xpath(relative_xpath)
 
-        # values = [ re.sub('<.+?>', ' ', node.xpath(".").get(default='').strip(), 0).strip() for node in extracted_nodes ]
         values = []
         for node in extracted_nodes:
             if isinstance(node.root, str):
@@ -360,16 +333,6 @@ def set_item_loader(response, collect_info, data):
     return loader
 
 
-# def set_item_loader(response, collect_info, data):
-#
-#     loader = DonasItemLoader(item=DonasItem(), selector=response)
-#
-#     loader.add_value('data', data)
-#     loader.add_value('collect_info', collect_info)
-#
-#     return loader
-
-
 def set_cookies(response):
     """
     DB에 저장할 쿠키값으로 수정
@@ -379,7 +342,6 @@ def set_cookies(response):
     cookie = ""
     for code in cookies:
         code = code.decode('utf-8')
-        # code = re.sub("[pP]ath=/", "", code.decode('utf-8')).strip()
         cookie = cookie + code + " "
     return cookie.strip()
 
@@ -401,26 +363,6 @@ def requests_info(response, collect_info, time):
                          }
 
     return requests_info_dict
-
-
-# def set_item_loader(response, collect_info, data):
-#
-#     loader = DonasItemLoader(item=DonasItem(), selector=response)
-#
-#     if "gubun" in collect_info.keys():
-#         loader.add_value('data', data)
-#         loader.add_value('user_settings', collect_info)
-#     else:
-#         # 날짜 추가
-#         # data["yyyymmdd"] = dt.now().strftime("%Y%m%d")
-#
-#         # ⭐ Pipeline에서 넣을 데이터 추가
-#         loader.add_value('data', data)
-#
-#         # ⭐ Pipeline에서 사용할 컬렉션명 추가
-#         loader.add_value('extract_names', collect_info['extract_names'])
-#
-#     return loader
 
 
 def make_form_data_for_url_args(url):

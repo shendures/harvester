@@ -2,18 +2,8 @@ import time
 import scrapy
 import glean
 import engine
-from http import HTTPStatus
 
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
-
-import utility
-from items import DonasItem, DonasItemLoader
 
 # Chrome WebDriver를 Scrapy의 응답 객체(Response object)로 사용할 수 있도록 준비합니다.
 
@@ -64,9 +54,6 @@ class HtmlSeleniumSpider(scrapy.Spider):
             driver = engine.set_chrome_webdriver()
 
             try:
-                # 웹페이지 로드를 위한 대기 시간 설정 (최대 10초)
-                wait = WebDriverWait(driver, 10)
-
                 # 웹 페이지 실행
                 time.sleep(3)
                 driver.get(response.url)
@@ -89,14 +76,6 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 loader = engine.set_item_loader(response, self.request_info, result)
 
                 yield loader.load_item()
-
-                # # 맨 마지막에 연 윈도우창 종료
-                # window_handles = driver.window_handles
-                # new_window_handle = window_handles[-1]
-                # driver.switch_to.window(new_window_handle)
-                # driver.close()
-                # original_window_handle = window_handles[0]
-                # driver.switch_to.window(original_window_handle)
             finally:
                 driver.quit()
 

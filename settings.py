@@ -1,5 +1,3 @@
-import os
-
 # Scrapy settings for donas project
 #
 # For simplicity, this file contains only settings considered important or

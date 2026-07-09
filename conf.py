@@ -1,4 +1,9 @@
-import os, sys, json, shutil, logging, importlib.util
+import os
+import sys
+import json
+import shutil
+import logging
+import importlib.util
 from copy import deepcopy
 import customized_settings
 import utility

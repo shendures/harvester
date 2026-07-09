@@ -2,7 +2,7 @@ import sys
 import os
 import re
 import itertools
-from typing import List, Dict, Optional, Any, Iterable, Union, Callable
+from typing import Optional, Any
 from datetime import datetime as dt, timedelta
 import calendar
 import json
@@ -131,9 +131,6 @@ def generate_combined_urls(url_template):
         for full_match, items_str in list_matches:
             # [('서울,인천', '서울,인천'), ...]
             items_list = [item.strip() for item in items_str.split(',')]
-
-            # # 인코딩 해야할 경우 주석해제
-            # items_list = [parse.quote(item.strip()) for item in items_str.split(',')]
             substitution_data.append((full_match, items_list))
 
         # 모든 목록 패턴의 값들 (예: ['서울', '인천'])에 대해 데카르트 곱 생성
@@ -177,12 +174,6 @@ def get_all_nested_keys(data: dict):
             if isinstance(value, dict):
                 # 중첩 딕셔너리에서 반환된 키들을 현재 리스트에 확장(extend)합니다.
                 keys_list.extend(get_all_nested_keys(value))
-
-            # # (선택 사항) 만약 리스트/튜플 안에 딕셔너리가 있을 경우도 처리하려면:
-            # elif isinstance(value, (list, tuple)):
-            #      for item in value:
-            #          if isinstance(item, dict):
-            #              keys_list.extend(get_all_nested_keys(item))
 
     return list(set(keys_list))
 

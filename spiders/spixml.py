@@ -1,7 +1,5 @@
-import json
 import scrapy
 import xmltodict
-from datetime import datetime as dt
 import engine
 import glean
 import utility
@@ -10,11 +8,6 @@ import utility
 class XmlExtractorSpider(scrapy.Spider):
 
     name = "spider_xml"
-
-    # CONCURRENT_REQUESTS를 settings.py 대신 여기서 커스터마이징할 수 있습니다.
-    # custom_settings = {
-    #     'CONCURRENT_REQUESTS': 32
-    # }
 
     # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
     def __init__(self, request_info=None, *args, **kwargs):
@@ -42,9 +35,6 @@ class XmlExtractorSpider(scrapy.Spider):
 
     def parse(self, response):
         try:
-
-            # # RESPONSE STATUS 출력
-            # engine.get_response_status(response)
 
             if response.status != 200:
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')

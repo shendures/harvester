@@ -1151,9 +1151,7 @@ class MonitorPageTriggers:
         stats(RefineStats)가 주어지면 삭제된 Raw 행은 빨간 음영,
         값이 변경된 Refined 행만 초록 음영으로 표시됩니다.
         """
-        CLR_DEL_BG = QColor(100, 22, 22)  # 어두운 빨강 배경
         CLR_DEL_FG = QColor(RED)
-        CLR_REF_BG = QColor(10,  65, 35)  # 어두운 초록 배경
         CLR_REF_FG = QColor(GREEN)
 
         deleted_set      = set(stats.deleted_indices) if stats else set()
@@ -1845,16 +1843,16 @@ class StatisticsPageTriggers:
             w = self.legend_lay.itemAt(i).widget()
             if w: w.deleteLater()
         for k, v, color in segments:
-            row_w = QWidget();
+            row_w = QWidget()
             row_w.setStyleSheet("background:transparent;")
-            rl = QHBoxLayout(row_w);
-            rl.setContentsMargins(0, 0, 0, 0);
+            rl = QHBoxLayout(row_w)
+            rl.setContentsMargins(0, 0, 0, 0)
             rl.setSpacing(6)
-            dot = QLabel("●");
+            dot = QLabel("●")
             dot.setStyleSheet(f"color:{color}; font-size:12px;")
             txt = parts.make_label(f"{k}  {v}", TEXT_SECONDARY, 11)
-            rl.addWidget(dot);
-            rl.addWidget(txt);
+            rl.addWidget(dot)
+            rl.addWidget(txt)
             rl.addStretch()
             self.legend_lay.addWidget(row_w)
         self.legend_lay.addStretch()

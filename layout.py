@@ -1,6 +1,5 @@
 import os
 import utility
-from copy import deepcopy
 from datetime import datetime
 import customized_settings
 
@@ -12,18 +11,18 @@ from trigger import (
     TrayManagerTriggers, MainWindowTriggers,
     LogViewerDialog,
 )
-from style import THEME, NavItem, TagButton, StatCard, Divider, Parts, EqualSpacingTable
+from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QComboBox,
     QTableWidgetItem, QFrame, QProgressBar,
-    QScrollArea, QGridLayout, QStackedWidget,
-    QSpinBox, QDoubleSpinBox, QFileDialog, QMessageBox,
-    QCheckBox, QSizePolicy, QDateEdit, QSystemTrayIcon,
-    QDialog, QMenu, QTabWidget
+    QScrollArea, QStackedWidget,
+    QSpinBox, QDoubleSpinBox, QMessageBox,
+    QCheckBox, QSizePolicy, QSystemTrayIcon,
+    QMenu, QTabWidget
 )
-from PyQt6.QtCore import ( Qt, QTimer, QPoint, QDate, QObject, pyqtSignal )
+from PyQt6.QtCore import ( Qt, QTimer, QPoint, QObject, pyqtSignal )
 from PyQt6.QtGui import (
     QColor, QFont, QPainter, QPen, QBrush,
     QLinearGradient, QIcon, QAction
@@ -231,7 +230,7 @@ class Sidebar(QWidget):
         lay.addStretch()
         lay.addWidget(Divider())
 
-        status_row = QHBoxLayout();
+        status_row = QHBoxLayout()
         status_row.setContentsMargins(16, 8, 16, 0)
         dot = parts.make_label("●", GREEN, 10)
         st = parts.make_label("연결됨", GREEN, 12)
@@ -271,18 +270,18 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        scroll = QScrollArea();
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
-        bl = QVBoxLayout(body);
-        bl.setContentsMargins(14, 14, 14, 14);
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(12)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
         # Config row
-        cfg = QHBoxLayout();
+        cfg = QHBoxLayout()
         cfg.setSpacing(10)
 
         # STEP TRACKER
@@ -337,40 +336,40 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r1 = QHBoxLayout(); r1.setSpacing(8)
         r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
         self.delay_spin = QDoubleSpinBox()
-        self.delay_spin.setRange(0.5, 10.0);
-        self.delay_spin.setValue(0.5);
-        self.delay_spin.setSingleStep(0.5);
-        self.delay_spin.setDecimals(1);  # setDecimals : 소수점 자리 수 self.delay_spin.setSuffix("s")
+        self.delay_spin.setRange(0.5, 10.0)
+        self.delay_spin.setValue(0.5)
+        self.delay_spin.setSingleStep(0.5)
+        self.delay_spin.setDecimals(1)  # setDecimals : 소수점 자리 수 self.delay_spin.setSuffix("s")
         self.delay_spin.setToolTip("요청 간 대기 시간 (기본 1.5s)")
         r1.addWidget(self.delay_spin)
         r1.addSpacing(6)
         r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
         self.thread_spin = QSpinBox()
-        self.thread_spin.setRange(1, 16);
+        self.thread_spin.setRange(1, 16)
         self.thread_spin.setValue(4)
         self.thread_spin.setToolTip("병렬 수집 스레드 수")
         r1.addWidget(self.thread_spin)
         r1.addSpacing(6)
-        r1.addStretch();
+        r1.addStretch()
         c1.addLayout(r1)
 
         # Row 2 — 타임 아웃 / 재시도
-        r2 = QHBoxLayout();
+        r2 = QHBoxLayout()
         r2.setSpacing(8)
         r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
         self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(1, 60);
+        self.timeout_spin.setRange(1, 60)
         self.timeout_spin.setValue(10)
         self.timeout_spin.setToolTip("요청 최대 대기 시간")
         r2.addWidget(self.timeout_spin)
         r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
         self.retry_spin = QSpinBox()
-        self.retry_spin.setRange(0, 5);
+        self.retry_spin.setRange(0, 5)
         self.retry_spin.setValue(2)
         self.retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
         r2.addWidget(self.retry_spin)
         r2.addSpacing(6)
-        r2.addStretch();
+        r2.addStretch()
         c1.addLayout(r2)
 
         c1w.setFixedWidth(320)
@@ -408,7 +407,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
 
         bl.addWidget(pb_card)
         stw, stl = parts.card_widget("세션 통계")
-        sg = QHBoxLayout();
+        sg = QHBoxLayout()
         sg.setSpacing(10)
         self.s_total = StatCard("요청 완료", "0")
         self.s_err   = StatCard("오류", "0", RED)
@@ -983,11 +982,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
-        a = task
-
-        data = self._collected_data
-        headers = list(data[0].keys())
-
 # ══════════════════════════════════════════════════════
 #  MINI CHART WIDGETS
 # ══════════════════════════════════════════════════════
@@ -1009,7 +1003,7 @@ class BarChart(QWidget):
 
     def paintEvent(self, e):
         if not self.values: return
-        p = QPainter(self);
+        p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
         pad_l, pad_r, pad_t, pad_b = 40, 10, 10, 28
@@ -1073,7 +1067,7 @@ class LineChart(QWidget):
 
     def paintEvent(self, e):
         if not self.datasets: return
-        p = QPainter(self);
+        p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
         pl, pr, pt, pb = 40, 10, 14, 30
@@ -1192,7 +1186,7 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         super().__init__()
         self._build()
         # auto-refresh every 3 s
-        self._timer = QTimer();
+        self._timer = QTimer()
         self._timer.timeout.connect(self.reload)
         self._timer.start(3000)
 
@@ -1201,18 +1195,18 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        scroll = QScrollArea();
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
-        bl = QVBoxLayout(body);
-        bl.setContentsMargins(14, 14, 14, 14);
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(14)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
         # ── Row 1: KPI cards ──────────────────────
-        kpi_row = QHBoxLayout();
+        kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
         self.kpi_total = StatCard("총 수집 항목", "0")
         self.kpi_success = StatCard("성공률", "0%", GREEN)
@@ -1224,21 +1218,21 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         bl.addLayout(kpi_row)
 
         # ── Row 2: Status pie + bar chart ─────────
-        row2 = QHBoxLayout();
+        row2 = QHBoxLayout()
         row2.setSpacing(10)
 
         # Status donut
         sw, sl = parts.card_widget("상태 코드 분포")
-        inner = QHBoxLayout();
+        inner = QHBoxLayout()
         inner.setSpacing(16)
         self.donut = DonutChart()
         inner.addWidget(self.donut)
-        legend_w = QWidget();
+        legend_w = QWidget()
         legend_w.setStyleSheet("background:transparent;")
-        self.legend_lay = QVBoxLayout(legend_w);
-        self.legend_lay.setSpacing(6);
+        self.legend_lay = QVBoxLayout(legend_w)
+        self.legend_lay.setSpacing(6)
         self.legend_lay.setContentsMargins(0, 0, 0, 0)
-        inner.addWidget(legend_w);
+        inner.addWidget(legend_w)
         inner.addStretch()
         sl.addLayout(inner)
         row2.addWidget(sw, 1)
@@ -1301,12 +1295,12 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        scroll = QScrollArea();
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
-        bl = QVBoxLayout(body);
-        bl.setContentsMargins(14, 14, 14, 14);
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(12)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
@@ -1336,7 +1330,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         nrl.addWidget(self.next_task_lbl)
         bl.addWidget(nrw)
 
-        self._cd_timer = QTimer();
+        self._cd_timer = QTimer()
         self._cd_timer.timeout.connect(self._update_countdown)
         self._cd_timer.start(1000)
 
@@ -1380,7 +1374,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             self.sched_table.insertRow(r)
 
             # 인덱스
-            idx_item = QTableWidgetItem();
+            idx_item = QTableWidgetItem()
             idx_item.setData(Qt.ItemDataRole.DisplayRole, idx)
             idx_item.setForeground(QColor(TEXT_MUTED))
             self.sched_table.setItem(r, 0, idx_item)
@@ -1410,21 +1404,21 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             self.sched_table.setItem(r, 5, si)
 
             # Action (수정 / 삭제)
-            action_w = QWidget();
+            action_w = QWidget()
             action_w.setStyleSheet("background:transparent;")
-            al = QHBoxLayout(action_w);
-            al.setContentsMargins(4, 2, 4, 2);
+            al = QHBoxLayout(action_w)
+            al.setContentsMargins(4, 2, 4, 2)
             al.setSpacing(4)
-            edit_btn = parts.outline_btn("✎ 수정");
+            edit_btn = parts.outline_btn("✎ 수정")
             edit_btn.setFixedHeight(28)
             edit_btn.setStyleSheet(edit_btn.styleSheet() + f" font-size:11px; padding:3px 10px; color:{ACCENT_LIGHT};")
             edit_btn.clicked.connect(lambda _, i=idx: self._manage_schedule_task(sched_task="수정", idx=i))
             # edit_btn.clicked.connect(lambda _, i=idx: self._show_edit_panel(i))
-            del_btn = parts.outline_btn("삭제");
+            del_btn = parts.outline_btn("삭제")
             del_btn.setFixedHeight(28)
             del_btn.setStyleSheet(del_btn.styleSheet() + f" font-size:11px; padding:3px 10px; color:{RED};")
             del_btn.clicked.connect(lambda _, i=idx: self._delete_schedule(i))
-            al.addWidget(edit_btn);
+            al.addWidget(edit_btn)
             al.addWidget(del_btn)
             self.sched_table.setCellWidget(r, 6, action_w)
 
@@ -1448,19 +1442,19 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         root.setSpacing(0)
 
         # ── 스크롤 바디 ──────────────────────────────────
-        scroll = QScrollArea();
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
-        bl = QVBoxLayout(body);
-        bl.setContentsMargins(14, 14, 14, 14);
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(14)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
         # ── 전역 옵션 카드 ──────────────────────────────
         gw1, gl1 = parts.card_widget("세션 설정")
-        row0 = QHBoxLayout();
+        row0 = QHBoxLayout()
         row0.setSpacing(16)
 
         self.ua_check = QCheckBox("UA 랜덤")
@@ -1481,7 +1475,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         bl.addWidget(gw1)
 
         self.gw2, gl2 = parts.card_widget("프록시 옵션")
-        row0 = QHBoxLayout();
+        row0 = QHBoxLayout()
         row0.setSpacing(16)
         self._rotate_cb = QCheckBox("자동 로테이션")
         self._rotate_cb.setChecked(False)
@@ -1491,17 +1485,17 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         row0.addWidget(self._test_cb)
         row0.addStretch()
         gl2.addLayout(row0)
-        row1 = QHBoxLayout();
+        row1 = QHBoxLayout()
         row1.setSpacing(10)
         row1.addWidget(parts.make_label("분당 IP 허용 갯수", TEXT_SECONDARY, 12))
-        self._allow_ip_cnts = QSpinBox();
-        self._allow_ip_cnts.setRange(1, 15);
+        self._allow_ip_cnts = QSpinBox()
+        self._allow_ip_cnts.setRange(1, 15)
         self._allow_ip_cnts.setValue(10)
         row1.addWidget(self._allow_ip_cnts)
         row1.addSpacing(20)
         row1.addWidget(parts.make_label("MAX RETRY", TEXT_SECONDARY, 12))
-        self._retry_spin = QSpinBox();
-        self._retry_spin.setRange(1, 20);
+        self._retry_spin = QSpinBox()
+        self._retry_spin.setRange(1, 20)
         self._retry_spin.setValue(3)
         row1.addWidget(self._retry_spin)
         row1.addStretch()
@@ -1511,7 +1505,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         # ── 프록시 목록 카드 ──────────────────────────────
         self.pw, pl = parts.card_widget("프록시 목록")
         # 테이블 헤더 행
-        hdr_row = QHBoxLayout();
+        hdr_row = QHBoxLayout()
         hdr_row.setSpacing(8)
         hdr_row.addStretch()
 
@@ -1575,7 +1569,6 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         t.setRowHeight(r, 36)
 
         align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-        center = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter
 
         # col 0 — 활성 여부 (ItemIsUserCheckable — setCellWidget 없이 체크박스 렌더링)
         # setItem() 1회로 완결되어 대량 삽입 성능에 영향 없음
@@ -1654,12 +1647,12 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        scroll = QScrollArea();
+        scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
-        bl = QVBoxLayout(body);
-        bl.setContentsMargins(14, 14, 14, 14);
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(14)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
@@ -1668,7 +1661,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         global_w, global_l = parts.card_widget("전역 인증 옵션")
         global_w.setStyleSheet(
             global_w.styleSheet() + "border-radius:0px; border-left:none; border-right:none; border-top:none;")
-        row0 = QHBoxLayout();
+        row0 = QHBoxLayout()
         row0.setSpacing(16)
         self._tls_cb = QCheckBox("TLS/SSL 인증서 검증")
         self._tls_cb.setChecked(False)
@@ -1708,7 +1701,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         lc_w, lc_l = parts.card_widget("로그인 대상 설정")
 
         def _field(label, widget, layout):
-            row = QHBoxLayout();
+            row = QHBoxLayout()
             row.setSpacing(10)
             lbl = parts.make_label(label, TEXT_SECONDARY, 12)
             lbl.setFixedWidth(90)
@@ -1728,7 +1721,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         self._login_pw.setEchoMode(QLineEdit.EchoMode.Password)
 
         # 비밀번호 표시/숨기기 토글
-        pw_row = QHBoxLayout();
+        pw_row = QHBoxLayout()
         pw_row.setSpacing(6)
         pw_row.addWidget(self._login_pw, 1)
         self._pw_toggle = QPushButton("👁")
@@ -1749,7 +1742,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             )
         )
         pw_row.addWidget(self._pw_toggle)
-        pw_widget = QWidget();
+        pw_widget = QWidget()
         pw_widget.setLayout(pw_row)
         pw_widget.setStyleSheet("background:transparent;")
 
@@ -1769,9 +1762,9 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         _field("아이디", self._login_id, lc_l)
 
         # 비밀번호 행은 toggle 버튼 포함이므로 직접 추가
-        pw_outer = QHBoxLayout();
+        pw_outer = QHBoxLayout()
         pw_outer.setSpacing(10)
-        pw_lbl = parts.make_label("비밀번호", TEXT_SECONDARY, 12);
+        pw_lbl = parts.make_label("비밀번호", TEXT_SECONDARY, 12)
         pw_lbl.setFixedWidth(90)
         pw_outer.addWidget(pw_lbl)
         pw_outer.addWidget(pw_widget, 1)
@@ -1785,7 +1778,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
         # ── 연결 상태 & 액션 카드 ────────────────────────
         ac_w, ac_l = parts.card_widget("연결 상태")
-        status_row = QHBoxLayout();
+        status_row = QHBoxLayout()
         status_row.setSpacing(12)
 
         self._login_status_dot = parts.make_label("●", TEXT_MUTED, 14)
@@ -1806,7 +1799,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
         # ── 저장된 Login Profile 목록 ────────────────────
         lp_w, lp_l = parts.card_widget("저장된 Login Profile")
-        lp_hdr = QHBoxLayout();
+        lp_hdr = QHBoxLayout()
         lp_hdr.addStretch()
         clear_all_btn = parts.outline_btn("전체 삭제")
         clear_all_btn.clicked.connect(self._clear_login_profiles)
@@ -1870,9 +1863,9 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         bg = bg_map.get(data["status"], BG_HOVER)
         status_lbl = QLabel(data["status"])
         status_lbl.setStyleSheet(f"color:{sc}; background:{bg}; border-radius:10px; padding:2px 10px; font-size:11px;")
-        sw3 = QWidget();
-        sl3 = QHBoxLayout(sw3);
-        sl3.setContentsMargins(4, 0, 4, 0);
+        sw3 = QWidget()
+        sl3 = QHBoxLayout(sw3)
+        sl3.setContentsMargins(4, 0, 4, 0)
         sl3.addWidget(status_lbl)
         self._cred_table.setCellWidget(r, 4, sw3)
 
@@ -1886,9 +1879,9 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             QPushButton:hover{{background:#7f1d1d;}}
         """)
         del_btn.clicked.connect(lambda _, ri=r: self._delete_cred_row(ri))
-        dw = QWidget();
-        dl = QHBoxLayout(dw);
-        dl.setContentsMargins(4, 2, 4, 2);
+        dw = QWidget()
+        dl = QHBoxLayout(dw)
+        dl.setContentsMargins(4, 2, 4, 2)
         dl.addWidget(del_btn)
         self._cred_table.setCellWidget(r, 5, dw)
 
