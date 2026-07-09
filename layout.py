@@ -974,7 +974,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
     # ── 추출 관련 메서드 ──────────────────────────────────────────────
     def preprocess(self, task):
-        """메모리(_collected_data)에 보관된 수집 데이터를 FILE 또는 DB로 추출"""
+        """정제 단계 진입 직전 상태 준비 — 실제 FILE/DB 추출은 _extract_result_table()이 수행."""
         # seq_no/needs_cleaning 등 정제 시 참조할 현재 작업 정보 보관
         self._current_task = task or {}
         self._cleaning_warned = False   # 새 수집 결과 — 팝업 안내 여부 초기화
@@ -1418,7 +1418,6 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             edit_btn.setFixedHeight(28)
             edit_btn.setStyleSheet(edit_btn.styleSheet() + f" font-size:11px; padding:3px 10px; color:{ACCENT_LIGHT};")
             edit_btn.clicked.connect(lambda _, i=idx: self._manage_schedule_task(sched_task="수정", idx=i))
-            # edit_btn.clicked.connect(lambda _, i=idx: self._show_edit_panel(i))
             del_btn = parts.outline_btn("삭제")
             del_btn.setFixedHeight(28)
             del_btn.setStyleSheet(del_btn.styleSheet() + f" font-size:11px; padding:3px 10px; color:{RED};")
@@ -1426,9 +1425,6 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             al.addWidget(edit_btn)
             al.addWidget(del_btn)
             self.sched_table.setCellWidget(r, 6, action_w)
-
-
-    # ── JSON 저장 / 로드 ──────────────────────────────
 
 
 # ══════════════════════════════════════════════════════
@@ -1979,7 +1975,6 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.global_toolbar = GlobalToolbar()
         self.global_toolbar.start_requested.connect(self._start_crawl)
         self.global_toolbar.stop_requested.connect(self._stop_crawl)
-        # self.global_toolbar.reset_requested.connect(self._reset_all_pages)
         right_layout.addWidget(self.global_toolbar)
 
         self.stack = QStackedWidget()
