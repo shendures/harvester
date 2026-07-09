@@ -6,6 +6,7 @@
 > - Issues & Backlog: 'systems/ISSUES.md'
 > - History: 'systems/HISTORY.md'
 > - GIT Guide: 'systems/GIT_GUIDE.md'
+> - Coding Guide : 'systems/CODING_GUIDE.md'
 
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
