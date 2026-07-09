@@ -14,10 +14,6 @@ import scrapy
 from scrapy import signals
 from twisted.internet import reactor
 import uuid
-from datetime import datetime as dt
-
-# useful for handling different item types with a single interface
-from itemadapter import ItemAdapter
 
 
 class DonasSpiderMiddleware:

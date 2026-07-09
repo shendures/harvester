@@ -8,11 +8,6 @@ class JsonExtractorSpider(scrapy.Spider):
 
     name = "spider_json"
 
-    # CONCURRENT_REQUESTS를 settings.py 대신 여기서 커스터마이징할 수 있습니다.
-    # custom_settings = {
-    #     'CONCURRENT_REQUESTS': 32,
-    # }
-
     # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
     def __init__(self, request_info=None, *args, **kwargs):
         super(JsonExtractorSpider, self).__init__(*args, **kwargs)
@@ -23,7 +18,6 @@ class JsonExtractorSpider(scrapy.Spider):
             self.logger.error("❌ 수집 목록 리스트가 main.py로부터 전달되지 않았습니다.")
         else:
             self.request_info = request_info
-            # self.collect_info["conditions"] = json.loads(self.collect_info["conditions"])
 
     # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):

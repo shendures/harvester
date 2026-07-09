@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-09
+- **최신 갱신**: 2026-07-10
 
 ---
 
@@ -611,6 +611,64 @@
 - `ISSUES.md`(백로그 ④ 해소 표시, 재확인 날짜 갱신) · `PROJECT_REPORT.md`
   (layout.py/trigger.py/worker.py 줄 수 정정, scrapy-selenium 제거 반영 등
   묵은 오류 정정 포함) 문서 동기화도 이 릴리스 직후 반영
+
+### CODING_GUIDE.md 기준 전체 코드 정리 (`refactor/code-cleanup`, 6개 커밋, 2026-07-10)
+
+- **배경**: `systems/CODING_GUIDE.md` 신설 이후, 기존 코드베이스 전체(파이썬
+  약 10,200줄)를 가이드 기준으로 점검·정리. 토큰 소모를 줄이기 위해
+  `ruff`로 기계적 위반을 먼저 걸러내고, LLM은 ruff가 못 잡는 네이밍·매직넘버·
+  중복·죽은 코드 등 판단이 필요한 부분만 파일 그룹 단위(소형 → 중형 →
+  worker/db_conn/conf → layout/style → trigger.py)로 순회하며 처리
+- **수정** (커밋 순):
+  - `1128e6d`: 전 모듈 미사용 import·주석 처리된 죽은 코드·미사용 지역변수
+    제거 + `ruff --fix`로 불필요한 세미콜론(E703)·한 줄 다중 import(E401)
+    77건 자동 정리
+  - `2aafc38`: ruff가 자동 수정하지 못한 나머지 41건(E701/E702/E712/E721/E722)
+    수동 정리 — `engine.py`의 payload 3분기(True/False/None)는 `is True`/
+    `is False`로 엄격 비교 유지(단순 진리값 검사로 바꾸면 None 검증이
+    무너짐), bare except에는 문맥에 맞는 구체적 예외 타입 지정
+  - `c34a87a`: 소형 모듈 12개 파일 — f-string 중첩 따옴표(Python<3.12
+    미지원) 제거, 오해 소지 있는 변수명(`digits`→`normalized_tel`) 수정,
+    반복되는 매직 넘버(`time.sleep(3)`) 상수화. 변수명 리네임 중
+    `request_info["conditions"]["mainUrl"]`처럼 외부 도구
+    (`generator_conditions.html`)가 만드는 딕셔너리 키까지 실수로 같이
+    바뀔 뻔한 것을 발견해 롤백 — 이후 그룹 작업 시 딕셔너리 키 문자열은
+    리네임 대상에서 제외
+  - `6a442ba`: `engine.py`/`utility.py` — `get_render_result()`/`get_result()`의
+    seq_no·dataFormat 분기에 `else`가 없어 미지원 값 유입 시
+    `UnboundLocalError`로 크래시하던 것을 명시적 `ValueError`로 전환(지원
+    경로 동작 무변경). 죽은 플래그 인자 함수 `update_slash(reverse=True)`
+    제거(호출부 2곳 모두 `reverse=False`만 사용해 `True` 분기가 죽은
+    코드였음) → `to_forward_slash()`로 단순화
+  - `worker.py`/`middlewares.py`/`db_conn.py`/`conf.py`는 이전 세션들에서
+    이미 충분히 정리되어 있어 이번 그룹은 변경 없음(검토만 수행)
+  - `51fc797`: `layout.py` — `MonitorPage.preprocess()`의 docstring이
+    "FILE/DB로 추출"이라 되어 있었으나 실제로는 정제 단계 진입 전 상태
+    준비만 수행(실제 추출은 `_extract_result_table()`)하는 것으로 확인,
+    docstring 정정. 주석 처리된 죽은 콜백 연결 2곳, 내용 없는 orphan
+    섹션 헤더 제거
+  - `122315c`: `trigger.py`에서 함수마다 반복 정의되던 `VALUE_COLORS`(3곳)·
+    `DB_PORTS`(2곳, `DB_PORTS_S` 포함) 딕셔너리 리터럴을 모듈 레벨 상수로
+    통합. `GlobalToolbar._update_step_ui()`가 `step_circles`/`step_labels`를
+    채우는 코드가 `_build()`에 없어 항상 빈 리스트를 순회하는 완전한
+    no-op였음을 데이터 흐름 분석으로 확인 후, 메서드·속성과 trigger.py의
+    호출부 5곳을 함께 제거(각 호출 지점에 실제 동작하는
+    `mw.dashboard._update_step_ui()`가 나란히 있어 동작 변화 없음)
+- **의도적으로 보류한 것**: 스파이더 5종(`spihtml`/`spijson`/`spixml`/
+  `spirenderer`/`spidetail`)의 `__init__`/예외처리 중복(DRY 위반)은 예정된
+  다중 블루프린트 업그레이드(이슈 ⑯ 관련 재설계)와 겹칠 가능성이 높아
+  보류. `run_login()`/`get_render_result()`의 고객사별(seq_no) 로직이
+  `engine.py`에 하드코딩된 구조, `_manage_schedule_task()`(749줄) 등
+  초대형 다이얼로그 빌더 함수 분리는 스타일 정리 범위를 넘는 설계 판단이라
+  손대지 않음. `middlewares.py`의 미사용 `Random*Middleware` 클래스들은
+  `settings.py`에 토글용 주석으로 남아 있어 의도적 코드로 판단, 유지
+- **검증**: 매 커밋마다 `ruff check .`(전체 통과) + 전체 파일 `py_compile`
+  통과 확인. 최종적으로 WSL uv venv(Python 3.12) + `QT_QPA_PLATFORM=offscreen`
+  헤드리스 PyQt6로 `MainWindow` 실구동 — 페이지 5종 전환, Start/Stop 버튼
+  (1000ms 타이머 대기까지 포함해 `GlobalToolbar._update_step_ui` 제거 후
+  대시보드 단계 표시가 실제로 전환되는지 실측), 스케줄 작업 추가 다이얼로그
+  (`DB_PORTS` 참조 경로), 모니터 테이블 상세보기(`VALUE_COLORS` 참조 경로)
+  총 4개 시나리오 PASS. 검증용 venv/스크립트는 확인 후 삭제
 
 ---
 

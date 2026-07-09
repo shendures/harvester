@@ -4,6 +4,6 @@ import re
 
 def refine_row(row: dict) -> dict:
     tel = row.get("tel", "")
-    digits = re.sub(r"\)", "-", tel)
-    row["tel"] = digits
+    normalized_tel = re.sub(r"\)", "-", tel)
+    row["tel"] = normalized_tel
     return row

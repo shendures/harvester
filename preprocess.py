@@ -46,7 +46,6 @@ load_custom_rule() 함수
 """
 
 from __future__ import annotations
-import copy
 from dataclasses import dataclass, field
 from typing import Callable
 
