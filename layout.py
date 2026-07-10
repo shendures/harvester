@@ -11,7 +11,7 @@ from trigger import (
     TrayManagerTriggers, MainWindowTriggers,
     LogViewerDialog,
 )
-from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton
+from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -226,6 +226,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self.step_arrow_groups = []
         self._index = 0
         self._out_mode = None
+        self.output_info = customized_settings.get_output_settings()
         self._running = False
         self._all_rows = []
         self._collected_data = []   # 수집된 원본 데이터를 메모리에 보관 (추출 시 사용)
@@ -339,39 +340,6 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r2.addSpacing(6)
         r2.addStretch()
         c1.addLayout(r2)
-
-        # Row 3 — 자동 저장 (수집 완료 시 결과를 자동으로 저장할지 / 무엇을 저장할지)
-        c1.addSpacing(6)
-        c1.addWidget(Divider())
-        c1.addSpacing(6)
-
-        r3 = QHBoxLayout()
-        r3.setSpacing(8)
-        self.auto_save_chk = QCheckBox("자동 저장")
-        self.auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
-        r3.addWidget(self.auto_save_chk)
-        r3.addSpacing(6)
-
-        self.auto_src_raw_btn = TagButton("RAW")
-        self.auto_src_raw_btn.setChecked(True)   # 기본값: customized_settings.get_output_settings()의 auto_save_source="raw"와 동일
-        self.auto_src_ref_btn = TagButton("정제")
-        self.auto_src_ref_btn.setToolTip(
-            "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
-            "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
-        )
-        r3.addWidget(self.auto_src_raw_btn)
-        r3.addWidget(self.auto_src_ref_btn)
-        r3.addStretch()
-
-        self.auto_save_cfg_btn = parts.settings_btn("⚙")
-        self.auto_save_cfg_btn.setToolTip("파일 경로·포맷·DB 접속 정보 등 상세 설정 (MonitorPage와 공유)")
-        r3.addWidget(self.auto_save_cfg_btn)
-        c1.addLayout(r3)
-
-        self.auto_save_chk.toggled.connect(self._on_auto_save_toggled)
-        self.auto_src_raw_btn.clicked.connect(lambda: self._on_auto_save_source_selected(False))
-        self.auto_src_ref_btn.clicked.connect(lambda: self._on_auto_save_source_selected(True))
-        self._on_auto_save_toggled(self.auto_save_chk.isChecked())
 
         c1w.setFixedWidth(320)
         cfg.addWidget(c1w, 1)
@@ -1975,9 +1943,6 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.stack = QStackedWidget()
         self.dashboard = DashboardPage()
         self.monitor_page = MonitorPage()
-        # 대시보드 "수집 설정"의 자동 저장 상세(⚙) 버튼 — FILE/DB 세부 설정은
-        # MonitorPage의 output_info/다이얼로그를 그대로 공유
-        self.dashboard.auto_save_cfg_btn.clicked.connect(self.monitor_page._open_output_settings_dialog)
         self.schedule_page = SchedulerPage()
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()
