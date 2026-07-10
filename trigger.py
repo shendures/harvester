@@ -879,7 +879,7 @@ class MonitorPageTriggers:
                 continue
             entry_key = str(tuple(str(entry.get(c, "")) for c in columns))
             is_dup = entry_key in existing_keys
-            has_null = any(
+            is_empty_row = all(
                 entry.get(c) in (None, "", "null", "None")
                 for c in columns
             )
@@ -889,10 +889,10 @@ class MonitorPageTriggers:
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
 
-            # 행 배경색 — 중복: 빨강, null: 주황, 정상: 기본
+            # 행 배경색 — 중복: 빨강, 전체 컬럼 빈 값: 주황, 정상(1개 이상 값 존재): 기본
             if is_dup:
                 row_bg = QColor(RED).darker(180)
-            elif has_null:
+            elif is_empty_row:
                 row_bg = QColor(AMBER).darker(220)
             else:
                 row_bg = QColor(0, 0, 0, 0)
@@ -921,27 +921,27 @@ class MonitorPageTriggers:
         self._update_summary_cards()
 
     def _update_summary_cards(self):
-        """Raw 탭 요약 카드: 전체 / 정상 / null포함 / 중복 집계"""
+        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계"""
         columns = self._get_result_columns()
         total = len(self._collected_data)
-        null_rows = 0
+        empty_rows = 0
         dup_rows  = 0
         seen_keys: set = set()
         for entry in self._collected_data:
-            has_null = any(
+            is_empty_row = all(
                 entry.get(c) in (None, "", "null", "None") for c in columns
             )
             key = tuple(str(entry.get(c, "")) for c in columns)
             is_dup = key in seen_keys
             seen_keys.add(key)
-            if has_null:
-                null_rows += 1
+            if is_empty_row:
+                empty_rows += 1
             if is_dup:
                 dup_rows += 1
-        normal = total - null_rows - dup_rows
+        normal = total - empty_rows - dup_rows
         self.sum_total.update_value(total)
         self.sum_ok.update_value(max(normal, 0))
-        self.sum_err.update_value(null_rows)
+        self.sum_err.update_value(empty_rows)
         self.sum_warn.update_value(dup_rows)
 
     def _apply_filter(self):
