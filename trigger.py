@@ -1294,22 +1294,6 @@ class MonitorPageTriggers:
         self.refined_detail_lbl.setText("<br>".join(detail_parts))
         self.refined_detail_lbl.setTextFormat(Qt.TextFormat.RichText)
 
-    def _export_raw_csv(self):
-        """Raw 수집 데이터를 CSV로 내보내기"""
-        if not self._collected_data:
-            QMessageBox.warning(self, "내보내기 불가", "수집된 데이터가 없습니다.")
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "Raw CSV 저장", "raw_data.csv", "CSV (*.csv)")
-        if not path:
-            return
-        import csv as _csv
-        headers = list(self._collected_data[0].keys())
-        with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = _csv.DictWriter(f, fieldnames=headers)
-            writer.writeheader()
-            writer.writerows(self._collected_data)
-        QMessageBox.information(self, "완료", f"저장 완료:\n{path}")
-
     def _on_current_item_changed(self, current, previous):
         if current is not None:
             self._show_detail(current)
@@ -1395,6 +1379,29 @@ class MonitorPageTriggers:
         save_row.addWidget(auto_save_chk)
         save_row.addStretch()
         vl.addLayout(save_row)
+        vl.addSpacing(10)
+
+        auto_src_raw_btn = TagButton("RAW")
+        auto_src_ref_btn = TagButton("정제")
+        auto_save_source = self.output_info["extract"].get("auto_save_source", "raw")
+        auto_src_raw_btn.setChecked(auto_save_source != "refined")
+        auto_src_ref_btn.setChecked(auto_save_source == "refined")
+
+        def _select_auto_src(is_refined):
+            auto_src_raw_btn.setChecked(not is_refined)
+            auto_src_ref_btn.setChecked(is_refined)
+
+        auto_src_raw_btn.clicked.connect(lambda: _select_auto_src(False))
+        auto_src_ref_btn.clicked.connect(lambda: _select_auto_src(True))
+
+        auto_src_row = QHBoxLayout()
+        auto_src_row.setSpacing(8)
+        auto_src_row.addWidget(parts.make_label("자동 저장 대상", TEXT_SECONDARY, 12))
+        auto_src_row.addSpacing(6)
+        auto_src_row.addWidget(auto_src_raw_btn)
+        auto_src_row.addWidget(auto_src_ref_btn)
+        auto_src_row.addStretch()
+        vl.addLayout(auto_src_row)
         vl.addSpacing(14)
         vl.addWidget(Divider())
         vl.addSpacing(14)
@@ -1647,6 +1654,9 @@ class MonitorPageTriggers:
             try:
                 is_auto_save_chk = auto_save_chk.isChecked()
                 self.output_info["extract"]["auto_save"] = is_auto_save_chk
+                self.output_info["extract"]["auto_save_source"] = (
+                    "refined" if auto_src_ref_btn.isChecked() else "raw"
+                )
 
                 if self._out_mode == "FILE":
                     file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
@@ -1699,14 +1709,23 @@ class MonitorPageTriggers:
         dlg.adjustSize()
         dlg.exec()
 
-    def _extract_result_table(self, task: dict = None):
+    def _extract_result_table(self, source: str):
         """
-        정제 데이터(_refined_data)가 있으면 그것을, 없으면 raw(_collected_data)를 추출합니다.
+        source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
+        호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
+        않았다면 먼저 _run_refine()을 실행한 뒤 그 결과를 추출합니다.
         """
-        data = self._refined_data if self._refined_data else self._collected_data
-        if not data:
-            QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
-            return
+        if source == "refined":
+            if not self._refined_data:
+                self._run_refine()
+            data = self._refined_data
+            if not data:
+                return   # _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+        else:
+            data = self._collected_data
+            if not data:
+                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                return
         headers = list(data[0].keys())
 
         try:
@@ -3672,8 +3691,10 @@ class MainWindowTriggers:
         self.dashboard._update_step_ui(4)
 
         try:
-            if task.get("extract", {}).get("auto_save"):
-                self.monitor_page._extract_result_table()
+            extract_cfg = task.get("extract", {})
+            if extract_cfg.get("auto_save"):
+                auto_save_source = extract_cfg.get("auto_save_source", "raw")
+                self.monitor_page._extract_result_table(source=auto_save_source)
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 

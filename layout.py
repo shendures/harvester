@@ -593,9 +593,22 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         tbl_ctrl.addWidget(self.count_lbl)
         tbl_ctrl.addStretch()
 
-        raw_csv_btn = parts.outline_btn("RAW CSV 내보내기")
-        raw_csv_btn.clicked.connect(self._export_raw_csv)
-        tbl_ctrl.addWidget(raw_csv_btn)
+        raw_exp_btn = parts.action_btn("EXTRACT")
+        raw_exp_btn.clicked.connect(lambda: self._extract_result_table(source="raw"))
+        tbl_ctrl.addWidget(raw_exp_btn)
+
+        raw_out_cfg_btn = QPushButton("⚙  추출 설정")
+        raw_out_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        raw_out_cfg_btn.setStyleSheet(f"""
+            QPushButton {{
+                background:{BG_SECONDARY}; color:{TEXT_SECONDARY};
+                border:1px solid {BORDER_LIGHT}; border-radius:6px;
+                padding:5px 12px; font-size:12px;
+            }}
+            QPushButton:hover {{ background:{BG_HOVER}; color:{ACCENT_LIGHT}; border-color:{ACCENT_LIGHT}; }}
+        """)
+        raw_out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
+        tbl_ctrl.addWidget(raw_out_cfg_btn)
         tc.addLayout(tbl_ctrl)
 
         # null·중복 안내
@@ -781,7 +794,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         ref_ctrl.addStretch()
 
         exp_btn = parts.action_btn("EXTRACT")
-        exp_btn.clicked.connect(self._extract_result_table)
+        exp_btn.clicked.connect(lambda: self._extract_result_table(source="refined"))
         ref_ctrl.addWidget(exp_btn)
 
         out_cfg_btn = QPushButton("⚙  추출 설정")
