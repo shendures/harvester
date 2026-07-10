@@ -569,7 +569,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         sg.setSpacing(10)
         self.sum_total = StatCard("전체 항목",  "0")
         self.sum_ok    = StatCard("정상 행",     "0", GREEN)
-        self.sum_err   = StatCard("null 포함",   "0", AMBER)
+        self.sum_err   = StatCard("전체 null",   "0", AMBER)
         self.sum_warn  = StatCard("중복 행",     "0", RED)
         for card in [self.sum_total, self.sum_ok, self.sum_err, self.sum_warn]:
             card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
@@ -600,7 +600,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # null·중복 안내
         info_lbl = parts.make_label(
-            "● 주황색 배경: null 포함 행  ● 빨간색 배경: 중복 행",
+            "● 주황색 배경: 전체 null 행  ● 빨간색 배경: 중복 행",
             AMBER, 11
         )
         tc.addWidget(info_lbl)
