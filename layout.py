@@ -597,16 +597,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         raw_exp_btn.clicked.connect(lambda: self._extract_result_table(source="raw"))
         tbl_ctrl.addWidget(raw_exp_btn)
 
-        raw_out_cfg_btn = QPushButton("⚙  추출 설정")
-        raw_out_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        raw_out_cfg_btn.setStyleSheet(f"""
-            QPushButton {{
-                background:{BG_SECONDARY}; color:{TEXT_SECONDARY};
-                border:1px solid {BORDER_LIGHT}; border-radius:6px;
-                padding:5px 12px; font-size:12px;
-            }}
-            QPushButton:hover {{ background:{BG_HOVER}; color:{ACCENT_LIGHT}; border-color:{ACCENT_LIGHT}; }}
-        """)
+        raw_out_cfg_btn = parts.settings_btn("⚙  추출 설정")
         raw_out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
         tbl_ctrl.addWidget(raw_out_cfg_btn)
         tc.addLayout(tbl_ctrl)
@@ -797,16 +788,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         exp_btn.clicked.connect(lambda: self._extract_result_table(source="refined"))
         ref_ctrl.addWidget(exp_btn)
 
-        out_cfg_btn = QPushButton("⚙  추출 설정")
-        out_cfg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        out_cfg_btn.setStyleSheet(f"""
-            QPushButton {{
-                background:{BG_SECONDARY}; color:{TEXT_SECONDARY};
-                border:1px solid {BORDER_LIGHT}; border-radius:6px;
-                padding:5px 12px; font-size:12px;
-            }}
-            QPushButton:hover {{ background:{BG_HOVER}; color:{ACCENT_LIGHT}; border-color:{ACCENT_LIGHT}; }}
-        """)
+        out_cfg_btn = parts.settings_btn("⚙  추출 설정")
         out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
         ref_ctrl.addWidget(out_cfg_btn)
         rtc.addLayout(ref_ctrl)
