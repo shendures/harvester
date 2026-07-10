@@ -29,6 +29,7 @@
 - Improve in this order: **working code → correct code → readable code → fast code.** Avoid premature optimization.
 - **KISS (Keep It Simple, Stupid)**: Prefer the simplest solution that works.
 - **DRY (Don't Repeat Yourself)**: The same knowledge/logic should not be duplicated in multiple places. However, do not force together code that is only coincidentally similar (beware of premature abstraction).
+- **When you're about to copy-paste a block you just wrote (or find yourself matching an existing block character-for-character), stop and unify instead**: extract a shared function/factory/component and call it from both sites, rather than leaving two copies. Before writing new UI/style/logic that looks like something already in the codebase, search for an existing shared helper (e.g., a factory class/module) and reuse or extend it first.
 - **YAGNI (You Aren't Gonna Need It)**: Do not build features you don't need yet.
 - **Consistency beats personal preference.** If the project already has an established style, follow it.
 
