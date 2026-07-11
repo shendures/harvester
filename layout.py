@@ -348,7 +348,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
 
         r3 = QHBoxLayout()
         r3.setSpacing(8)
-        self.auto_save_chk = QCheckBox("Auto Save")
+        self.auto_save_chk = QCheckBox("자동 저장")
         self.auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
         r3.addWidget(self.auto_save_chk)
         r3.addSpacing(6)
