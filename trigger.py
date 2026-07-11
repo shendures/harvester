@@ -2107,9 +2107,13 @@ class SchedulerPageTriggers:
 
         if sched_task == "등록":
             schedule_info = customized_settings.get_schedule_settings()
-            schedule_info["auto_save"] = True
             schedule_info.update(common_fields)
             schedule_info["extract"].update(common_fields["extract"])
+            # 스케줄 실행은 무인 실행이라 수동으로 "추출"을 누를 사람이 없음 —
+            # extract 병합 이후에 강제해야 common_fields["extract"](file/db만
+            # 있고 auto_save 키가 없음)에 덮어써지지 않음
+            schedule_info["extract"]["auto_save"] = True
+            schedule_info["extract"]["auto_save_source"] = "raw"
             schedule_info["schedule"].update(common_fields["schedule"])
             store.add_schedule(schedule_info)
             dlg.accept()
@@ -2122,6 +2126,8 @@ class SchedulerPageTriggers:
                 target[key] = common_fields[key]
             target["extract"]["file"].update(common_fields["extract"]["file"])
             target["extract"]["db"].update(common_fields["extract"]["db"])
+            target["extract"]["auto_save"] = True
+            target["extract"]["auto_save_source"] = "raw"
             target["schedule"].update(common_fields["schedule"])
             if idx in self._timers:
                 self._timers[idx].stop()
