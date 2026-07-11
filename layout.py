@@ -760,7 +760,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         run_row.addStretch()
         run_btn = parts.action_btn("정제 실행")
         run_btn.setFixedWidth(120)
-        run_btn.clicked.connect(self._run_refine)
+        run_btn.clicked.connect(lambda: self._run_refine())
         run_row.addWidget(run_btn)
         rl.addLayout(run_row)
 
