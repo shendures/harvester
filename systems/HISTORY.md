@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-11 18:48
+- **최신 갱신**: 2026-07-11 19:12
 
 ---
 
@@ -711,18 +711,57 @@
   전체 인스턴스화 회귀 없음 — 5개 시나리오 PASS, `ruff check` 통과.
   검증용 venv는 확인 후 삭제
 
+### 8차 릴리스 (PR #56, 2026-07-11)
+
+- `develop → main` 릴리스 PR 머지(GitHub 웹 UI가 아닌 `gh pr merge --admin`,
+  ruleset owner bypass): main = `e412ee4`
+- 포함 커밋(`ec7f2bf`, `499edb0`): 대시보드 자동 저장 설정 재이동("수집 &
+  저장 설정" 카드), 해당 경위 HISTORY.md 기록. PR #49~#55(코드 정리,
+  모니터링 페이지 개선 3건, 문서 지침 추가, PR #55 이동+revert)도 함께 포함
+- 로컬 `main`/`develop` 모두 `origin`과 동기화 확인
+
+### 스케줄 실행 시 자동 저장 미적용 버그 수정 (`trigger.py:2108-2131`, 2026-07-11)
+
+- **배경**: "스케줄링 작업을 통한 수집에서 자동 저장이 기본 설정되어
+  있는지" 검토 요청으로 발견 — 스케줄 실행은 무인 실행이라 사람이 수동으로
+  "추출"을 누를 수 없으므로, 코드는 스케줄 등록 시 자동 저장을 강제 On으로
+  설계한 의도가 있었음(`schedule_info["auto_save"] = True`)
+- **원인**: 이 강제 대입이 `extract` 딕셔너리가 아닌 `schedule_info` 최상위에
+  쓰여 있어, 실제 자동 저장 여부를 판정하는 `_on_finished()`
+  (`task["extract"].get("auto_save")`)가 참조하는 위치와 달랐음. 게다가 바로
+  다음 줄 `schedule_info.update(common_fields)`가 `common_fields["extract"]`
+  (`file`/`db` 키만 있고 `auto_save`/`auto_save_source` 키 자체가 없음)로
+  `extract`를 통째로 교체하면서, 원래 `get_schedule_settings()` 기본값에
+  있던 `extract.auto_save`/`auto_save_source` 키까지 함께 사라짐 — 결과적으로
+  스케줄 실행이 완료돼도 자동 저장 분기가 항상 스킵되고 있었음(실측 재현으로
+  확인). 스케줄 등록 다이얼로그 자체에는 자동 저장을 켜고 끌 UI가 없어
+  전적으로 이 하드코딩에 의존하는 구조였음
+- **수정**: `_apply_schedule()`의 "등록"·"수정" 두 분기 모두, `extract` 병합이
+  끝난 뒤에 `target["extract"]["auto_save"] = True` /
+  `["auto_save_source"] = "raw"`를 강제하도록 순서 조정 — 이후 어떤 병합도
+  이 값을 덮어쓸 수 없음. `auto_save_source`를 `"raw"`로 고정한 이유는 "정제"를
+  선택할 UI가 스케줄 다이얼로그에 없고, 무인 실행에서 리뷰 없이 마지막 정제
+  규칙이 그대로 나가는 위험(추출 설정 다이얼로그에서도 지적된 리스크)을
+  피하기 위함
+- **검증** (WSL uv venv, Python 3.12, PyQt6 6.10.2, 헤드리스): 다이얼로그
+  위젯 대신 최소 Qt 위젯으로 대체해 실제 `SchedulerPage._apply_schedule()`을
+  직접 호출(저장 경로는 임시 폴더로 리다이렉트해 실사용자 홈 디렉토리 비오염) —
+  신규 등록 시 `extract.auto_save=True`/`auto_save_source="raw"` 확인, 기존
+  스케줄 수정 시 값 유지 및 다른 필드만 갱신됨 확인, `_on_finished()`가 보는
+  최종 `task["extract"]`에서 자동 저장 분기가 실제로 True로 평가됨을 종단
+  확인 — 3개 시나리오 PASS, `ruff check` 통과. 검증용 venv는 확인 후 삭제
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-11 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `c91a435` (PR #47) | ✅ | 미확인 |
-| `develop` | `ec7f2bf` | ✅ | 미확인 |
+| `main` | `e412ee4` (PR #56) | ✅ | 미확인 |
+| `develop` | `e412ee4` + 스케줄 자동 저장 버그 수정 커밋 1건 | ✅ | 미확인 |
 
-`main` 대비 `develop`이 PR #49~#55 커밋 + 자동 저장 재이동(`ec7f2bf`)만큼
-앞서 있음(코드 정리, 모니터링 페이지 개선 3건, 문서 지침 추가, 대시보드
-자동 저장 설정 이동·되돌림·재이동 포함) — 아직 release PR 미실시.
+`main`/`develop`이 PR #56 릴리스로 동기화된 뒤, `develop`에 스케줄 자동
+저장 버그 수정이 추가로 앞서 있음 — 아직 release PR 미실시.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 
