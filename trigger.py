@@ -589,6 +589,10 @@ class GlobalToolbarTriggers:
                 "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
             }
             self.task["extract"] = monitor_page.output_info["extract"]
+            self.task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
+            self.task["extract"]["auto_save_source"] = (
+                "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+            )
             self.start_requested.emit(self.task)
 
         except Exception as e:
@@ -670,6 +674,16 @@ class GlobalToolbarTriggers:
 # ══════════════════════════════════════════════════════
 class DashboardPageTriggers:
     """DashboardPage의 테이블·필터·내보내기 메서드"""
+
+    def _on_auto_save_toggled(self, checked: bool):
+        """자동 저장 체크박스 — 꺼져 있으면 저장 대상(RAW/정제) 토글은 의미가 없어 비활성화"""
+        self.auto_src_raw_btn.setEnabled(checked)
+        self.auto_src_ref_btn.setEnabled(checked)
+
+    def _on_auto_save_source_selected(self, is_refined: bool):
+        """자동 저장 대상(RAW/정제) 토글 — 상호 배타 선택"""
+        self.auto_src_raw_btn.setChecked(not is_refined)
+        self.auto_src_ref_btn.setChecked(is_refined)
 
     def add_row(self, row: dict):
         """워커 new_row 시그널 수신 → 대시보드 수집 모니터링 테이블에 행 추가"""
@@ -879,7 +893,7 @@ class MonitorPageTriggers:
                 continue
             entry_key = str(tuple(str(entry.get(c, "")) for c in columns))
             is_dup = entry_key in existing_keys
-            has_null = any(
+            is_empty_row = all(
                 entry.get(c) in (None, "", "null", "None")
                 for c in columns
             )
@@ -889,10 +903,10 @@ class MonitorPageTriggers:
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
 
-            # 행 배경색 — 중복: 빨강, null: 주황, 정상: 기본
+            # 행 배경색 — 중복: 빨강, 전체 컬럼 빈 값: 주황, 정상(1개 이상 값 존재): 기본
             if is_dup:
                 row_bg = QColor(RED).darker(180)
-            elif has_null:
+            elif is_empty_row:
                 row_bg = QColor(AMBER).darker(220)
             else:
                 row_bg = QColor(0, 0, 0, 0)
@@ -921,27 +935,27 @@ class MonitorPageTriggers:
         self._update_summary_cards()
 
     def _update_summary_cards(self):
-        """Raw 탭 요약 카드: 전체 / 정상 / null포함 / 중복 집계"""
+        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계"""
         columns = self._get_result_columns()
         total = len(self._collected_data)
-        null_rows = 0
+        empty_rows = 0
         dup_rows  = 0
         seen_keys: set = set()
         for entry in self._collected_data:
-            has_null = any(
+            is_empty_row = all(
                 entry.get(c) in (None, "", "null", "None") for c in columns
             )
             key = tuple(str(entry.get(c, "")) for c in columns)
             is_dup = key in seen_keys
             seen_keys.add(key)
-            if has_null:
-                null_rows += 1
+            if is_empty_row:
+                empty_rows += 1
             if is_dup:
                 dup_rows += 1
-        normal = total - null_rows - dup_rows
+        normal = total - empty_rows - dup_rows
         self.sum_total.update_value(total)
         self.sum_ok.update_value(max(normal, 0))
-        self.sum_err.update_value(null_rows)
+        self.sum_err.update_value(empty_rows)
         self.sum_warn.update_value(dup_rows)
 
     def _apply_filter(self):
@@ -1294,22 +1308,6 @@ class MonitorPageTriggers:
         self.refined_detail_lbl.setText("<br>".join(detail_parts))
         self.refined_detail_lbl.setTextFormat(Qt.TextFormat.RichText)
 
-    def _export_raw_csv(self):
-        """Raw 수집 데이터를 CSV로 내보내기"""
-        if not self._collected_data:
-            QMessageBox.warning(self, "내보내기 불가", "수집된 데이터가 없습니다.")
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "Raw CSV 저장", "raw_data.csv", "CSV (*.csv)")
-        if not path:
-            return
-        import csv as _csv
-        headers = list(self._collected_data[0].keys())
-        with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = _csv.DictWriter(f, fieldnames=headers)
-            writer.writeheader()
-            writer.writerows(self._collected_data)
-        QMessageBox.information(self, "완료", f"저장 완료:\n{path}")
-
     def _on_current_item_changed(self, current, previous):
         if current is not None:
             self._show_detail(current)
@@ -1383,18 +1381,6 @@ class MonitorPageTriggers:
         out_row.addWidget(out_mode_lbl)
         out_row.addStretch()
         vl.addLayout(out_row)
-        vl.addSpacing(12)
-
-        auto_save_chk = QCheckBox("Auto Save")
-        auto_save_chk.setChecked(self.output_info["extract"]["auto_save"])
-        auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
-        save_row = QHBoxLayout()
-        save_row.setSpacing(8)
-        save_row.addWidget(parts.make_label("자동 저장", TEXT_SECONDARY, 12))
-        save_row.addSpacing(6)
-        save_row.addWidget(auto_save_chk)
-        save_row.addStretch()
-        vl.addLayout(save_row)
         vl.addSpacing(14)
         vl.addWidget(Divider())
         vl.addSpacing(14)
@@ -1645,9 +1631,6 @@ class MonitorPageTriggers:
 
         def _apply_file():
             try:
-                is_auto_save_chk = auto_save_chk.isChecked()
-                self.output_info["extract"]["auto_save"] = is_auto_save_chk
-
                 if self._out_mode == "FILE":
                     file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
                     file_name      = utility.update_empty_value(file_nm.text())
@@ -1699,14 +1682,23 @@ class MonitorPageTriggers:
         dlg.adjustSize()
         dlg.exec()
 
-    def _extract_result_table(self, task: dict = None):
+    def _extract_result_table(self, source: str):
         """
-        정제 데이터(_refined_data)가 있으면 그것을, 없으면 raw(_collected_data)를 추출합니다.
+        source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
+        호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
+        않았다면 먼저 _run_refine()을 실행한 뒤 그 결과를 추출합니다.
         """
-        data = self._refined_data if self._refined_data else self._collected_data
-        if not data:
-            QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
-            return
+        if source == "refined":
+            if not self._refined_data:
+                self._run_refine()
+            data = self._refined_data
+            if not data:
+                return   # _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+        else:
+            data = self._collected_data
+            if not data:
+                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                return
         headers = list(data[0].keys())
 
         try:
@@ -3672,8 +3664,10 @@ class MainWindowTriggers:
         self.dashboard._update_step_ui(4)
 
         try:
-            if task.get("extract", {}).get("auto_save"):
-                self.monitor_page._extract_result_table()
+            extract_cfg = task.get("extract", {})
+            if extract_cfg.get("auto_save"):
+                auto_save_source = extract_cfg.get("auto_save_source", "raw")
+                self.monitor_page._extract_result_table(source=auto_save_source)
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 

@@ -674,3 +674,20 @@ class Parts:
             }}
         """)
         return btn
+
+    def settings_btn(self, text, parent=None):
+        """보조 설정 버튼(예: "⚙ 추출 설정") — 카드 툴바에서 반복 사용"""
+        btn = QPushButton(text, parent)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background:{self.theme.BG_SECONDARY}; color:{self.theme.TEXT_SECONDARY};
+                border:1px solid {self.theme.BORDER_LIGHT}; border-radius:6px;
+                padding:5px 12px; font-size:12px;
+            }}
+            QPushButton:hover {{
+                background:{self.theme.BG_HOVER}; color:{self.theme.ACCENT_LIGHT};
+                border-color:{self.theme.ACCENT_LIGHT};
+            }}
+        """)
+        return btn

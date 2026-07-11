@@ -72,7 +72,8 @@ def get_output_settings():
                             'password': None,
                             'save_data_nm': None
                         },
-                        'auto_save': False
+                        'auto_save': False,
+                        'auto_save_source': 'raw'
                     }
             }
 
