@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-11 18:48
+- **최신 갱신**: 2026-07-11 20:00
 
 ---
 
@@ -711,18 +711,120 @@
   전체 인스턴스화 회귀 없음 — 5개 시나리오 PASS, `ruff check` 통과.
   검증용 venv는 확인 후 삭제
 
+### 8차 릴리스 (PR #56, 2026-07-11)
+
+- `develop → main` 릴리스 PR 머지(GitHub 웹 UI가 아닌 `gh pr merge --admin`,
+  ruleset owner bypass): main = `e412ee4`
+- 포함 커밋(`ec7f2bf`, `499edb0`): 대시보드 자동 저장 설정 재이동("수집 &
+  저장 설정" 카드), 해당 경위 HISTORY.md 기록. PR #49~#55(코드 정리,
+  모니터링 페이지 개선 3건, 문서 지침 추가, PR #55 이동+revert)도 함께 포함
+- 로컬 `main`/`develop` 모두 `origin`과 동기화 확인
+
+### 스케줄 실행 시 자동 저장 미적용 버그 수정 (`trigger.py:2108-2131`, 2026-07-11)
+
+- **배경**: "스케줄링 작업을 통한 수집에서 자동 저장이 기본 설정되어
+  있는지" 검토 요청으로 발견 — 스케줄 실행은 무인 실행이라 사람이 수동으로
+  "추출"을 누를 수 없으므로, 코드는 스케줄 등록 시 자동 저장을 강제 On으로
+  설계한 의도가 있었음(`schedule_info["auto_save"] = True`)
+- **원인**: 이 강제 대입이 `extract` 딕셔너리가 아닌 `schedule_info` 최상위에
+  쓰여 있어, 실제 자동 저장 여부를 판정하는 `_on_finished()`
+  (`task["extract"].get("auto_save")`)가 참조하는 위치와 달랐음. 게다가 바로
+  다음 줄 `schedule_info.update(common_fields)`가 `common_fields["extract"]`
+  (`file`/`db` 키만 있고 `auto_save`/`auto_save_source` 키 자체가 없음)로
+  `extract`를 통째로 교체하면서, 원래 `get_schedule_settings()` 기본값에
+  있던 `extract.auto_save`/`auto_save_source` 키까지 함께 사라짐 — 결과적으로
+  스케줄 실행이 완료돼도 자동 저장 분기가 항상 스킵되고 있었음(실측 재현으로
+  확인). 스케줄 등록 다이얼로그 자체에는 자동 저장을 켜고 끌 UI가 없어
+  전적으로 이 하드코딩에 의존하는 구조였음
+- **수정**: `_apply_schedule()`의 "등록"·"수정" 두 분기 모두, `extract` 병합이
+  끝난 뒤에 `target["extract"]["auto_save"] = True` /
+  `["auto_save_source"] = "raw"`를 강제하도록 순서 조정 — 이후 어떤 병합도
+  이 값을 덮어쓸 수 없음. `auto_save_source`를 `"raw"`로 고정한 이유는 "정제"를
+  선택할 UI가 스케줄 다이얼로그에 없고, 무인 실행에서 리뷰 없이 마지막 정제
+  규칙이 그대로 나가는 위험(추출 설정 다이얼로그에서도 지적된 리스크)을
+  피하기 위함
+- **검증** (WSL uv venv, Python 3.12, PyQt6 6.10.2, 헤드리스): 다이얼로그
+  위젯 대신 최소 Qt 위젯으로 대체해 실제 `SchedulerPage._apply_schedule()`을
+  직접 호출(저장 경로는 임시 폴더로 리다이렉트해 실사용자 홈 디렉토리 비오염) —
+  신규 등록 시 `extract.auto_save=True`/`auto_save_source="raw"` 확인, 기존
+  스케줄 수정 시 값 유지 및 다른 필드만 갱신됨 확인, `_on_finished()`가 보는
+  최종 `task["extract"]`에서 자동 저장 분기가 실제로 True로 평가됨을 종단
+  확인 — 3개 시나리오 PASS, `ruff check` 통과. 검증용 venv는 확인 후 삭제
+
+### 스케줄 정제 자동 저장에 화면 상태 무관 고정 규칙 적용 (`a4c6375`, 2026-07-11)
+
+- **배경**: "스케줄 실행 시 정제 데이터를 저장하려면 정제 규칙을 어떻게
+  선택할지" 검토 중, `_run_refine()`이 정제 시 적용하는 규칙이 등록
+  시점에 고정되는 게 아니라 **실행되는 순간 MonitorPage "② 정제 규칙
+  설정" 탭의 체크박스 상태를 그대로 읽는 구조**임을 확인 — 사람이
+  곁에 없는 무인 실행(스케줄)에서는 등록 시점과 전혀 다른(또는 완전히
+  무관한 목적의) 규칙이 그대로 적용될 수 있고, 잘못 적용돼도 확인할
+  방법이 없다는 근본 리스크로 판단
+- **수정**: `_run_refine()`에 `rules_override`/`skip_ui_update` 옵션 추가
+  — `rules_override`가 있으면 체크박스·제외 컬럼·치환값 등 화면 상태를
+  전혀 읽지 않고 지정된 규칙 dict(및 `DataRefiner` 자체 기본값)만 사용,
+  `skip_ui_update=True`면 정제 결과 테이블/요약/비교 탭 갱신과 탭 자동
+  전환을 건너뜀(무인 실행 중 화면 방해 방지). 기존 무인자 호출(체크박스
+  기반 수동 흐름)은 동작 변화 없음. 모듈 상수 `SCHEDULED_REFINE_RULES`
+  신설 — "① 커스텀 정제 규칙 적용" 선택 시 자동 연동되는 조합과 동일
+  (①~⑤=True, ⑥⑦=False). `_on_finished()`는 `auto_save_source=="refined"`
+  이면서 `task["job"]=="스케줄 실행"`일 때만 `_extract_result_table()`
+  호출 전에 이 고정 규칙으로 `_run_refine()`을 선실행 — 수동 실행·RAW
+  저장 경로는 그대로
+- seq_no별 커스텀 규칙 파일 로딩은 원래도 `task`(blueprint)의
+  `seq_no`/`needs_cleaning`으로 결정돼 화면과 무관했으므로 변경 없음
+- **검증** (WSL uv venv, Python 3.12, PyQt6 6.10.2, 헤드리스): 실제
+  `MonitorPage._run_refine()`을 직접 호출 — 체크박스를 override와 반대로
+  세팅해도 고정 규칙만 적용됨(중복·null 행 제거, trim 적용) 확인, 탭
+  전환·결과 테이블 갱신이 스킵됨 확인, 인자 없는 기존 호출은 회귀 없이
+  체크박스 기반으로 동작 확인. `MainWindow._on_finished()`를 스파이로
+  감싸 (스케줄+정제)만 override 경로를 타고 (수동+정제)·(스케줄+RAW)는
+  타지 않음을 확인 — 총 3개 시나리오 PASS, `ruff check` 통과. 검증용
+  venv는 확인 후 삭제
+- **잔여 리스크 기록**: `_run_refine()`의 빈 데이터 경고 모달이 스케줄+
+  정제저장 조합에서 이론상 처음 도달 가능해진 점을 `ISSUES.md` 이슈 ⑱로
+  등록(현재는 `_on_finished()`의 `total==0` 조기 반환으로 도달 불가, 보류)
+
+### 스케줄 등록 시 자동 저장 대상(RAW/정제) 선택 기능 추가 (`e91c676`, 2026-07-11)
+
+- **배경**: 스케줄 정제 자동 저장이 화면 상태와 무관한 고정 규칙
+  (`SCHEDULED_REFINE_RULES`)을 적용하도록 이미 바뀐 덕분에, 스케줄마다
+  RAW/정제 중 어느 쪽을 저장할지 사용자가 직접 고를 수 있게 노출해도
+  더 이상 리스크가 없다고 판단 — 종전에는 스케줄 다이얼로그에 이 선택
+  UI 자체가 없어 `auto_save_source`가 `"raw"`로 하드코딩돼 있었음
+- **수정**: `_manage_schedule_task()`의 "Save Setting" 섹션(기존 FILE/DB
+  출력 대상 토글 바로 아래)에 RAW/정제 `TagButton` 쌍 추가 — "정제"
+  버튼에는 고정 규칙이 적용된다는 안내 툴팁 포함. 등록 모드는
+  `output_info["extract"].get("auto_save_source", "raw")`, 수정 모드는
+  `existing_extract.get("auto_save_source", "raw")`로 기존 선택값을
+  복원(FILE/DB 토글과 동일한 패턴). `_apply_schedule()`의 하드코딩된
+  `"raw"` 두 곳(등록/수정)을 이 토글의 체크 상태로 교체 — `auto_save`
+  자체(자동 저장 여부)는 계속 무조건 강제 True 유지(스케줄은 항상
+  저장해야 하므로 사용자가 끌 항목이 아님). `_on_finished()`/
+  `_run_refine()`은 `auto_save_source` **값**만 보고 분기하므로 전혀
+  수정하지 않음 — 이전 구현의 안전장치가 그대로 재사용됨
+- **검증** (WSL uv venv, Python 3.12, PyQt6 6.10.2, 헤드리스):
+  `_manage_schedule_task(sched_task="등록")` 스모크 테스트로 새 위젯
+  포함해도 다이얼로그가 예외 없이 빌드되는지 확인, 실제
+  `_apply_schedule()` 직접 호출로 RAW/정제 선택이 각각
+  `auto_save_source`에 정확히 반영되는지, 기존 스케줄을 수정 모드에서
+  반대 값으로 변경 시 정확히 갱신되는지, 수정 모드 진입 시 기존
+  선택값이 올바르게 복원되는지 확인 — 4개 시나리오 PASS, `ruff check`
+  통과. 검증용 venv는 확인 후 삭제
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-11 기준)
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `c91a435` (PR #47) | ✅ | 미확인 |
-| `develop` | `ec7f2bf` | ✅ | 미확인 |
+| `main` | `e412ee4` (PR #56) | ✅ | 미확인 |
+| `develop` | `e91c676` | ✅ | 미확인 |
 
-`main` 대비 `develop`이 PR #49~#55 커밋 + 자동 저장 재이동(`ec7f2bf`)만큼
-앞서 있음(코드 정리, 모니터링 페이지 개선 3건, 문서 지침 추가, 대시보드
-자동 저장 설정 이동·되돌림·재이동 포함) — 아직 release PR 미실시.
+`main`/`develop`이 PR #56 릴리스로 동기화된 뒤, `develop`에 스케줄 자동
+저장 버그 수정 + 스케줄 정제 자동 저장 고정 규칙 적용 + 스케줄 자동
+저장 대상(RAW/정제) 선택 기능이 추가로 앞서 있음 — 아직 release PR
+미실시.
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.
 

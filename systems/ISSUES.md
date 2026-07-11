@@ -4,11 +4,11 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-09
+- **최신 갱신**: 2026-07-11 19:48
 
 ---
 
-## 0. 요약 표 (해결 16건 · 미해결 0건 · 보류 1건)
+## 0. 요약 표 (해결 16건 · 미해결 0건 · 보류 2건)
 
 | # | 이슈 요약 | 위치 | 상태 |
 |---|---|---|---|
@@ -29,6 +29,7 @@
 | ⑮ | POST URL에 `?` 없으면 크래시, 미지원 분기 시 암묵적 None 반환 | `engine.py:36-37, 83-133` | ✅ 해결 |
 | ⑯ | blueprint 2건 이상 시 빈 설정으로 기동, 워커 조용히 사망 | `conf.py:165-183`, `worker.py:92` | ⏸ 보류 (다중 블루프린트 업그레이드에서 재설계 예정) |
 | ⑰ | 중지 직후 즉시 재시작 시 이전 워커의 지연된 finished 신호가 새 워커 상태를 덮어씀 | `trigger.py:2554` | ✅ 해결 |
+| ⑱ | 스케줄+정제 자동 저장 조합에서 `_run_refine()`의 빈 데이터 경고가 무인 실행 중 블로킹 모달로 뜰 가능성 | `trigger.py:1046` (`_run_refine`), `_on_finished()`의 `total==0` 분기 | ⏸ 보류 (현재는 도달 불가, 잠재 리스크로 기록) |
 
 > 상세 설명·해결 경위는 아래 §1 표 참고.
 
@@ -55,6 +56,7 @@
 | ⑮ | **POST URL에 `?`가 없으면 즉시 크래시** — `get_json_form()`의 `re.search(".*(?=\?)", url)[0]`가 `None[0]` → TypeError. 같은 줄들이 SyntaxWarning(`"\?"` 잘못된 이스케이프, 향후 Python에서 에러 승격) 유발. 또 `get_scrapy_request()`는 `payload`가 True/False 외의 값이거나 method가 GET/POST 외이면 암묵적으로 `None`을 반환해 스파이더가 `yield None` 하게 됨 | `engine.py:36-37, 83-133` | ✅ **해결** — `get_json_form()`에 `?` 존재 여부 사전 검증(`ValueError`로 명시적 실패) 추가, 정규식을 raw string(`r".*(?=\?)"` 등)으로 전환해 SyntaxWarning 제거. `get_scrapy_request()`는 method가 GET/POST가 아니거나 POST인데 `payload`가 True/False가 아닌 경우 각각 `ValueError`를 명시적으로 raise하도록 변경(기존 암묵적 `None` 반환 제거). 모든 `start_requests()` 호출부가 이미 `yield` 지점을 `try/except Exception`으로 감싸고 있어, 새 예외는 크래시 대신 기존과 동일하게 로그로 처리됨. GET/POST(formdata)/POST(json) 정상 경로 3종 + 신규 예외 3종을 인터프리터에서 직접 실행해 검증 |
 | ⑯ | **blueprint 2건 이상이면 빈 설정으로 기동 → 워커 조용히 사망** — `request_info.json` 루트 리스트에 항목이 2개 이상이면 unwrap 없이 리스트를 `_validate()`에 전달, `"url" in list`는 항상 False라 검증 실패 → 빈 dict 폴백. 이 상태로 시작하면 `worker.run()`의 `self.task["callback_url"]`(try 밖)에서 KeyError → QThread가 조용히 죽고 UI는 "실행 중"에 고착 | `conf.py:165-183`, `worker.py:92` | ⏸ **보류** (2026-07-06) — 수집 목록 2개 이상을 다루는 다중 블루프린트 지원으로 프로그램을 업그레이드할 계획이 있어, 단건 전제의 현행 구조를 땜질 수정하지 않고 그 업그레이드에서 함께 재설계하기로 결정. 단건 검증 로직 자체는 여전히 유효하므로 별도 조치 없음 |
 | ⑰ | **중지 직후 즉시 재시작 시 이전 워커의 지연된 `finished` 신호가 새 워커 상태를 덮어씀** — (사용자 실사용 중 리포트) `_toggle_run()`의 중지 분기는 `self._worker.stop()`(플래그만 세팅, 비동기)만 호출하고 버튼은 즉시 "▶ 시작"으로 복귀 — 실제 서브프로세스 정리는 `worker.run()` 루프가 감지(최대 0.5s) → `_terminate_process()`(최대 ~0.8s) → `finally: finished.emit()`까지 별도로 최대 ~1.3s 더 걸림. 이 창 안에 사용자가 즉시 재시작하면 `_launch_worker()`가 `wait(1500)`의 반환값을 확인하지 않고 새 `MultiprocessWorker`를 만들어 `start()`함. `QThread.wait()`는 메인 스레드 이벤트 루프를 막으므로, 그 사이 emit된 **구(舊) 워커의 `finished` 신호가 큐잉됐다가 새 워커 시작 이후 뒤늦게 처리**됨 — `_on_finished`가 신호 출처를 구분하지 않아 새 워커가 실제로는 정상 수집 중인데도 `global_toolbar.set_running(False)`·`dashboard._update_step_ui(0)`·"수집 중단" 로그로 UI가 되돌아가 **수집이 중간에 막힌 것처럼 보임** | `trigger.py:2554` | ✅ **해결** — `_on_finished(task, summary)` 최상단에 `if self.sender() is not self._worker: return` 가드 추가. `finished`는 항상 시그널/슬롯 연결을 통해 호출되므로 `self.sender()`가 실제 emit한 워커 인스턴스를 정확히 반환하며(큐잉된 크로스스레드 연결 포함), 이미 교체된 워커의 지연 신호는 로그만 남기고 무시. 격리된 PyQt6 재현(구 워커 0.6s 지연 vs 신 워커 즉시 교체)으로 "구 워커 신호는 무시, 신 워커 신호는 정상 처리"를 확인 |
+| ⑱ | **스케줄+정제 자동 저장 조합에서 `_run_refine()`의 빈 데이터 경고가 무인 실행 중 블로킹 모달로 뜰 가능성** — 스케줄 실행 시 정제 데이터를 자동 저장하도록 고정 규칙을 적용하는 기능(`SCHEDULED_REFINE_RULES`, `_on_finished()`)을 구현하는 과정에서 발견. `_run_refine()`은 `self._collected_data`가 비어 있으면 `QMessageBox.warning()`(`trigger.py:1046`)을 띄우는데, 이 경로가 스케줄+정제저장 조합에서 처음으로 실제 도달 가능해짐(기존에는 스케줄 자동 저장 자체가 이슈 — 별도 기록 — 로 인해 항상 스킵되고 있어 도달 자체가 안 됐음). 무인 실행 중 사람이 없는 상태로 모달이 뜨면 확인 버튼을 누를 사람이 없어 앱이 사실상 멈춘 것처럼 보일 수 있음 | `trigger.py:1046` (`_run_refine`), `_on_finished()`의 `total==0` 조기 반환 분기 | ⏸ **보류** (2026-07-11) — 현재는 `_on_finished()`가 `summary["total"]==0`이면 정제/자동저장 로직에 도달하기 전에 이미 return하므로 실제로는 도달 불가. 다만 이 조기 반환 조건이 향후 바뀌거나 `_collected_data`가 비정상적으로 비게 되는 다른 경로가 생기면 노출될 수 있어 잠재 리스크로 기록. 조치가 필요해지면 무인 실행 경로에서는 모달 대신 로그만 남기고 조용히 스킵하는 방식으로 전환 권장 |
 
 ## 2. 문서 vs 코드 불일치
 

@@ -64,6 +64,19 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 # DB 타입별 기본 포트 (프록시/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
+# 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 고정 규칙 —
+# "① 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(②~⑤)과 동일.
+# 실행 시점의 화면 체크박스 상태에 의존하지 않도록 항상 이 값을 그대로 사용한다.
+SCHEDULED_REFINE_RULES = {
+    "custom_rule":      True,
+    "remove_duplicate": True,
+    "remove_null_row":  True,
+    "fill_null":        True,
+    "trim_whitespace":  True,
+    "drop_columns":     False,
+    "cast_numeric":     False,
+}
+
 
 # ══════════════════════════════════════════════════════
 #  SEARCH LINE EDIT  (한국어 IME 조합 중 텍스트 즉시 감지)
@@ -1037,29 +1050,44 @@ class MonitorPageTriggers:
                 cb.setChecked(True)
 
     # ── 정제 실행 ─────────────────────────────────────────────────────
-    def _run_refine(self):
+    def _run_refine(self, rules_override: dict[str, bool] | None = None, skip_ui_update: bool = False):
         """
         규칙 탭의 체크박스 상태를 읽어 DataRefiner를 구성하고 정제를 실행합니다.
         preprocess.DataRefiner가 실제 정제 로직을 전담합니다.
+
+        rules_override: 전달되면 체크박스 상태 대신 이 규칙 dict를 그대로 사용합니다
+            (스케줄 자동 저장 등 — 실행 시점의 화면 상태에 의존하지 않도록 고정 규칙을
+            적용할 때 사용. 체크박스·제외 컬럼·치환값 등 화면 상태는 전혀 읽지 않음).
+        skip_ui_update: True면 정제 결과 테이블/요약/비교 탭 갱신과 탭 자동 전환을
+            건너뜁니다 (무인 실행 중 화면을 건드리지 않기 위함).
         """
         if not self._collected_data:
             QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
-        # 체크박스 → _refine_rules 동기화
-        for key, cb in self._rule_checkboxes.items():
-            self._refine_rules[key] = cb.isChecked()
+        if rules_override is not None:
+            active_rules  = dict(rules_override)
+            drop_columns  = []
+            fill_value    = ""
+        else:
+            # 체크박스 → _refine_rules 동기화
+            for key, cb in self._rule_checkboxes.items():
+                self._refine_rules[key] = cb.isChecked()
 
-        # 제외 컬럼 파싱
-        raw_drop = getattr(self, 'drop_col_input', None)
-        if raw_drop is not None:
-            col_text = raw_drop.text().strip()
-            self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
+            # 제외 컬럼 파싱
+            raw_drop = getattr(self, 'drop_col_input', None)
+            if raw_drop is not None:
+                col_text = raw_drop.text().strip()
+                self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
 
-        # null 치환값 파싱 (기본 텍스트 "—", 비워두면 빈 값으로 치환)
-        raw_fill = getattr(self, 'fill_null_input', None)
-        if raw_fill is not None:
-            self._fill_null_value = raw_fill.text()
+            # null 치환값 파싱 (기본 텍스트 "—", 비워두면 빈 값으로 치환)
+            raw_fill = getattr(self, 'fill_null_input', None)
+            if raw_fill is not None:
+                self._fill_null_value = raw_fill.text()
+
+            active_rules = self._refine_rules
+            drop_columns = self._drop_column_names
+            fill_value   = self._fill_null_value
 
         lm = getattr(self.window(), 'log_manager', None)
 
@@ -1086,10 +1114,10 @@ class MonitorPageTriggers:
 
         # DataRefiner 구성 및 실행
         refiner = DataRefiner(
-            rules        = self._refine_rules,
-            drop_columns = self._drop_column_names,
+            rules        = active_rules,
+            drop_columns = drop_columns,
             custom_rule  = custom_rule_fn,
-            fill_value   = self._fill_null_value,
+            fill_value   = fill_value,
         )
         try:
             refined, stats = refiner.run(self._collected_data)
@@ -1111,13 +1139,14 @@ class MonitorPageTriggers:
                     f"원본 데이터로 계속합니다."
                 )
 
-        # UI 갱신
-        self._populate_refined_table(refined)
-        self._update_refined_summary(stats)
-        self._update_compare_tab(self._collected_data, refined, stats)
+        if not skip_ui_update:
+            # UI 갱신
+            self._populate_refined_table(refined)
+            self._update_refined_summary(stats)
+            self._update_compare_tab(self._collected_data, refined, stats)
 
-        # 정제 결과 탭으로 자동 이동
-        self.tab_widget.setCurrentIndex(2)
+            # 정제 결과 탭으로 자동 이동
+            self.tab_widget.setCurrentIndex(2)
 
         # 로그 기록
         if lm:
@@ -2105,11 +2134,17 @@ class SchedulerPageTriggers:
             },
         }
 
+        auto_save_source = "refined" if sched_info_dict["auto_src_ref_btn"].isChecked() else "raw"
+
         if sched_task == "등록":
             schedule_info = customized_settings.get_schedule_settings()
-            schedule_info["auto_save"] = True
             schedule_info.update(common_fields)
             schedule_info["extract"].update(common_fields["extract"])
+            # 스케줄 실행은 무인 실행이라 수동으로 "추출"을 누를 사람이 없음 —
+            # extract 병합 이후에 강제해야 common_fields["extract"](file/db만
+            # 있고 auto_save 키가 없음)에 덮어써지지 않음
+            schedule_info["extract"]["auto_save"] = True
+            schedule_info["extract"]["auto_save_source"] = auto_save_source
             schedule_info["schedule"].update(common_fields["schedule"])
             store.add_schedule(schedule_info)
             dlg.accept()
@@ -2122,6 +2157,8 @@ class SchedulerPageTriggers:
                 target[key] = common_fields[key]
             target["extract"]["file"].update(common_fields["extract"]["file"])
             target["extract"]["db"].update(common_fields["extract"]["db"])
+            target["extract"]["auto_save"] = True
+            target["extract"]["auto_save_source"] = auto_save_source
             target["schedule"].update(common_fields["schedule"])
             if idx in self._timers:
                 self._timers[idx].stop()
@@ -2462,6 +2499,38 @@ class SchedulerPageTriggers:
         out_row.addWidget(sched_out_mode_lbl)
         out_row.addStretch()
         root.addLayout(out_row)
+        root.addSpacing(8)
+
+        # ── 자동 저장 대상 (RAW / 정제) ────────────────────
+        if sched_task == "등록":
+            sched_auto_save_source = output_info["extract"].get("auto_save_source", "raw")
+        else:
+            sched_auto_save_source = existing_extract.get("auto_save_source", "raw")
+
+        sched_auto_raw_btn = TagButton("RAW")
+        sched_auto_ref_btn = TagButton("정제")
+        sched_auto_raw_btn.setChecked(sched_auto_save_source != "refined")
+        sched_auto_ref_btn.setChecked(sched_auto_save_source == "refined")
+        sched_auto_ref_btn.setToolTip(
+            "정제 선택 시 '① 커스텀 정제 규칙 적용' 및 자동 연동 규칙(②~⑤)이 "
+            "항상 고정 적용됩니다. 현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
+        )
+
+        def _sched_select_auto_src(is_refined):
+            sched_auto_raw_btn.setChecked(not is_refined)
+            sched_auto_ref_btn.setChecked(is_refined)
+
+        sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
+        sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
+
+        auto_src_row = QHBoxLayout()
+        auto_src_row.setSpacing(8)
+        auto_src_row.addWidget(parts.make_label("저장 대상", TEXT_MUTED, 11))
+        auto_src_row.addSpacing(6)
+        auto_src_row.addWidget(sched_auto_raw_btn)
+        auto_src_row.addWidget(sched_auto_ref_btn)
+        auto_src_row.addStretch()
+        root.addLayout(auto_src_row)
         root.addSpacing(8)
 
         # ── 추출 설정 스택 (FILE / DB) ────────────────────
@@ -2983,6 +3052,7 @@ class SchedulerPageTriggers:
             "date_edit":    self.date_edit,
             "dat_h": self.dat_h, "dat_m": self.dat_m, "dat_s": self.dat_s,
             "save_type":    sched_save_type,
+            "auto_src_ref_btn": sched_auto_ref_btn,
             "path_edit":    sched_path_edit,
             "file_nm":      sched_file_nm,
             "fmt_combo":    sched_fmt_combo,
@@ -3667,6 +3737,12 @@ class MainWindowTriggers:
             extract_cfg = task.get("extract", {})
             if extract_cfg.get("auto_save"):
                 auto_save_source = extract_cfg.get("auto_save_source", "raw")
+                if auto_save_source == "refined" and task.get("job") == "스케줄 실행":
+                    # 무인 실행 — 화면 체크박스 상태가 아닌 고정 규칙을 적용,
+                    # 결과 테이블/탭 전환 등 화면 갱신도 건너뜀
+                    self.monitor_page._run_refine(
+                        rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True
+                    )
                 self.monitor_page._extract_result_table(source=auto_save_source)
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
