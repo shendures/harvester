@@ -11,7 +11,7 @@ from trigger import (
     TrayManagerTriggers, MainWindowTriggers,
     LogViewerDialog,
 )
-from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable
+from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -298,7 +298,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self._update_step_ui(0)  # 초기 실행 시 "수집 대기" 상태로 불이 들어오게 설정
 
         # card 1
-        c1w, c1 = parts.card_widget("수집 설정")
+        c1w, c1 = parts.card_widget("수집 & 저장 설정")
 
         # Row 1 — 딜레이 / 스레드
         r1 = QHBoxLayout()
@@ -340,6 +340,35 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r2.addSpacing(6)
         r2.addStretch()
         c1.addLayout(r2)
+
+        # Row 3 — 자동 저장 (수집 완료 시 결과를 자동으로 저장할지 / 무엇을 저장할지)
+        c1.addSpacing(6)
+        c1.addWidget(Divider())
+        c1.addSpacing(6)
+
+        r3 = QHBoxLayout()
+        r3.setSpacing(8)
+        self.auto_save_chk = QCheckBox("자동 저장")
+        self.auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
+        r3.addWidget(self.auto_save_chk)
+        r3.addSpacing(6)
+
+        self.auto_src_raw_btn = TagButton("RAW")
+        self.auto_src_raw_btn.setChecked(True)   # 기본값: customized_settings.get_output_settings()의 auto_save_source="raw"와 동일
+        self.auto_src_ref_btn = TagButton("정제")
+        self.auto_src_ref_btn.setToolTip(
+            "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
+            "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
+        )
+        r3.addWidget(self.auto_src_raw_btn)
+        r3.addWidget(self.auto_src_ref_btn)
+        r3.addStretch()
+        c1.addLayout(r3)
+
+        self.auto_save_chk.toggled.connect(self._on_auto_save_toggled)
+        self.auto_src_raw_btn.clicked.connect(lambda: self._on_auto_save_source_selected(False))
+        self.auto_src_ref_btn.clicked.connect(lambda: self._on_auto_save_source_selected(True))
+        self._on_auto_save_toggled(self.auto_save_chk.isChecked())
 
         c1w.setFixedWidth(320)
         cfg.addWidget(c1w, 1)

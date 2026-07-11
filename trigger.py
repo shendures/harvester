@@ -589,6 +589,10 @@ class GlobalToolbarTriggers:
                 "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
             }
             self.task["extract"] = monitor_page.output_info["extract"]
+            self.task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
+            self.task["extract"]["auto_save_source"] = (
+                "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+            )
             self.start_requested.emit(self.task)
 
         except Exception as e:
@@ -670,6 +674,16 @@ class GlobalToolbarTriggers:
 # ══════════════════════════════════════════════════════
 class DashboardPageTriggers:
     """DashboardPage의 테이블·필터·내보내기 메서드"""
+
+    def _on_auto_save_toggled(self, checked: bool):
+        """자동 저장 체크박스 — 꺼져 있으면 저장 대상(RAW/정제) 토글은 의미가 없어 비활성화"""
+        self.auto_src_raw_btn.setEnabled(checked)
+        self.auto_src_ref_btn.setEnabled(checked)
+
+    def _on_auto_save_source_selected(self, is_refined: bool):
+        """자동 저장 대상(RAW/정제) 토글 — 상호 배타 선택"""
+        self.auto_src_raw_btn.setChecked(not is_refined)
+        self.auto_src_ref_btn.setChecked(is_refined)
 
     def add_row(self, row: dict):
         """워커 new_row 시그널 수신 → 대시보드 수집 모니터링 테이블에 행 추가"""
@@ -1367,41 +1381,6 @@ class MonitorPageTriggers:
         out_row.addWidget(out_mode_lbl)
         out_row.addStretch()
         vl.addLayout(out_row)
-        vl.addSpacing(12)
-
-        auto_save_chk = QCheckBox("Auto Save")
-        auto_save_chk.setChecked(self.output_info["extract"]["auto_save"])
-        auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
-        save_row = QHBoxLayout()
-        save_row.setSpacing(8)
-        save_row.addWidget(parts.make_label("자동 저장", TEXT_SECONDARY, 12))
-        save_row.addSpacing(6)
-        save_row.addWidget(auto_save_chk)
-        save_row.addStretch()
-        vl.addLayout(save_row)
-        vl.addSpacing(10)
-
-        auto_src_raw_btn = TagButton("RAW")
-        auto_src_ref_btn = TagButton("정제")
-        auto_save_source = self.output_info["extract"].get("auto_save_source", "raw")
-        auto_src_raw_btn.setChecked(auto_save_source != "refined")
-        auto_src_ref_btn.setChecked(auto_save_source == "refined")
-
-        def _select_auto_src(is_refined):
-            auto_src_raw_btn.setChecked(not is_refined)
-            auto_src_ref_btn.setChecked(is_refined)
-
-        auto_src_raw_btn.clicked.connect(lambda: _select_auto_src(False))
-        auto_src_ref_btn.clicked.connect(lambda: _select_auto_src(True))
-
-        auto_src_row = QHBoxLayout()
-        auto_src_row.setSpacing(8)
-        auto_src_row.addWidget(parts.make_label("자동 저장 대상", TEXT_SECONDARY, 12))
-        auto_src_row.addSpacing(6)
-        auto_src_row.addWidget(auto_src_raw_btn)
-        auto_src_row.addWidget(auto_src_ref_btn)
-        auto_src_row.addStretch()
-        vl.addLayout(auto_src_row)
         vl.addSpacing(14)
         vl.addWidget(Divider())
         vl.addSpacing(14)
@@ -1652,12 +1631,6 @@ class MonitorPageTriggers:
 
         def _apply_file():
             try:
-                is_auto_save_chk = auto_save_chk.isChecked()
-                self.output_info["extract"]["auto_save"] = is_auto_save_chk
-                self.output_info["extract"]["auto_save_source"] = (
-                    "refined" if auto_src_ref_btn.isChecked() else "raw"
-                )
-
                 if self._out_mode == "FILE":
                     file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
                     file_name      = utility.update_empty_value(file_nm.text())
