@@ -292,15 +292,7 @@ class TagButton(QPushButton):
             }}
             QPushButton:hover {{ background:#312e81; }}
             QPushButton:checked {{ background:{self.theme.ACCENT}; color:white; border-color:{self.theme.ACCENT}; }}
-            QPushButton:disabled {{
-                background:{self.theme.BG_PRIMARY}; color:{self.theme.TEXT_MUTED};
-                border-color:{self.theme.BORDER};
-            }}
         """)
-
-    def setEnabled(self, enabled: bool):
-        super().setEnabled(enabled)
-        self.setCursor(Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor)
 
 
 class StatCard(QWidget):
