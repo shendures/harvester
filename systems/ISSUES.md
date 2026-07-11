@@ -4,11 +4,11 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-11 19:48
+- **최신 갱신**: 2026-07-11 21:15
 
 ---
 
-## 0. 요약 표 (해결 16건 · 미해결 0건 · 보류 2건)
+## 0. 요약 표 (해결 17건 · 미해결 0건 · 보류 2건)
 
 | # | 이슈 요약 | 위치 | 상태 |
 |---|---|---|---|
@@ -30,6 +30,7 @@
 | ⑯ | blueprint 2건 이상 시 빈 설정으로 기동, 워커 조용히 사망 | `conf.py:165-183`, `worker.py:92` | ⏸ 보류 (다중 블루프린트 업그레이드에서 재설계 예정) |
 | ⑰ | 중지 직후 즉시 재시작 시 이전 워커의 지연된 finished 신호가 새 워커 상태를 덮어씀 | `trigger.py:2554` | ✅ 해결 |
 | ⑱ | 스케줄+정제 자동 저장 조합에서 `_run_refine()`의 빈 데이터 경고가 무인 실행 중 블로킹 모달로 뜰 가능성 | `trigger.py:1046` (`_run_refine`), `_on_finished()`의 `total==0` 분기 | ⏸ 보류 (현재는 도달 불가, 잠재 리스크로 기록) |
+| ⑲ | "② 정제 규칙 설정" 탭 [정제 실행] 버튼 클릭 시 `TypeError`가 처리되지 않아 프로세스 abort(프로그램 강제 종료) | `layout.py:763`, `trigger.py:1069` (`_run_refine`) | ✅ 해결 (PR #59) |
 
 > 상세 설명·해결 경위는 아래 §1 표 참고.
 
@@ -57,6 +58,7 @@
 | ⑯ | **blueprint 2건 이상이면 빈 설정으로 기동 → 워커 조용히 사망** — `request_info.json` 루트 리스트에 항목이 2개 이상이면 unwrap 없이 리스트를 `_validate()`에 전달, `"url" in list`는 항상 False라 검증 실패 → 빈 dict 폴백. 이 상태로 시작하면 `worker.run()`의 `self.task["callback_url"]`(try 밖)에서 KeyError → QThread가 조용히 죽고 UI는 "실행 중"에 고착 | `conf.py:165-183`, `worker.py:92` | ⏸ **보류** (2026-07-06) — 수집 목록 2개 이상을 다루는 다중 블루프린트 지원으로 프로그램을 업그레이드할 계획이 있어, 단건 전제의 현행 구조를 땜질 수정하지 않고 그 업그레이드에서 함께 재설계하기로 결정. 단건 검증 로직 자체는 여전히 유효하므로 별도 조치 없음 |
 | ⑰ | **중지 직후 즉시 재시작 시 이전 워커의 지연된 `finished` 신호가 새 워커 상태를 덮어씀** — (사용자 실사용 중 리포트) `_toggle_run()`의 중지 분기는 `self._worker.stop()`(플래그만 세팅, 비동기)만 호출하고 버튼은 즉시 "▶ 시작"으로 복귀 — 실제 서브프로세스 정리는 `worker.run()` 루프가 감지(최대 0.5s) → `_terminate_process()`(최대 ~0.8s) → `finally: finished.emit()`까지 별도로 최대 ~1.3s 더 걸림. 이 창 안에 사용자가 즉시 재시작하면 `_launch_worker()`가 `wait(1500)`의 반환값을 확인하지 않고 새 `MultiprocessWorker`를 만들어 `start()`함. `QThread.wait()`는 메인 스레드 이벤트 루프를 막으므로, 그 사이 emit된 **구(舊) 워커의 `finished` 신호가 큐잉됐다가 새 워커 시작 이후 뒤늦게 처리**됨 — `_on_finished`가 신호 출처를 구분하지 않아 새 워커가 실제로는 정상 수집 중인데도 `global_toolbar.set_running(False)`·`dashboard._update_step_ui(0)`·"수집 중단" 로그로 UI가 되돌아가 **수집이 중간에 막힌 것처럼 보임** | `trigger.py:2554` | ✅ **해결** — `_on_finished(task, summary)` 최상단에 `if self.sender() is not self._worker: return` 가드 추가. `finished`는 항상 시그널/슬롯 연결을 통해 호출되므로 `self.sender()`가 실제 emit한 워커 인스턴스를 정확히 반환하며(큐잉된 크로스스레드 연결 포함), 이미 교체된 워커의 지연 신호는 로그만 남기고 무시. 격리된 PyQt6 재현(구 워커 0.6s 지연 vs 신 워커 즉시 교체)으로 "구 워커 신호는 무시, 신 워커 신호는 정상 처리"를 확인 |
 | ⑱ | **스케줄+정제 자동 저장 조합에서 `_run_refine()`의 빈 데이터 경고가 무인 실행 중 블로킹 모달로 뜰 가능성** — 스케줄 실행 시 정제 데이터를 자동 저장하도록 고정 규칙을 적용하는 기능(`SCHEDULED_REFINE_RULES`, `_on_finished()`)을 구현하는 과정에서 발견. `_run_refine()`은 `self._collected_data`가 비어 있으면 `QMessageBox.warning()`(`trigger.py:1046`)을 띄우는데, 이 경로가 스케줄+정제저장 조합에서 처음으로 실제 도달 가능해짐(기존에는 스케줄 자동 저장 자체가 이슈 — 별도 기록 — 로 인해 항상 스킵되고 있어 도달 자체가 안 됐음). 무인 실행 중 사람이 없는 상태로 모달이 뜨면 확인 버튼을 누를 사람이 없어 앱이 사실상 멈춘 것처럼 보일 수 있음 | `trigger.py:1046` (`_run_refine`), `_on_finished()`의 `total==0` 조기 반환 분기 | ⏸ **보류** (2026-07-11) — 현재는 `_on_finished()`가 `summary["total"]==0`이면 정제/자동저장 로직에 도달하기 전에 이미 return하므로 실제로는 도달 불가. 다만 이 조기 반환 조건이 향후 바뀌거나 `_collected_data`가 비정상적으로 비게 되는 다른 경로가 생기면 노출될 수 있어 잠재 리스크로 기록. 조치가 필요해지면 무인 실행 경로에서는 모달 대신 로그만 남기고 조용히 스킵하는 방식으로 전환 권장 |
+| ⑲ | **"② 정제 규칙 설정" 탭 [정제 실행] 버튼 클릭 시 프로그램이 강제 종료됨** — (사용자 실사용 중 리포트) `run_btn.clicked.connect(self._run_refine)`처럼 람다 없이 직접 연결되어 있었는데, `QPushButton.clicked` 시그널은 항상 `bool checked` 인자를 슬롯에 전달함. 이 `bool`이 `_run_refine(self, rules_override=None, skip_ui_update=False)`의 첫 파라미터인 `rules_override`로 그대로 들어가 `rules_override is not None` 분기가 참이 되고, 이어지는 `dict(rules_override)`가 `dict(False)`를 호출해 `TypeError: 'bool' object is not iterable` 발생. 이 코드는 `refiner.run()`을 감싸는 try/except(`trigger.py:1122-1126`) 범위 밖이라 예외가 그대로 전파되고, 처리해줄 `sys.excepthook`도 없어 PyQt6가 프로세스를 abort — 패키징된 실행 파일에는 콘솔이 없어 사용자에게는 "정제 실행 클릭 시 프로그램이 그냥 꺼짐"으로 보임. 버튼 클릭 경로와 무관하게 스케줄 자동 저장 경로(`trigger.py:3743`, `_run_refine(rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True)`)는 시그널이 아닌 직접 호출이라 애초에 영향 없었음 | `layout.py:763`, `trigger.py:1069` (`_run_refine`) | ✅ **해결** (PR #59) — `run_btn.clicked.connect(lambda: self._run_refine())`으로 감싸 시그널의 `bool` 인자가 전달되지 않도록 수정. 수정 전 코드로 버튼 클릭을 재현해 `TypeError` 및 프로세스 abort(exit code 134)를 실제로 확인했고, 수정 후에는 동일 시나리오에서 크래시 없이 정제 결과가 정상 반영됨을 확인. 스케줄 자동 저장 경로도 회귀 없이 정상 동작 확인 |
 
 ## 2. 문서 vs 코드 불일치
 
