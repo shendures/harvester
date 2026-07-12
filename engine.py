@@ -1,7 +1,4 @@
 import re
-import time
-
-import random
 import json
 import scrapy
 from scrapy.http import JsonRequest
@@ -16,8 +13,6 @@ from scrapy.selector import Selector
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -160,72 +155,8 @@ def get_response_status(response):
     return response_status
 
 
-def run_login(driver, seq_no, login_info):
-
-    if seq_no == "999999":
-        pass  # 테스트용 seq_no — 로그인 없음
-    # 네이버
-    elif seq_no == "000013":
-
-        # 로그인 박스 클릭
-        driver.find_element(By.ID, "account").click()
-
-        # 아이디
-        id_input = driver.find_element(By.ID, "id")
-        time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        id_input.click()
-        time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        id_input.send_keys(login_info["id"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
-
-        # 비밀번호
-        pwd_input = driver.find_element(By.ID, "pw")
-        time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        pwd_input.click()
-        time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-        pwd_input.send_keys(login_info["password"])  # "네이버 아이디"에는 본인 네이버 아이디 입력
-
-        driver.find_element(By.ID, "log.login").click()
-
-    print('✅ 로그인 성공')
-
-
-def get_render_result(seq_no, driver, selectors, _items):
-
-    if seq_no == "00000":
-        result = []
-
-    # 맥도날드
-    elif seq_no == "000010":
-
-        result = []
-
-        for row in selectors:
-            time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-            row.click()
-            data = {}
-            for column_name, relative_xpath in _items.items():
-
-                try:
-                    value = driver.find_element(By.XPATH, relative_xpath).text
-                except NoSuchElementException:
-                    value = None
-
-                data[column_name] = value
-
-            if type(data) is dict:
-                result = result + [data]
-            elif type(data) is list:
-                result = result + data
-
-            time.sleep(random.uniform(1.0, 4.0))  # 랜덤하게 타임 슬립 설정
-
-            # 닫기 버튼 클릭
-            driver.find_element(By.XPATH, '//*[@id="container"]/div[2]/section/div/button').click()
-
-    else:
-        raise ValueError(f"'{seq_no}'에 대한 렌더링 결과 추출 로직이 구현되어 있지 않습니다.")
-
-    return result
+# run_login() / get_render_result()의 seq_no 하드코딩 분기는 custom_rules/{seq_no}.py의
+# login() / render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
 
 
 def get_result(collect_info, target, _items):

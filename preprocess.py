@@ -12,8 +12,10 @@ RefineStats 데이터 클래스
 
 load_custom_rule() 함수
   - 수집물(blueprint)마다 다른 사용자 정의 정제 로직을 파일 하나로 플러그인.
-  - 경로 해석·시딩·실제 로드는 conf.CustomRuleStorage가 전담하며(BlueprintStorage와
-    동일한 정책), 이 함수는 그 얇은 위임입니다:
+  - 경로 해석·시딩·실제 로드는 conf.CustomModuleStorage가 전담하며(BlueprintStorage와
+    동일한 정책), 이 함수는 그 얇은 위임입니다. 같은 파일에 수집 단계용
+    render()/login()이 함께 정의될 수 있지만, 이 함수는 정제 단계(refine/refine_row)만
+    다룹니다:
         <앱 데이터 폴더>/{seq_no}.py                      — 실제 실행 시 읽는 위치(고객 PC별로 다름)
         <번들 리소스 경로>/custom_rules/{seq_no}.py       — 패키징 시 포함한 고객별 기본값
     최초 실행 시 앱 데이터 폴더에 파일이 없으면 번들 기본값을 그대로 복사해 심고,
@@ -336,13 +338,14 @@ class DataRefiner:
 
 
 # ── 사용자 정의 정제 규칙 로더 ─────────────────────────────────────────
-# 경로 해석·시딩·로드 실행은 conf.CustomRuleStorage가 전담합니다(BlueprintStorage와
-# 동일한 정책). 아래 두 함수는 기존 호출부(trigger.py 등)와의 호환을 위한 얇은 위임입니다.
+# 경로 해석·시딩·로드 실행은 conf.CustomModuleStorage가 전담합니다(BlueprintStorage와
+# 동일한 정책). 아래 두 함수는 기존 호출부(trigger.py 등)와의 호환을 위한 얇은 위임이며,
+# 정제 단계(refine/refine_row)만 다룹니다 — 같은 파일의 render()/login()은 다루지 않습니다.
 def custom_rule_exists(seq_no) -> bool:
-    """`{seq_no}.py` 커스텀 정제 규칙 파일의 존재 여부만 확인합니다 (exec 안 함)."""
-    return conf.CustomRuleStorage().exists(seq_no)
+    """`{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다 (exec 안 함)."""
+    return conf.CustomModuleStorage().has_refine(seq_no)
 
 
 def load_custom_rule(seq_no):
     """`{seq_no}.py`를 로드하여 사용자 정의 정제 함수를 반환합니다 (없으면 None)."""
-    return conf.CustomRuleStorage().load(seq_no)
+    return conf.CustomModuleStorage().load_refine(seq_no)
