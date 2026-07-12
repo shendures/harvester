@@ -13,11 +13,11 @@ RefineStats 데이터 클래스
 load_custom_rule() 함수
   - 수집물(blueprint)마다 다른 사용자 정의 정제 로직을 파일 하나로 플러그인.
   - 경로 해석·시딩·실제 로드는 conf.CustomModuleStorage가 전담하며(BlueprintStorage와
-    동일한 정책), 이 함수는 그 얇은 위임입니다. 같은 파일에 수집 단계용
-    render()/login()이 함께 정의될 수 있지만, 이 함수는 정제 단계(refine/refine_row)만
-    다룹니다:
-        <앱 데이터 폴더>/{seq_no}.py                      — 실제 실행 시 읽는 위치(고객 PC별로 다름)
-        <번들 리소스 경로>/custom_rules/{seq_no}.py       — 패키징 시 포함한 고객별 기본값
+    동일한 정책), 이 함수는 그 얇은 위임입니다. 수집 단계용 render()/login()은
+    실행 컨텍스트가 달라 별도 폴더(custom_rules/render/)에 있으며, 이 함수는 정제
+    단계(refine/refine_row)만 다룹니다:
+        <앱 데이터 폴더>/custom_rules/refine/{seq_no}.py         — 실제 실행 시 읽는 위치(고객 PC별로 다름)
+        <번들 리소스 경로>/custom_rules/refine/{seq_no}.py       — 패키징 시 포함한 고객별 기본값
     최초 실행 시 앱 데이터 폴더에 파일이 없으면 번들 기본값을 그대로 복사해 심고,
     이후에는 앱 데이터 폴더의 사본을 우선 사용합니다(고객 PC에서 직접 수정 가능).
   - 파일에는 아래 둘 중 하나를 정의:

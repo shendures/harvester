@@ -69,28 +69,27 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 root = conditions["items"]["root"]
                 _items = {key: value for key, value in conditions["items"].items() if key != 'root'}
 
-                # 로그인 기능이 있는 사이트 시 로그인 실행 (custom_rules/{seq_no}.py의 login())
+                # 로그인 기능이 있는 사이트 시 로그인 실행 (custom_rules/render/{seq_no}.py의 login())
                 login_info = conditions["login"]
                 if login_info is not None:
                     login_fn = conf.CustomModuleStorage().load_login(seq_no)
                     if login_fn is None:
-                        self.logger.error(f'❌ 로그인 설정(conditions.login)은 있으나 custom_rules/{seq_no}.py에 login()이 정의되어 있지 않습니다.')
+                        self.logger.error(f'❌ 로그인 설정(conditions.login)은 있으나 custom_rules/render/{seq_no}.py에 login()이 정의되어 있지 않습니다.')
                         return
                     login_fn(driver, login_info)
 
                 time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 # 렌더링 결과 추출
-                if conditions.get("rendering"):
-                    # 클릭 등 커스텀 인터랙션이 필요한 사이트 (custom_rules/{seq_no}.py의 render())
-                    render_fn = conf.CustomModuleStorage().load_render(seq_no)
-                    if render_fn is None:
-                        self.logger.error(f'❌ conditions.rendering=True이나 custom_rules/{seq_no}.py에 render()가 정의되어 있지 않습니다.')
-                        return
+                # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
+                # 경우에만 custom_rules/render/{seq_no}.py의 render()를 사용하고, 없으면
+                # 범용 root/items 추출(html 스파이더와 동일한 로직)로 폴백합니다.
+                render_fn = conf.CustomModuleStorage().load_render(seq_no) if conditions.get("rendering") else None
+                if render_fn is not None:
+                    self.logger.info(f'ℹ️ custom_rules/render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
                     selectors = driver.find_elements(By.XPATH, root)
                     result = render_fn(driver, selectors, _items)
                 else:
-                    # 커스텀 인터랙션 없이 범용 root/items 추출 (html 스파이더와 동일한 로직)
                     root_selectors = Selector(text=driver.page_source).xpath(root)
                     result = engine.get_result(self.request_info, root_selectors, _items)
 

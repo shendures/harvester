@@ -1,4 +1,4 @@
-# custom_rules/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
+# custom_rules/refine/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
 import re
 
 

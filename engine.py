@@ -155,7 +155,7 @@ def get_response_status(response):
     return response_status
 
 
-# run_login() / get_render_result()의 seq_no 하드코딩 분기는 custom_rules/{seq_no}.py의
+# run_login() / get_render_result()의 seq_no 하드코딩 분기는 custom_rules/render/{seq_no}.py의
 # login() / render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
 
 

@@ -259,26 +259,30 @@ class BlueprintStorage:
 # ══════════════════════════════════════════════════════
 class CustomModuleStorage:
     """
-    seq_no별 커스텀 모듈(`{seq_no}.py`)을 로드하는 싱글턴.
+    seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을 로드하는 싱글턴.
 
-    한 파일에 서로 독립적인 두 종류의 훅을 선택적으로 정의할 수 있습니다:
-      - 수집 단계 (html_render 스파이더, conditions.rendering=True 일 때만 참조):
+    수집 단계와 정제 단계는 실행 컨텍스트가 서로 다르므로(수집: 크롤링 자식
+    프로세스 + Selenium 의존, 정제: 메인 GUI 프로세스 + 순수 데이터 처리)
+    같은 seq_no라도 kind별로 물리적으로 다른 파일에 둡니다. exec 단위(=장애
+    단위)도 함께 분리되어, 한쪽 파일의 버그나 무거운 import가 다른 kind의
+    로드에 영향을 주지 않습니다.
+      - kind="render" → custom_rules/render/{seq_no}.py:
             login(driver, login_info: dict) -> None
             render(driver, selectors, items: dict) -> list[dict]
-      - 정제 단계 (needs_cleaning=True 일 때만 참조, 기존과 동일):
+      - kind="refine" → custom_rules/refine/{seq_no}.py:
             refine(data: list[dict]) -> list[dict]
             refine_row(row: dict) -> dict
 
-    앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 평탄한 구성이며,
-    seed-on-first-run 정책도 동일합니다. 번들 리소스 경로(default_source)는
-    실제 소스가 `custom_rules/` 서브폴더에 있으므로 그 하위를 가리킵니다
-    (폴더명은 기존 파일·git 이력과의 호환을 위해 그대로 유지).
-    파일이 seq_no마다 다르므로 BlueprintStorage처럼 단일 값을 메모리에
-    캐싱하지 않고, 매 호출마다 해당 seq_no의 파일을 새로 읽습니다 —
+    앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 kind별 서브폴더
+    구성이며, seed-on-first-run 정책도 동일합니다. 번들 리소스 경로
+    (default_source)는 실제 소스가 `custom_rules/{kind}/` 서브폴더에 있으므로
+    그 하위를 가리킵니다. 파일이 seq_no마다 다르므로 BlueprintStorage처럼
+    단일 값을 메모리에 캐싱하지 않고, 매 호출마다 해당 파일을 새로 읽습니다 —
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
     반영됩니다.
     """
     _instance = None
+    _KINDS = ("render", "refine")
 
     # ── 싱글턴 ────────────────────────────────────────
     def __new__(cls, *args, **kwargs):
@@ -299,14 +303,15 @@ class CustomModuleStorage:
         self.app_dir = os.path.join(self.root_path, app_name)
 
         try:
-            os.makedirs(self.app_dir, exist_ok=True)
+            for kind in self._KINDS:
+                os.makedirs(os.path.join(self.app_dir, "custom_rules", kind), exist_ok=True)
         except Exception as e:
             logger.error("[CustomModuleStorage] 초기화 오류: %s", e)
 
     # ── 경로 해석 ──────────────────────────────────────
-    def resolve_path(self, seq_no) -> str:
+    def resolve_path(self, seq_no, kind: str) -> str:
         """
-        `{seq_no}.py`의 실제 경로를 결정합니다 (BlueprintStorage._initialize_storage()와
+        `{kind}/{seq_no}.py`의 실제 경로를 결정합니다 (BlueprintStorage._initialize_storage()와
         동일한 seed-on-first-run 정책):
 
         - 앱 데이터 폴더에 파일이 없고 번들 리소스 경로에 기본값이 있으면 최초
@@ -314,27 +319,31 @@ class CustomModuleStorage:
         - 이후에는 앱 데이터 폴더의 파일을 우선 사용하고, 없으면 번들 리소스
           경로로 폴백합니다.
         """
+        if kind not in self._KINDS:
+            raise ValueError(f"지원하지 않는 kind 값입니다: {kind!r} ({self._KINDS}만 지원)")
+
         filename       = f"{seq_no}.py"
-        file_path      = os.path.join(self.app_dir, filename)
-        default_source = os.path.join(utility.resource_path(), "custom_rules", filename)
+        file_path      = os.path.join(self.app_dir, "custom_rules", kind, filename)
+        default_source = os.path.join(utility.resource_path(), "custom_rules", kind, filename)
 
         if not os.path.exists(file_path) and os.path.exists(default_source):
             try:
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 shutil.copy2(default_source, file_path)
             except Exception as e:
-                logger.error("[CustomModuleStorage] 시딩 실패 (seq_no=%s): %s", seq_no, e)
+                logger.error("[CustomModuleStorage] 시딩 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
 
         return file_path if os.path.exists(file_path) else default_source
 
     # ── 존재 확인 (exec 없이, AST 기반) ─────────────────
-    def _defines(self, seq_no, *names) -> bool:
+    def _defines(self, seq_no, kind: str, *names) -> bool:
         """
-        `{seq_no}.py`가 최상위에 `names` 중 하나라도 함수로 정의하고 있는지
-        확인합니다. 파일을 실행(exec)하지 않고 AST만 파싱하므로, 파일에
+        `{kind}/{seq_no}.py`가 최상위에 `names` 중 하나라도 함수로 정의하고
+        있는지 확인합니다. 파일을 실행(exec)하지 않고 AST만 파싱하므로, 파일에
         문법 오류가 있거나 무거운 최상위 코드가 있어도 안전하게 False로
         처리됩니다(UI에서 경고 팝업 여부를 판단하는 등 가벼운 조회 용도).
         """
-        path = self.resolve_path(seq_no)
+        path = self.resolve_path(seq_no, kind)
         if not os.path.isfile(path):
             return False
 
@@ -342,7 +351,7 @@ class CustomModuleStorage:
             with open(path, "r", encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=path)
         except (SyntaxError, OSError) as e:
-            logger.error("[CustomModuleStorage] 파일 파싱 실패 (seq_no=%s): %s", seq_no, e)
+            logger.error("[CustomModuleStorage] 파일 파싱 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
             return False
 
         defined = {
@@ -352,21 +361,21 @@ class CustomModuleStorage:
         return any(name in defined for name in names)
 
     def has_refine(self, seq_no) -> bool:
-        """`{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "refine", "refine_row")
+        """`refine/{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다."""
+        return self._defines(seq_no, "refine", "refine", "refine_row")
 
     def has_render(self, seq_no) -> bool:
-        """`{seq_no}.py`에 render()가 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "render")
+        """`render/{seq_no}.py`에 render()가 정의돼 있는지 확인합니다."""
+        return self._defines(seq_no, "render", "render")
 
     def has_login(self, seq_no) -> bool:
-        """`{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "login")
+        """`render/{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
+        return self._defines(seq_no, "render", "login")
 
     # ── 로드 (exec 실행) ────────────────────────────────
-    def _load_module(self, seq_no):
+    def _load_module(self, seq_no, kind: str):
         """
-        `{seq_no}.py`를 실제로 import하여 module 객체를 반환합니다.
+        `{kind}/{seq_no}.py`를 실제로 import하여 module 객체를 반환합니다.
 
         Returns:
             module | None — 파일이 없으면 None.
@@ -376,18 +385,18 @@ class CustomModuleStorage:
             "규칙 없음"(None)과 "규칙이 있는데 깨져 있음"(예외)을 호출 측이
             구분해 다르게 안내할 수 있도록 의도한 동작입니다.
         """
-        path = self.resolve_path(seq_no)
+        path = self.resolve_path(seq_no, kind)
         if not os.path.isfile(path):
             return None
 
-        spec   = importlib.util.spec_from_file_location(f"custom_module_{seq_no}", path)
+        spec   = importlib.util.spec_from_file_location(f"custom_module_{kind}_{seq_no}", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
 
     def load_refine(self, seq_no):
         """
-        `{seq_no}.py`를 로드하여 사용자 정의 정제 함수를 반환합니다.
+        `refine/{seq_no}.py`를 로드하여 사용자 정의 정제 함수를 반환합니다.
 
         파일에 refine(data: list[dict]) -> list[dict]가 있으면 그대로 반환하고,
         refine_row(row: dict) -> dict만 있으면 각 행에 적용하는 함수로 감싸서
@@ -396,7 +405,7 @@ class CustomModuleStorage:
         Returns:
             callable | None — 파일이 없거나 두 함수 모두 없으면 None.
         """
-        module = self._load_module(seq_no)
+        module = self._load_module(seq_no, "refine")
         if module is None:
             return None
 
@@ -409,26 +418,26 @@ class CustomModuleStorage:
 
     def load_render(self, seq_no):
         """
-        `{seq_no}.py`를 로드하여 사용자 정의 렌더링 결과 추출 함수를 반환합니다.
+        `render/{seq_no}.py`를 로드하여 사용자 정의 렌더링 결과 추출 함수를 반환합니다.
 
         Returns:
             callable(driver, selectors, items) -> list[dict] | None — 파일이
             없거나 render()가 없으면 None.
         """
-        module = self._load_module(seq_no)
+        module = self._load_module(seq_no, "render")
         if module is None:
             return None
         return getattr(module, "render", None)
 
     def load_login(self, seq_no):
         """
-        `{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
+        `render/{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
 
         Returns:
             callable(driver, login_info) -> None | None — 파일이 없거나
             login()이 없으면 None.
         """
-        module = self._load_module(seq_no)
+        module = self._load_module(seq_no, "render")
         if module is None:
             return None
         return getattr(module, "login", None)
