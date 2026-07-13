@@ -212,7 +212,7 @@ $RECYCLE.BIN/
 *.key
 
 # 개인 학습 노트 (HISTORY.md/ISSUES.md와 별개, 저장소에 커밋하지 않음)
-systems/STUDY.md
+guidelines/STUDY.md
 
 # uv 로컬 개발환경 (requirements.txt가 공식 의존성 목록, uv는 로컬 설치 효율화 목적)
 pyproject.toml
