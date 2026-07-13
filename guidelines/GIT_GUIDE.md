@@ -2,13 +2,13 @@
 
 > Safe, efficient Git/GitHub usage during "vibe coding." Keep this short — follow every rule below.
 
-## 0. 전체 흐름 한눈에 보기
+## 0. Workflow at a Glance
 
 ```
-   체크포인트 커밋
+   checkpoint commit
         │
         ▼
-     develop ───checkout -b──▶ feature/* (작업 + 커밋 반복)
+     develop ───checkout -b──▶ feature/* (work + commit, repeat)
         ▲                            │
         │                      git push -u origin feature/*
         │                            │
@@ -16,16 +16,16 @@
         │                            │
         └──────── PR merge ──────────┘
         │
-        │  develop 안정 확인 후에만
+        │  only once develop is verified stable
         ▼
   gh pr create --base main --head develop
         │
         ▼
-       main (배포)
+       main (production)
 
    WSL ─┐                    ┌─ Windows
-        ├─ push/pull ──▶ origin (유일한 동기화 지점) ◀── push/pull ─┤
-        └─ 환경 전환 전 push, 작업 시작 전 pull ──────────────────────┘
+        ├─ push/pull ──▶ origin (the only sync point) ◀── push/pull ─┤
+        └─ push before switching envs, pull before starting work ───┘
 ```
 
 ## 1. Core Principles
