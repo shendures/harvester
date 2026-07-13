@@ -217,3 +217,6 @@ guidelines/STUDY.md
 # uv 로컬 개발환경 (requirements.txt가 공식 의존성 목록, uv는 로컬 설치 효율화 목적)
 pyproject.toml
 uv.lock
+
+# build-exe.ps1 임시 스테이징 폴더 (고객별 custom_rules 선별 패키징용)
+_build_staging/
