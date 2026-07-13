@@ -2,6 +2,32 @@
 
 > Safe, efficient Git/GitHub usage during "vibe coding." Keep this short — follow every rule below.
 
+## 0. Workflow at a Glance
+
+```
+   checkpoint commit
+        │
+        ▼
+     develop ───checkout -b──▶ feature/* (work + commit, repeat)
+        ▲                            │
+        │                      git push -u origin feature/*
+        │                            │
+        │                      gh pr create --base develop
+        │                            │
+        └──────── PR merge ──────────┘
+        │
+        │  only once develop is verified stable
+        ▼
+  gh pr create --base main --head develop
+        │
+        ▼
+       main (production)
+
+   WSL ─┐                    ┌─ Windows
+        ├─ push/pull ──▶ origin (the only sync point) ◀── push/pull ─┤
+        └─ push before switching envs, pull before starting work ───┘
+```
+
 ## 1. Core Principles
 1. Commit often, in meaningful units (one commit = one feature/fix/refactor). Never dump a full day's work into one commit.
 2. Always stay revertible — checkpoint-commit before letting Claude Code make a large change.
