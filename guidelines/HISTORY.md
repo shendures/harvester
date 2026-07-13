@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-11 20:00
+- **최신 갱신**: 2026-07-13 16:10
 
 ---
 
@@ -811,6 +811,43 @@
   반대 값으로 변경 시 정확히 갱신되는지, 수정 모드 진입 시 기존
   선택값이 올바르게 복원되는지 확인 — 4개 시나리오 PASS, `ruff check`
   통과. 검증용 venv는 확인 후 삭제
+
+### PyInstaller 배포 파이프라인 신설 및 커스텀 규칙 render/ 서브폴더 복구 (이슈 ⑳·㉕, 2026-07-13)
+
+- **배경**: exe 배포 시 정제 규칙 파일이 정상적으로 번들되는지 검토하는
+  과정에서, `.spec`/빌드 스크립트가 저장소 어디에도 없어 `custom_rules/`·
+  `request_info.json`을 실제 exe에 포함시키는 `--add-data` 구성이 전적으로
+  수동·비문서화 상태임을 확인(이슈 ㉕). 아울러 `PREPROCESS.md`가 안내하던
+  배포 절차가 render/refine 서브폴더 분리(`53978d0`) 이전의 평면 경로
+  기준이라 실제 `conf.CustomModuleStorage.resolve_path()` 조회 경로와
+  어긋나 있었음. 같은 조사 중 이슈 ⑳(맥도날드 000010·네이버 000013 원본이
+  삭제만 되고 `custom_rules/render/`로 재이관되지 않은 상태)도 함께 확인.
+- **이슈 ⑳ 해결**: 삭제 커밋(`53978d0`)의 부모 커밋에 두 파일 원본이 그대로
+  남아있어 `git show 53978d0^:custom_rules/0000{10,13}.py`로 내용을 복원,
+  `custom_rules/render/000010.py`(맥도날드 `render()`)·`render/000013.py`
+  (네이버 `login()`)로 재이관. 파일 상단 경로 주석만 새 위치에 맞게
+  수정했고 로직은 원본 그대로.
+- **이슈 ㉕ 해결 — `build-exe.ps1` 신설**: 레포 루트에 고객 배포용 단일 exe
+  빌드 스크립트 추가.
+  - `-SeqNo` 인자와 `request_info.json`의 실제 `seq_no`가 일치하는지 먼저
+    검증 — 다른 고객의 blueprint/규칙 파일을 잘못 조합해 패키징하는 실수를
+    빌드 시점에 차단.
+  - `custom_rules/refine/`·`render/` 전체를 그대로 번들에 넣지 않고, 지정한
+    seq_no의 파일만 임시 스테이징 폴더(`_build_staging/`, `.gitignore`
+    등록)에 모아 그 폴더만 `--add-data`로 PyInstaller에 전달 — 개발자가
+    여러 고객 규칙을 함께 보관하는 `custom_rules/`(`PREPROCESS.md` §3.1a)의
+    특성상, 통째로 번들에 넣으면 다른 고객의 로직까지 유출될 위험이 있어
+    이를 원천 차단.
+  - `request_info.json`도 함께 `--add-data`로 번들.
+- **`PREPROCESS.md` 갱신**: §3.1(런타임/배포 경로)·§3.1a(개발 폴더)·§4(개발
+  프로세스)·§5(작업 예시)의 배포 절차를 `custom_rules/{kind}/{seq_no}.py`
+  경로와 `build-exe.ps1` 사용법 기준으로 재작성. 클래스명도 옛 이름
+  `CustomRuleStorage` → 현재 `CustomModuleStorage`로 정정.
+- **한계**: 이 환경(WSL/Linux)에서는 실제 Windows `.exe`를 빌드해 검증할
+  수 없어, `build-exe.ps1`은 코드 분석 기반으로 작성됐고 Windows 개발
+  환경에서의 실행 검증이 필요함. Scrapy/Selenium 등 동적 import가 많은
+  패키지는 최초 빌드 시 `--hidden-import`/`--collect-all` 조정이 추가로
+  필요할 수 있음(스크립트 내 주석으로 안내).
 
 ---
 
