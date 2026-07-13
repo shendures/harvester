@@ -849,6 +849,17 @@
   패키지는 최초 빌드 시 `--hidden-import`/`--collect-all` 조정이 추가로
   필요할 수 있음(스크립트 내 주석으로 안내).
 
+### `build-exe.ps1` 인코딩 미지정으로 한글 깨짐/JSON 파싱 실패 수정 (2026-07-13, 사용자 실사용 중 리포트)
+
+- **원인**: Windows PowerShell은 `Get-Content`에 `-Encoding`을 지정하지 않으면
+  시스템 기본 코드페이지(한글 Windows는 보통 CP949)로 읽는다.
+  `request_info.json`은 Python(`BlueprintStorage`)이 UTF-8로 저장하므로,
+  인코딩 미지정 상태로 읽으면 한글 필드가 깨지고(`title`이 `"고삐**민찬??"`
+  식으로 손상) 그 결과 `ConvertFrom-Json`이 JSON 구조 파싱 자체에 실패함 —
+  실제 사용자가 Windows PowerShell에서 `.\build-exe.ps1 -SeqNo 000000`을
+  실행해 seq_no 검증 단계에서 멈추는 것을 재현·리포트.
+- **수정**: `Get-Content $requestInfoPath -Raw -Encoding UTF8`로 인코딩 명시.
+
 ---
 
 ## 현재 브랜치 상태 (2026-07-11 기준)
