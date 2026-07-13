@@ -2,11 +2,11 @@
 
 > [!IMPORTANT]
 > Please review the following references to maintain project context:
-> - Project Guide: 'systems/PROJECT_REPORT.md'
-> - Issues & Backlog: 'systems/ISSUES.md'
-> - History: 'systems/HISTORY.md'
-> - GIT Guide: 'systems/GIT_GUIDE.md'
-> - Coding Guide : 'systems/CODING_GUIDE.md'
+> - Project Guide: 'guidelines/PROJECT_REPORT.md'
+> - Issues & Backlog: 'guidelines/ISSUES.md'
+> - History: 'guidelines/HISTORY.md'
+> - GIT Guide: 'guidelines/GIT_GUIDE.md'
+> - Coding Guide : 'guidelines/CODING_GUIDE.md'
 
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
