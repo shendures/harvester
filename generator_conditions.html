@@ -1487,7 +1487,10 @@
             }
 
             // 모든 필드가 null인 경우 키를 제거 (optional 필드의 경우)
-            for (const key of ['login', 'mainUrl', 'mainFormat', 'headers', 'params', 'items']) {
+            // 🔥 [수정] 'login'은 제외: 로그인 미사용 시에도 "login": null을 명시적으로 출력합니다.
+            // spirenderer.py의 conditions["login"]이 .get() 없이 직접 키 접근을 하므로,
+            // 키 자체가 없으면 KeyError가 발생합니다 (guidelines/ISSUES.md 이슈 ㉑).
+            for (const key of ['mainUrl', 'mainFormat', 'headers', 'params', 'items']) {
                 if (finalObjectForDisplay[key] === null) delete finalObjectForDisplay[key];
                 if (finalObjectForCopy[key] === null) delete finalObjectForCopy[key];
             }

@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-09
+- **최신 갱신**: 2026-07-13 16:10
 
 ---
 
@@ -29,7 +29,7 @@
 | 요청 생성·데이터 추출 | `engine.py` | 441줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
 | 데이터 정제 | `preprocess.py` | 349줄 |
-| 설정·상태 공유 (싱글턴 3종) | `conf.py` | 352줄 |
+| 설정·상태 공유 (싱글턴 3종) | `conf.py` | 443줄 |
 | 프로토타입 잔재 (정리 대상) | `frames_tmp.py` | 5,796줄 (git 추적 중) |
 
 ---
@@ -61,7 +61,7 @@
 
 [설정 관리]
     request_info.json  →  BlueprintStorage (싱글턴)
-    custom_rules/{seq_no}.py  →  CustomRuleStorage (싱글턴)
+    custom_rules/{render,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
     customized_settings.py (기본값 정의)
     settings.py (Scrapy 설정)
 ```
@@ -223,10 +223,10 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **커스텀 정제 규칙 (`custom_rule`, "7번째 규칙")**: 수집물(blueprint)마다 원시
   데이터 형식이 달라 범용 규칙만으로 커버되지 않는 경우를 위한 플러그인 메커니즘.
-  `{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를 정의하면
-  `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에 전달합니다.
-  경로 해석·시딩·실제 로드는 `conf.CustomRuleStorage`가 전담(§`conf.py` 참고).
-  상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
+  `custom_rules/refine/{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를
+  정의하면 `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에
+  전달합니다. 경로 해석·시딩·실제 로드는 `conf.CustomModuleStorage`가
+  전담(§`conf.py` 참고). 상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
   GUI "② 정제 규칙 설정" 탭에서 "커스텀 정제 규칙 적용" 체크박스를 켜면
   ②~⑤(remove_duplicate/remove_null_row/fill_null/trim_whitespace)가 자동으로
   켜짐(토글마다 매번 강제 적용) — 해제 시에는 ②~⑤에 영향 없음.
@@ -242,11 +242,23 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **`BlueprintStorage`**: `request_info.json`을 로드하여 수집 청사진을 관리합니다. 최초 1회 초기화 후 `reload()`로 갱신할 수 있습니다.
 
-- **`CustomRuleStorage`**: seq_no별 커스텀 정제 규칙(`{seq_no}.py`)을 로드합니다
-  (`3a10fab`, `preprocess.py`에서 이관). `BlueprintStorage`와 동일한
-  seed-on-first-run 정책(앱 데이터 폴더에 없으면 번들 리소스에서 최초 1회 복사)을
-  쓰지만, seq_no마다 파일이 다르므로 단일 값을 캐싱하지 않고 매 호출마다 새로
-  읽고 실행합니다. 번들 리소스 경로는 `custom_rules/{seq_no}.py`.
+- **`CustomModuleStorage`**: seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을
+  로드합니다 (`53978d0`, render/refine 분리 리팩터링으로 옛 `CustomRuleStorage`를
+  대체). 수집 단계(Selenium 자식 프로세스)와 정제 단계(메인 GUI 프로세스)는
+  실행 컨텍스트가 달라 `kind` 파라미터(`"render"` / `"refine"`)로 물리적으로
+  다른 서브폴더를 씁니다:
+  - `kind="render"` → `custom_rules/render/{seq_no}.py`: `login(driver, login_info)`,
+    `render(driver, selectors, items)`
+  - `kind="refine"` → `custom_rules/refine/{seq_no}.py`: `refine(data)` 또는
+    `refine_row(row)`
+
+  `BlueprintStorage`와 동일한 seed-on-first-run 정책(앱 데이터 폴더에 없으면
+  번들 리소스에서 최초 1회 복사)을 쓰지만, seq_no마다 파일이 다르므로 단일
+  값을 캐싱하지 않고 매 호출마다 새로 읽고 실행합니다. 존재 여부만 확인하는
+  `has_refine()`/`has_render()`/`has_login()`은 AST 파싱만으로(exec 없이)
+  판단하고, 실제 로드는 `load_refine()`/`load_render()`/`load_login()`이
+  담당합니다. 배포 시 고객별 seq_no 파일만 골라 번들에 포함시키는 절차는
+  레포 루트의 `build-exe.ps1` 참고.
 
 #### `customized_settings.py`
 각 설정 딕셔너리의 기본값을 반환하는 팩토리 함수 모음.
