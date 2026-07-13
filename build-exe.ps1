@@ -30,7 +30,10 @@ if (-not (Test-Path $requestInfoPath)) {
     exit 1
 }
 
-$requestInfo = Get-Content $requestInfoPath -Raw | ConvertFrom-Json
+# -Encoding UTF8 필수: Windows PowerShell은 지정 없이 Get-Content를 쓰면
+# 시스템 기본 코드페이지(한글 Windows는 보통 CP949)로 읽어, request_info.json이
+# UTF-8(Python이 저장)이면 한글이 깨지고 JSON 파싱 자체가 실패할 수 있음.
+$requestInfo = Get-Content $requestInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $actualSeqNo = if ($requestInfo -is [System.Array]) { $requestInfo[0].seq_no } else { $requestInfo.seq_no }
 if ($actualSeqNo -ne $SeqNo) {
     Write-Error "request_info.json의 seq_no($actualSeqNo)가 -SeqNo($SeqNo)와 다릅니다. 다른 고객 파일이 섞여 들어갈 위험이 있어 중단합니다."
