@@ -2,6 +2,32 @@
 
 > Safe, efficient Git/GitHub usage during "vibe coding." Keep this short — follow every rule below.
 
+## 0. 전체 흐름 한눈에 보기
+
+```
+   체크포인트 커밋
+        │
+        ▼
+     develop ───checkout -b──▶ feature/* (작업 + 커밋 반복)
+        ▲                            │
+        │                      git push -u origin feature/*
+        │                            │
+        │                      gh pr create --base develop
+        │                            │
+        └──────── PR merge ──────────┘
+        │
+        │  develop 안정 확인 후에만
+        ▼
+  gh pr create --base main --head develop
+        │
+        ▼
+       main (배포)
+
+   WSL ─┐                    ┌─ Windows
+        ├─ push/pull ──▶ origin (유일한 동기화 지점) ◀── push/pull ─┤
+        └─ 환경 전환 전 push, 작업 시작 전 pull ──────────────────────┘
+```
+
 ## 1. Core Principles
 1. Commit often, in meaningful units (one commit = one feature/fix/refactor). Never dump a full day's work into one commit.
 2. Always stay revertible — checkpoint-commit before letting Claude Code make a large change.
