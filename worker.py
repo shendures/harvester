@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import time
@@ -418,6 +419,15 @@ def set_scrapy_settings(settings_dict: dict):
     [수정] settings_dict가 None이거나 필수 키가 없을 때 KeyError / TypeError 방지.
            필수 키 누락 시 로그를 남기고 기본값으로 대체합니다.
     """
+    # get_project_settings()는 기본적으로 scrapy.cfg를 os.getcwd() 기준으로
+    # 탐색해 찾는데(closest_scrapy_cfg), PyInstaller onefile exe는 CWD가
+    # 실행 위치(바탕화면 등)라 번들된 scrapy.cfg(_MEIPASS)를 못 찾는다.
+    # 그러면 커스텀 settings.py가 조용히 무시되고 Scrapy 기본값으로만
+    # 동작한다 — 파일 탐색 대신 환경변수/sys.path를 직접 설정해 우회.
+    if utility.resource_path() not in sys.path:
+        sys.path.insert(0, utility.resource_path())
+    os.environ.setdefault("SCRAPY_SETTINGS_MODULE", "settings")
+
     settings = get_project_settings()
     settings.set("LOG_ENABLED", True, priority="cmdline")
 
