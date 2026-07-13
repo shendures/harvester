@@ -63,12 +63,41 @@ if (-not $foundAny) {
 # ── 3. PyInstaller 실행 ────────────────────────────────────────────
 $iconPath = Join-Path $repoRoot "combine-harvester.ico"
 
-$addDataArgs = @("--add-data", "$requestInfoPath;.")
+# scrapy.cfg/settings.py/pipelines.py/middlewares.py는 Scrapy가 파일 탐색
+# (scrapy.cfg) 또는 문자열 경로(ITEM_PIPELINES="pipelines.LoadItemPipeline",
+# DOWNLOADER_MIDDLEWARES="middlewares.XXX")로 런타임에 동적 import합니다.
+# 코드 어디에도 `import pipelines`/`import middlewares` 같은 정적 import가
+# 없어 PyInstaller의 자동 의존성 분석이 이 모듈들을 놓치므로 --add-data로
+# 소스 그대로 번들 루트에 넣어 일반 import 폴백이 찾을 수 있게 합니다.
+# combine-harvester.ico도 --icon(exe 파일 아이콘)과는 별개로 layout.py가
+# 트레이 아이콘으로 런타임에 파일 경로로 직접 읽으므로 데이터로 필요합니다.
+$addDataArgs = @(
+    "--add-data", "$requestInfoPath;.",
+    "--add-data", "$(Join-Path $repoRoot 'scrapy.cfg');.",
+    "--add-data", "$(Join-Path $repoRoot 'settings.py');.",
+    "--add-data", "$(Join-Path $repoRoot 'pipelines.py');.",
+    "--add-data", "$(Join-Path $repoRoot 'middlewares.py');.",
+    "--add-data", "$(Join-Path $repoRoot 'spiders');spiders",
+    "--add-data", "$iconPath;."
+)
 if ($foundAny) {
     $addDataArgs += @("--add-data", "$stagingCustomRules;custom_rules")
 }
 
-# 주의: Scrapy/Selenium/SQLAlchemy 등은 동적 import를 많이 써서 최초 빌드 시
+# Scrapy/Twisted 계열은 importlib.metadata로 설치된 패키지 정보를 조회하는데,
+# PyInstaller는 기본적으로 이 메타데이터를 담지 않아 freeze 시 흔히 깨집니다
+# (PackageNotFoundError 등). 아래 목록은 이 문제의 표준 해결책입니다.
+$copyMetadataArgs = @()
+foreach ($pkg in @(
+    "cryptography", "cssselect", "defusedxml", "itemadapter", "itemloaders",
+    "lxml", "packaging", "parsel", "protego", "pydispatcher", "pyopenssl",
+    "queuelib", "service-identity", "tldextract", "twisted", "w3lib",
+    "zope-interface"
+)) {
+    $copyMetadataArgs += @("--copy-metadata", $pkg)
+}
+
+# 주의: Selenium/SQLAlchemy 등 위 목록 밖의 의존성에서 여전히
 # ModuleNotFoundError가 날 수 있습니다. 발생하는 모듈을 --hidden-import 또는
 # --collect-all로 추가하면서 반복 확인하세요 (requirements.txt의
 # pyinstaller-hooks-contrib가 일부는 자동으로 처리해줍니다).
@@ -77,6 +106,7 @@ pyinstaller `
     --onefile `
     --windowed `
     --icon $iconPath `
+    @copyMetadataArgs `
     @addDataArgs `
     (Join-Path $repoRoot "main.py")
 
