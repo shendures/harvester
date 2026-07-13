@@ -5,6 +5,7 @@ DataCrawler v2.0  —  PyQt6
 
 import sys
 import ctypes
+import multiprocessing
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication
 from layout import MainWindow, theme
@@ -40,4 +41,9 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
+    # PyInstaller onefile exe + multiprocessing.Process(worker.run_spider) 조합에서
+    # 필수: 없으면 자식 프로세스가 __main__을 처음부터 다시 실행해 GUI를 한 번 더
+    # 띄우려다 QLocalServer 단일 실행 감지에 걸려 조용히 종료됨 — run_spider()가
+    # 아예 호출되지 않아 수집 결과가 에러 없이 0건으로 남는다.
+    multiprocessing.freeze_support()
     main()
