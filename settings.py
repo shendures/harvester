@@ -30,8 +30,10 @@ RANDOMIZE_DOWNLOAD_DELAY = True  # 지연 시간에 무작위성을 부여 ( 설
 COOKIES_ENABLED = True
 COOKIES_DEBUG = False # True로 설정하면 디버깅이 편하나, 성능 저하 및 보안 문제 발생 가능
 
-# Disable Telnet Console (enabled by default)
-#TELNETCONSOLE_ENABLED = False
+# Disable Telnet Console (enabled by default) — 이 앱은 콘솔 접속 기능을 쓰지
+# 않는데 켜져 있으면 수집마다 로컬 포트(6023 등)를 열어 불필요한 Windows
+# 방화벽 허용 알림을 유발함
+TELNETCONSOLE_ENABLED = False
 
 # Override the default request headers:
 #DEFAULT_REQUEST_HEADERS = {
