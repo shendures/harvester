@@ -17,7 +17,7 @@ class HtmlExtractorSpider(scrapy.Spider):
         else:
             self.request_info = request_info
 
-    # 2. start_requests: 모든 수집 목록의 URL을 예약합니다. ( CASE 1 )
+    # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
         try:
             url_list = glean.get_grains(self.request_info)
