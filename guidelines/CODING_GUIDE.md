@@ -280,6 +280,21 @@ def test_order_total_is_sum_of_item_prices_and_shipping_fee():
 - Never hardcode configuration (URLs, keys, thresholds); externalize it into **environment variables/config files**.
 - If circular dependencies appear, revisit the design.
 
+**This project (Harvest): dev vs. packaged (PyInstaller) resource paths.** Never branch on `sys.frozen`/`sys._MEIPASS` ad hoc — always resolve through the single entry point `utility.resource_path()`:
+
+```python
+# utility.py
+def resource_path():
+    if hasattr(sys, '_MEIPASS'):
+        return sys._MEIPASS          # packaged .exe (PyInstaller onefile)
+    return os.path.dirname(os.path.abspath(__file__))  # dev (.py) run
+```
+
+When adding a new file/module that must be readable in both dev and packaged builds:
+1. Resolve its path via `resource_path()` (see `conf.py`'s `CustomModuleStorage`/`BlueprintStorage` for the pattern) — never a hardcoded relative path.
+2. Add it to `build-exe.ps1`'s `--add-data` list. PyInstaller only bundles what's listed there; forgetting this step makes the file work in dev but silently fail to load in the shipped exe.
+3. If the resource is user-customizable per install (e.g., custom rules), seed it once into `%LOCALAPPDATA%\CollectorApp\...` on first run and prefer that copy afterward (see `resolve_path()`), so re-packaging doesn't clobber a customer's local edits.
+
 ---
 
 ## 11. Version Control and Collaboration
