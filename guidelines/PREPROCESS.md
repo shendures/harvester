@@ -2,7 +2,7 @@
 
 > 수집된 raw 데이터를 정제하는 로직(`preprocess.py`)에 대한 규칙 설명과
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
-> #42), 이슈 상태는 `ISSUES.md` 참고.
+> #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
 ---
 
@@ -35,17 +35,42 @@ DataRefiner.run()
    전달 (파일이 없거나 로드 실패 시 `None` 전달, §3.3 참고).
 2. `DataRefiner.rules["custom_rule"]`이 켜져 있어야 함 — GUI "② 정제 규칙 설정" 탭의
    "커스텀 정제 규칙 적용" 체크박스로 나머지 6개 규칙과 동일하게 개별 on/off 가능
-   (`layout.py:525` `_refine_rules`, 기본값 `True`).
+   (`layout.py:520-528` `_refine_rules`, 기본값 `True`).
 
 둘 중 하나라도 해당 안 되면(파일 없음 / 체크박스 꺼짐) 이 단계는 조용히 건너뛰고
 범용 6규칙만 적용됩니다.
 
-**체크박스 자동 연동** (`trigger.py` `_on_custom_rule_toggled`): "커스텀 정제 규칙
-적용" 체크박스를 켤 때마다 ②~⑤(`remove_duplicate`/`remove_null_row`/`fill_null`/
-`trim_whitespace`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔 상태여도 매번
-덮어씀). 해제할 때는 ②~⑤에 영향을 주지 않고 직전 상태를 그대로 둡니다 — 커스텀
-규칙이 정규화한 데이터에는 기본 위생 규칙(중복/결측 정리 등)이 항상 함께 돌도록
-하기 위한 편의 기능이며, ⑥`drop_columns`·⑦`cast_numeric`은 연동 대상이 아닙니다.
+**체크박스 자동 연동** (`trigger.py:1039-1050` `_on_custom_rule_toggled`): "커스텀
+정제 규칙 적용" 체크박스를 켤 때마다 ②~⑤(`remove_duplicate`/`remove_null_row`/
+`fill_null`/`trim_whitespace`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔
+상태여도 매번 덮어씀). 해제할 때는 ②~⑤에 영향을 주지 않고 직전 상태를 그대로
+둡니다 — 커스텀 규칙이 정규화한 데이터에는 기본 위생 규칙(중복/결측 정리 등)이
+항상 함께 돌도록 하기 위한 편의 기능이며, ⑥`drop_columns`·⑦`cast_numeric`은
+연동 대상이 아닙니다.
+
+### 1.1 실행 트리거: 수동 정제 vs 스케줄 자동 저장
+
+`_run_refine(rules_override=None, skip_ui_update=False)`(`trigger.py:1053`)는
+두 가지 경로로 호출됩니다 — ①~⑦ 파이프라인 자체는 동일하고, 차이는 규칙
+활성화 값의 출처와 UI 갱신 여부뿐입니다.
+
+- **수동 정제** (GUI "② 정제 규칙 설정" 탭의 [정제 실행] 버튼,
+  `layout.py:761-763`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
+  `drop_col_input`·`fill_null_input` 값을 그대로 읽어 `DataRefiner`를
+  구성합니다(`trigger.py:1074-1090`). 결과는 Raw/Refined 결과 테이블과
+  §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
+- **스케줄 자동 저장** (`trigger.py:3736-3748`, `_on_finished()` 내부):
+  무인 실행이라 화면 체크박스를 사람이 확인·조정할 수 없으므로,
+  `task["extract"]["auto_save_source"] == "refined"`이고
+  `task["job"] == "스케줄 실행"`일 때만 화면 상태를 완전히 무시하는 고정
+  규칙 `SCHEDULED_REFINE_RULES`(`trigger.py:70-78` — ①~⑤=True, ⑥⑦=False,
+  "커스텀 정제 규칙 적용" 체크 시 자동 연동되는 조합과 동일)로
+  `rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True`를 호출합니다.
+  `skip_ui_update=True`이면 결과 테이블·비교 탭 갱신과 탭 자동 전환을 모두
+  건너뜁니다(`trigger.py:1142-1149`) — 무인 실행 중 화면이 갑자기 바뀌는
+  것을 방지하기 위함입니다.
+
+관련 잠재 리스크는 `ISSUES.md` 이슈 ⑱(보류) 참고.
 
 ---
 
@@ -65,14 +90,34 @@ DataRefiner.run()
 | ⑥ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 | 비활성 |
 | ⑦ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
 
-- 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:525`
-  `_refine_rules`)로 수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
-  있음(`layout.py:682`).
+- 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:520-528`
+  `_refine_rules` 기본값, `_rule_checkboxes` 위젯은 `layout.py:698-704`)로
+  수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
+  있음(`layout.py:682`, 토글 연결은 `layout.py:755`).
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
 - 빈 리스트나 `list[dict]`가 아닌 입력은 `run()` 진입 시 `TypeError`/`ValueError`로
   즉시 실패합니다 (조용한 유실 방지).
+
+### 2.1 정제 결과 시각화 — Before/After 비교 탭
+
+"④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 842-914줄)이
+`RefineStats`를 시각화하는 유일한 화면입니다. `_update_compare_tab()`
+(`trigger.py:1194-1284`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
+데이터를 나란히 표시하며:
+
+- `stats.deleted_indices`로 제거된 Raw 행을 강조 표시
+- `stats.modified_rows`로 값이 바뀐 Refined 셀을 강조 표시
+- `drop_columns` 규칙이 활성화된 경우 우측(정제 후) 테이블에서만 해당
+  컬럼을 제외
+- 좌우 테이블의 스크롤·정렬은 컬럼명 기준으로 상호 동기화됨(대응 컬럼이
+  없으면 무시)
+
+§1.1의 수동 정제 실행에서만 갱신되며, 스케줄 자동 저장 경로
+(`skip_ui_update=True`)에서는 갱신되지 않습니다 — 무인 실행 결과를
+검토하려면 다음 수동 실행 전까지 이 탭에는 반영되지 않는다는 점에
+유의합니다.
 
 ---
 
@@ -137,7 +182,7 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 로드(파일 찾기·`exec`)와 실행(호출·검증)이 서로 다른 계층에서 처리됩니다.
 
-- **로드** (`trigger.py:1042`, `_run_refine()`): 해당 수집(task)의
+- **로드** (`trigger.py:1096-1113`, `_run_refine()`): 해당 수집(task)의
   `needs_cleaning=True` **그리고** `seq_no`가 존재할 때만
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
@@ -147,14 +192,16 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
   켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
   입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
   `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:228`).
-  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:231`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:232`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
-  `custom_rule_error`를 보고 로그·요약 문구를 결정합니다(`trigger.py:1070-1080`)
-  — 커스텀 규칙의 버그가 수집 자체를 막지는 않지만, 배포 전 테스트하지
-  않으면 실패가 로그로만 조용히 남고 지나갈 수 있습니다.
+  `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1130-1140`,
+  실제 로그 반영은 `trigger.py:1152-1158`) — 커스텀 규칙의 버그가 수집
+  자체를 막지는 않지만, 배포 전 테스트하지 않으면 실패가 로그로만 조용히
+  남고 지나갈 수 있습니다.
 - GUI는 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데
   `custom_rule_exists(seq_no)`가 `False`이면 1회 경고 팝업으로 안내합니다
-  (`layout.py:582`, `trigger.py:983`). 이 팝업은 파일 존재 여부만 확인하며,
+  (연결부 `layout.py:578`, 핸들러 `trigger.py:1014-1036`
+  `_on_monitor_tab_changed()`). 이 팝업은 파일 존재 여부만 확인하며,
   "커스텀 정제 규칙 적용" 체크박스(§1)가 꺼져 있는 경우는 별도로 안내하지
   않습니다.
 
@@ -246,6 +293,8 @@ print([m.refine_row(r) for r in sample])
 ## 6. 관련 문서
 
 - `HISTORY.md` — PR #41(커스텀 정제 규칙 플러그인 도입), PR #42(경로 통일
-  + 미설정 경고) 구현 이력
-- `ISSUES.md` — 관련 이슈·보안 관찰(§3)·백로그(§5)
+  + 미설정 경고), `a4c6375`/`e91c676`(스케줄 자동 정제 고정 규칙 + 대상
+  선택 기능) 구현 이력
+- `ISSUES.md` — §2 미해결·보류 이슈 중 ⑱(스케줄+정제 자동 저장 조합의
+  빈 데이터 경고 잠재 리스크), §4 보안·운영 관찰, §6 백로그
 - `PROJECT_REPORT.md` §데이터 정제 — 모듈 구조 개요
