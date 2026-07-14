@@ -228,8 +228,6 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self._out_mode = None
         self.output_info = customized_settings.get_output_settings()
         self._running = False
-        self._all_rows = []
-        self._collected_data = []   # 수집된 원본 데이터를 메모리에 보관 (추출 시 사용)
         self._build()
 
     def _build(self):
