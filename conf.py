@@ -119,7 +119,7 @@ class BlueprintStorage:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, app_name: str = "CollectorApp", filename: str = "request_info.json"):
+    def __init__(self, app_name: str = utility.get_app_name(), filename: str = "request_info.json"):
         # 최초 1회만 초기화
         if self._initialized:
             return
@@ -291,7 +291,7 @@ class CustomModuleStorage:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, app_name: str = "CollectorApp"):
+    def __init__(self, app_name: str = utility.get_app_name()):
         # 최초 1회만 초기화
         if self._initialized:
             return
