@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-13 16:10
+- **최신 갱신**: 2026-07-15 01:45
 
 ---
 
@@ -23,14 +23,13 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 2,050줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,737줄 |
-| 수집 워커 (QThread + multiprocessing) | `worker.py` | 499줄 |
-| 요청 생성·데이터 추출 | `engine.py` | 441줄 |
+| GUI 레이아웃 | `layout.py` | 2,036줄 |
+| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,821줄 |
+| 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
+| 요청 생성·데이터 추출 | `engine.py` | 320줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
-| 데이터 정제 | `preprocess.py` | 349줄 |
+| 데이터 정제 | `preprocess.py` | 352줄 |
 | 설정·상태 공유 (싱글턴 3종) | `conf.py` | 443줄 |
-| 프로토타입 잔재 (정리 대상) | `frames_tmp.py` | 5,796줄 (git 추적 중) |
 
 ---
 
@@ -81,7 +80,7 @@ GUI 시작 버튼
 
 설계 강점: 프로세스 경계(DataStore는 메인 프로세스 전용)가 docstring에 명시됨,
 큐 드레인 로직이 멀티프로세스 함정을 제대로 처리, `preprocess.DataRefiner`의
-원본 불변·통계 추적 품질 높음. `PROJECT_GUIDE.md`(구 문서) 충실도 높음.
+원본 불변·통계 추적 품질 높음.
 
 ---
 
@@ -168,7 +167,13 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 | `set_item_loader(response, collect_info, data)` | Scrapy Item에 수집 결과를 패킹 |
 | `get_response_status(response)` | 응답 정보(URL, IP, UA, 쿠키, 레이턴시)를 딕셔너리로 정리 |
 | `set_chrome_webdriver(headless)` | Selenium Chrome 드라이버를 초기화 |
-| `run_login(driver, seq_no, login_info)` | 사이트별 Selenium 로그인 자동화 |
+
+`run_login()`/`get_render_result()`처럼 사이트별(seq_no) 로그인·렌더링 로직을
+`engine.py`에 하드코딩하던 옛 함수들은 제거되었습니다 — 현재는
+`custom_rules/render/{seq_no}.py`의 `login(driver, login_info)`/
+`render(driver, selectors, items)`를 `conf.CustomModuleStorage.load_login()`/
+`load_render()`가 로드해 대체합니다(`engine.py:158` 주석 참고, §데이터 정제
+및 `PREPROCESS.md` §3.1a 참고).
 
 ---
 
@@ -183,7 +188,6 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 | `spijson.py` | `spider_json` | REST API JSON 응답을 jmespath/점 경로로 추출 |
 | `spixml.py` | `spider_xml` | XML 응답을 XPath로 파싱 |
 | `spidetail.py` | `spider_detail` | 목록 페이지 → 상세 페이지 2단계 수집 |
-| `sample.py` | — | 샘플/참조용 Spider |
 
 모든 Spider는 `engine.get_scrapy_request()`로 요청을 생성하고 `engine.set_item_loader()`로 결과를 패킹하는 동일한 구조를 따릅니다.
 
@@ -283,6 +287,9 @@ Scrapy 프레임워크 설정 파일.
 - `DOWNLOADER_MIDDLEWARES`: 프록시, User-Agent 랜덤화, 레이턴시 추적 순서로 구성
   (`scrapy_selenium.SeleniumMiddleware`는 죽은 의존성이라 `ISSUES.md` 이슈 ⑬에서
   제거됨 — 렌더링은 `spirenderer.py`가 자체 Chrome 드라이버로 전담)
+- `SPIDER_MIDDLEWARES`: `middlewares.DelaySchedulerMiddleware` 등록(500)
+- `TELNETCONSOLE_ENABLED = False` — 배포용 exe가 콘솔 접속 기능을 쓰지 않는데도
+  기본 활성화 상태라 Windows 방화벽 알림을 유발해 비활성화
 
 #### `middlewares.py`
 Scrapy 다운로더/스파이더 미들웨어 모음.
@@ -290,10 +297,11 @@ Scrapy 다운로더/스파이더 미들웨어 모음.
 | 클래스 | 역할 |
 |---|---|
 | `RandomUserAgentMiddleware` | 요청마다 User-Agent를 랜덤 교체 |
-| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (⚠️ 반환값 이슈 — `ISSUES.md` 이슈 ③ 참고) |
-| `RateLimitedProxyMiddleware` | IP 로테이션 및 분당 요청 수 제한 |
+| `RandomCookieMiddleware` | 쿠키를 랜덤 설정 (이미 쿠키가 있으면 `None` 반환 — `ISSUES.md` 이슈 ③ 해결) |
+| `RateLimitedProxyMiddleware` | 여유 있는 프록시를 무작위 순회로 할당, 전량 소진 시 `DelaySchedulerMiddleware`와 연동해 지연 재시도 (`ISSUES.md` 이슈 ② 해결) |
 | `LatencyTrackingMiddleware` | 요청~응답 구간 레이턴시를 측정하여 `meta["pure_latency"]`에 저장 |
-| `DelaySchedulerMiddleware` | 스케줄러 레벨 딜레이 적용 (⚠️ 미로드 — `ISSUES.md` 이슈 ⑤ 참고) |
+| `_DelayedRescheduler` | `DelaySchedulerMiddleware`/`RateLimitedProxyMiddleware`가 공유하는 지연 재주입 헬퍼 (`reactor.callLater` + `engine.crawl()`) |
+| `DelaySchedulerMiddleware` | `SPIDER_MIDDLEWARES`에 등록되어 `delay_until`이 걸린 요청을 지연 재스케줄 (`ISSUES.md` 이슈 ⑤ 해결) |
 
 ---
 
@@ -322,9 +330,6 @@ Scrapy Item 및 ItemLoader 정의. 수집 결과를 구조화된 형태로 파�
 #### `create_request_info.py`
 `request_info.json` 파일을 생성하는 스크립트 (개발 도구).
 
-#### `frames_tmp.py`
-UI 레이아웃 프로토타이핑용 임시 파일 (5,796줄). **git 추적 중 — 정리 대상 (`ISSUES.md` 백로그 참고)**.
-
 ---
 
 ### 환경 설정 패키지 (`env/`)
@@ -332,7 +337,6 @@ UI 레이아웃 프로토타이핑용 임시 파일 (5,796줄). **git 추적 중
 | 파일 | 역할 |
 |---|---|
 | `config.py` | `database.ini` 파일을 파싱하여 DB 접속 정보를 딕셔너리로 반환 |
-| `check_ini_section.py` | `.ini` 파일의 섹션 목록을 확인 |
 | `create_ini.py` | `database.ini` 파일을 생성 |
 
 ---
@@ -439,5 +443,5 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `SQLAlchemy` | ORM (DB 추상화) |
 | `furl` | URL 파싱/조작 |
 | `python-dotenv` | 환경 변수 로드 |
-| `pyinstaller` | 실행 파일(.exe) 빌드 |
+| `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `custom_rules/`·`request_info.json`을 선별 번들 |
 
