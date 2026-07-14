@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-15 04:03
+- **최신 갱신**: 2026-07-15 04:16
 
 ---
 
@@ -77,6 +77,7 @@
 | 2026-07-13 | `de6e7e6`, `38981aa` (PR #69, #70) | GIT_GUIDE.md 전체 흐름 도식 추가 및 영문화 | 브랜치 전략·커밋 체크포인트·PR 플로우·다중 환경 동기화를 한눈에 보여주는 다이어그램 부재 | (`de6e7e6`) GIT_GUIDE.md 최상단에 ASCII 다이어그램(섹션 0) 추가. (`38981aa`) 문서 전체가 영어로 작성돼 있어 다이어그램의 한글 텍스트를 영문으로 통일 | - |
 | 2026-07-13 | PR #71 | 9차 릴리스 | - | `develop→main` 머지(main=`a772361`) — PR #57~#70 전체 포함(스케줄 자동저장 버그 수정 3건, render/refine 플러그인 아키텍처 도입, 로그인 키 버그 수정, 문서 폴더명 변경, PyInstaller 배포 파이프라인 신설+버그 수정 3건, GIT_GUIDE 다이어그램) | - |
 | 2026-07-15 | 이슈㉖, `85463ef` (사용자 실사용 중 리포트) | CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성하던 문제 수정 | `build-exe.ps1 -SeqNo 000000`로 정제 규칙(refine)만 있는 고객을 빌드·배포했는데, 실행 후 `%LOCALAPPDATA%\CollectorApp\custom_rules\`에 불필요한 `render\` 빈 폴더까지 생성됨을 발견. 원인은 `conf.CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 `os.makedirs()`로 항상 만들고 있었기 때문 — `resolve_path()`가 이미 실제 시딩 대상(`default_source`)이 존재할 때만 온디맨드로 폴더를 만들고 있어 `__init__()`의 선제적 생성은 불필요했을 뿐 아니라 "설정이 있는 kind만 폴더가 생긴다"는 기대와 어긋났음 | `__init__()`의 `for kind in self._KINDS: os.makedirs(...)` 루프 제거, `resolve_path()`의 기존 온디맨드 생성 로직에만 의존하도록 정리 | 임시 uv venv 스크립트로 `CustomModuleStorage`를 격리 재현 — refine만 번들된 상태에서 `has_refine()` 호출 시 `refine/` 폴더+파일만 생성되고 `render/` 폴더는 생성되지 않음을 확인(PASS, 검증 후 스크립트 삭제) |
+| 2026-07-15 | `5f71967` | `build-exe.ps1 -AppName`이 앱 데이터 폴더명까지 결정하도록 개선 | `-AppName "DataCrawler"`로 빌드해도 `BlueprintStorage`/`CustomModuleStorage`/`SchedulerPage` 세 곳이 각자 `"CollectorApp"`을 리터럴로 하드코딩하고 있어 `%LOCALAPPDATA%`에는 항상 `CollectorApp` 폴더가 생성됨(exe 파일명과 실제 앱 데이터 폴더명 불일치) — 사용자가 실 배포 exe에서 재현·리포트 | `utility.get_app_name()` 신설(`sys.frozen`이면 `sys.executable` 파일명에서, 아니면 기본값 `"CollectorApp"` 반환 — `build-exe.ps1`이 `pyinstaller --name $AppName`으로 이미 exe 파일명을 정하므로 그 값을 런타임에 역으로 읽음). `conf.py`의 `BlueprintStorage`/`CustomModuleStorage` 기본 `app_name` 파라미터와 `layout.py`의 `SchedulerPage.__init__` 하드코딩 3곳 모두 이 함수로 교체해 세 저장소가 항상 같은 폴더명을 쓰도록 통일. `build-exe.ps1`의 `-AppName` 파라미터에 이 연동 관계를 설명하는 주석 추가(exe 파일명을 빌드 후 직접 바꾸면 앱 데이터 폴더도 따라간다는 주의사항 포함) | `python -m py_compile`/`ruff check` 통과. 임시 uv venv 스크립트로 `sys.frozen=True`+`sys.executable=".../DataCrawler.exe"` 시뮬레이션 — dev 환경(`sys.frozen` 없음)은 기존 기본값 `"CollectorApp"` 유지, frozen 환경은 `get_app_name()`이 `"DataCrawler"` 반환 및 `BlueprintStorage`/`CustomModuleStorage`의 실제 기본 `app_name`이 `"DataCrawler"`로 바뀜을 확인(PASS, 검증 후 스크립트 삭제). Windows 실 빌드로 세 저장소(`request_info.json`/`custom_rules`/`schedules.json`)가 동일 폴더에 모이는지 최종 확인 필요(WSL 환경 한계로 미실시) |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 

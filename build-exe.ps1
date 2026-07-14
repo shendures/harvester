@@ -17,6 +17,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SeqNo,
 
+    # PyInstaller --name(exe 파일명)뿐 아니라 실행 시 %LOCALAPPDATA%\<AppName>\ 앱
+    # 데이터 폴더명도 함께 결정합니다(utility.get_app_name()이 sys.executable의
+    # 파일명을 읽어 자동으로 맞춥니다). 빌드 후 exe 파일명을 직접 바꾸면 다음 실행부터
+    # 앱 데이터 폴더도 그 이름을 따라가므로, 기존에 시딩된 request_info.json/
+    # custom_rules를 못 찾는 것처럼 보일 수 있어 주의가 필요합니다.
     [string]$AppName = "CollectorApp"
 )
 
