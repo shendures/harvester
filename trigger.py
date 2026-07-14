@@ -61,7 +61,7 @@ PURPLE        = theme.PURPLE
 # 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
 VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 
-# DB 타입별 기본 포트 (프록시/스케줄 DB 저장 다이얼로그 공용)
+# DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
 # 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 고정 규칙 —
@@ -1080,7 +1080,7 @@ class MonitorPageTriggers:
                 col_text = raw_drop.text().strip()
                 self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
 
-            # null 치환값 파싱 (기본 텍스트 "—", 비워두면 빈 값으로 치환)
+            # null 치환값 파싱 (입력창 기본값은 빈 문자열 — 비워두면 빈 값으로 치환)
             raw_fill = getattr(self, 'fill_null_input', None)
             if raw_fill is not None:
                 self._fill_null_value = raw_fill.text()

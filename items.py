@@ -59,7 +59,9 @@ class StoreItem(scrapy.Item):
 
 
 class DonasBatchItem(scrapy.Item):
-    # 모니터링 탭용 (한 번만 전송됨)
+    # 미사용(ISSUES.md §5 참고) — 현재 모니터링 탭 데이터는 DonasItem.result_info를
+    # "RESULT_INFO:" 로그 라인으로 전달하는 방식으로 대체되어 이 클래스는 어디서도
+    # import/인스턴스화되지 않는다. 아래 필드 설명은 과거 파이프라인 기준 서술.
     response = scrapy.Field()
     collect_info = scrapy.Field()
 

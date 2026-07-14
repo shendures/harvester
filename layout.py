@@ -91,7 +91,7 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
     - URL 라벨 / URL 입력창 / URL 복사 버튼 / 시작·중지 버튼
     - start_requested : 시작 버튼 클릭 시 emit (request_info dict)
     - stop_requested  : 중지 버튼 클릭 시 emit
-    - reset_requested : 수집 시작 직전 UI 초기화 요청 emit
+    - reset_requested : 정의만 되어 있고 어디서도 emit/connect되지 않는 미사용 시그널
     """
     start_requested = pyqtSignal(dict)
     stop_requested = pyqtSignal()
@@ -309,7 +309,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self.delay_spin.setValue(0.5)
         self.delay_spin.setSingleStep(0.5)
         self.delay_spin.setDecimals(1)  # setDecimals : 소수점 자리 수 self.delay_spin.setSuffix("s")
-        self.delay_spin.setToolTip("요청 간 대기 시간 (기본 1.5s)")
+        self.delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
         r1.addWidget(self.delay_spin)
         r1.addSpacing(6)
         r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
@@ -521,7 +521,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
             "remove_duplicate":  True,   # 중복 행 제거
             "remove_null_row":   True,   # 모든 필드 null 행 제거
-            "fill_null":         True,   # null → "—" 치환
+            "fill_null":         True,   # null → 지정값 치환 (기본: 빈 값)
             "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
             "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
