@@ -58,7 +58,7 @@ def to_forward_slash(value):
 def generate_combined_urls(url_template):
     """
     URL 템플릿에서 '${page:start:step:end}' (페이지네이션) 패턴과
-    '${item1,item2,...}' (목록 확장) 패턴을 모두 처리하여 URL 리스트를 생성합니다.
+    '${keywords:item1,item2,...}' (목록 확장) 패턴을 모두 처리하여 URL 리스트를 생성합니다.
 
     Args:
         url_template (str): 패턴이 포함된 URL 문자열.
@@ -103,7 +103,7 @@ def generate_combined_urls(url_template):
 
     # 2. 목록 확장 패턴 분석 및 최종 URL 생성
 
-    # 패턴: ${특정 문자1, 특정 문자2, ...}
+    # 패턴: ${keywords:특정 문자1,특정 문자2,...}
     # 그룹 1: ${...} 전체, 그룹 2: 내부 콤마로 구분된 문자열 (서울,인천)
     list_pattern = r'(\$\{keywords:([^{}]+?)\})'
 

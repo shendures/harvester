@@ -3,7 +3,7 @@ preprocess.py — DataCrawler v2.0
 수집된 raw 데이터를 정제하는 로직을 전담하는 모듈입니다.
 
 DataRefiner 클래스
-  - 6가지 정제 규칙을 순차 적용
+  - 7가지 정제 규칙을 순차 적용
   - 원본 데이터를 절대 수정하지 않음 (shallow copy 후 처리)
   - 정제 통계(제거 행 수, 치환 값 수)를 함께 반환
 
@@ -25,8 +25,9 @@ load_custom_rule() 함수
         def refine_row(row: dict) -> dict: ...                 # 행 단위
     (둘 다 있으면 refine()을 우선 사용)
   - 해당 seq_no 파일이 없으면 None을 반환 — 호출 측에서 "커스텀 규칙 없음"으로 처리.
-  - DataRefiner의 6가지 규칙보다 먼저 적용하는 것을 권장 (원시 데이터를 사이트별로
-    정규화한 뒤, 범용 규칙(중복 제거 등)을 그 위에서 실행).
+  - DataRefiner(custom_rule=...)에 전달하면 나머지 6가지 범용 규칙보다 항상 먼저
+    실행되는 ①번 규칙으로 적용됩니다 (원시 데이터를 사이트별로 정규화한 뒤,
+    범용 규칙(중복 제거 등)을 그 위에서 실행).
 
 사용 예:
     from preprocess import DataRefiner, RefineStats, load_custom_rule

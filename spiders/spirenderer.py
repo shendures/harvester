@@ -7,7 +7,9 @@ import conf
 from selenium.webdriver.common.by import By
 from scrapy.selector import Selector
 
-# Chrome WebDriver를 Scrapy의 응답 객체(Response object)로 사용할 수 있도록 준비합니다.
+# Chrome WebDriver로 렌더링한 페이지를 두 경로로 처리합니다:
+# custom_rules/render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
+# 그대로 넘기고, 없으면 driver.page_source를 Selector로 감싸 범용 XPath 추출로 폴백합니다.
 
 PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
 

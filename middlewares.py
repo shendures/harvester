@@ -217,7 +217,7 @@ class RateLimitedProxyMiddleware:
         self.proxies = settings.getlist('ip_list')
         self.req_per_minute = settings.get('allow_ip_cnts', 0)
         if not self.proxies:
-            print("⚠️ PROXY_LIST 설정이 누락되었습니다. 프록시가 적용되지 않습니다.")
+            print("⚠️ ip_list 설정이 누락되었습니다. 프록시가 적용되지 않습니다.")
 
         # IP별 요청 시각을 저장하는 딕셔너리
         # 구조: {'http://ip:port': [timestamp1, timestamp2, ...]}
