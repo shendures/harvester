@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-13 16:10
-- **현황**: 해결 20건 · 미해결 3건 · 보류 2건
+- **최신 갱신**: 2026-07-15 04:03
+- **현황**: 해결 21건 · 미해결 3건 · 보류 2건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -37,6 +37,7 @@
 | ⑳ | `custom_rules/render/{seq_no}.py` 서브폴더 미이관 | `custom_rules/render/`(부재), `conf.py` | render/refine 서브폴더 분리 리팩터링 중 000010(맥도날드)·000013(네이버) 원본이 삭제만 되고 재이관 안 됨 | 삭제 커밋의 부모 커밋에서 원본 복원(`git show 53978d0^:...`)해 `custom_rules/render/`로 재이관 | - |
 | ㉑ | `spirenderer.py`의 `conditions["login"]` 직접 접근이 신규 request_info.json과 스키마 불일치 | `spiders/spirenderer.py:73`, `generator_conditions.html:1490` | "로그인 없는 사이트도 `login: null` 명시" 암묵적 스키마 전제인데, 생성기의 delete-if-null 목록에 `login`도 포함돼 로그인 미사용 시 키 자체가 삭제됨 → `KeyError` | 코드(`.get()` 방어) 대신 기존 관례 유지 — 생성기 delete-if-null 목록에서 `login` 제외 | - |
 | ㉕ | PyInstaller 배포 파이프라인 부재로 커스텀 규칙 번들 여부 보장 불가 | `guidelines/PREPROCESS.md`, (부재였던) 빌드 스크립트 | `.spec`·빌드 스크립트가 저장소에 전무해 `--add-data` 구성이 수동·비문서화, `PREPROCESS.md` 안내도 구경로 기준이라 실제 조회 경로와 불일치 | `build-exe.ps1` 신설(seq_no 일치 검증, 스테이징 후 번들), `PREPROCESS.md` 경로 안내 갱신 | - |
+| ㉖ | 배포 exe에서 CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성 | `conf.py:294-309` | `CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 만들어, 정제 규칙만 있고 렌더링 규칙은 없는 seq_no도 `%LOCALAPPDATA%\CollectorApp\custom_rules\render\` 빈 폴더가 생성됨(실사용 exe에서 확인) | `__init__()`의 선제적 폴더 생성 루프 제거 — `resolve_path()`가 이미 실제 시딩 대상이 있을 때만 온디맨드로 폴더를 만들고 있어 그 로직에만 의존하도록 정리 | `85463ef` |
 
 ---
 

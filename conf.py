@@ -302,12 +302,6 @@ class CustomModuleStorage:
             self.root_path = os.path.join(os.path.expanduser("~"), ".config")
         self.app_dir = os.path.join(self.root_path, app_name)
 
-        try:
-            for kind in self._KINDS:
-                os.makedirs(os.path.join(self.app_dir, "custom_rules", kind), exist_ok=True)
-        except Exception as e:
-            logger.error("[CustomModuleStorage] 초기화 오류: %s", e)
-
     # ── 경로 해석 ──────────────────────────────────────
     def resolve_path(self, seq_no, kind: str) -> str:
         """
