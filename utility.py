@@ -19,6 +19,20 @@ def resource_path():
         return os.path.dirname(os.path.abspath(__file__))
 
 
+def get_app_name(default: str = "CollectorApp") -> str:
+    '''
+    앱 데이터 폴더(LOCALAPPDATA 등)명으로 쓸 이름을 결정합니다.
+
+    build-exe.ps1의 `-AppName`은 PyInstaller `--name`으로 exe 파일명을 정하는데,
+    빌드된 exe에서 sys.executable이 그 실행 파일 경로를 그대로 가리키므로
+    파일명(확장자 제외)을 읽으면 `-AppName`과 동일한 값을 얻을 수 있습니다.
+    일반 .py 실행 환경에서는 sys.frozen이 없어 고정 기본값을 반환합니다.
+    '''
+    if getattr(sys, 'frozen', False):
+        return os.path.splitext(os.path.basename(sys.executable))[0]
+    return default
+
+
 def get_isin_dict(data_dict: dict, key_list: list):
     return {k: v for k, v in data_dict.items() if k in key_list}
 

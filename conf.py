@@ -119,7 +119,7 @@ class BlueprintStorage:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, app_name: str = "CollectorApp", filename: str = "request_info.json"):
+    def __init__(self, app_name: str = utility.get_app_name(), filename: str = "request_info.json"):
         # 최초 1회만 초기화
         if self._initialized:
             return
@@ -291,7 +291,7 @@ class CustomModuleStorage:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, app_name: str = "CollectorApp"):
+    def __init__(self, app_name: str = utility.get_app_name()):
         # 최초 1회만 초기화
         if self._initialized:
             return
@@ -301,12 +301,6 @@ class CustomModuleStorage:
         else:
             self.root_path = os.path.join(os.path.expanduser("~"), ".config")
         self.app_dir = os.path.join(self.root_path, app_name)
-
-        try:
-            for kind in self._KINDS:
-                os.makedirs(os.path.join(self.app_dir, "custom_rules", kind), exist_ok=True)
-        except Exception as e:
-            logger.error("[CustomModuleStorage] 초기화 오류: %s", e)
 
     # ── 경로 해석 ──────────────────────────────────────
     def resolve_path(self, seq_no, kind: str) -> str:

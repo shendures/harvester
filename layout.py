@@ -1272,7 +1272,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         super().__init__()
 
         self.root_path = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
-        self.app_dir = os.path.join(self.root_path, "CollectorApp")
+        self.app_dir = os.path.join(self.root_path, utility.get_app_name())
         self.file_path = os.path.join(self.app_dir, "schedules.json")
         self.default_source = os.path.join(utility.resource_path(), "schedules.json")
 
