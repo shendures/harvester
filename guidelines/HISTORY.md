@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-15 01:45
+- **최신 갱신**: 2026-07-15 04:03
 
 ---
 
@@ -76,6 +76,7 @@
 | 2026-07-13 | `63178d7` | 불필요한 Scrapy Telnet Console 비활성화로 방화벽 알림 제거 | 수집마다 Scrapy가 자동으로 여는 디버그용 Telnet Console(127.0.0.1:6023)이 Windows 방화벽 허용 알림을 유발 — 이 GUI 앱은 콘솔 접속 기능을 전혀 쓰지 않는데도 `TELNETCONSOLE_ENABLED = False` 설정이 주석 처리된 채 방치돼 있었음. 배포용 exe에서 고객이 수집할 때마다 방화벽 알림을 보면 프로그램을 의심할 수 있다는 우려 | `settings.py`에 `TELNETCONSOLE_ENABLED = False` 명시 활성화 | - |
 | 2026-07-13 | `de6e7e6`, `38981aa` (PR #69, #70) | GIT_GUIDE.md 전체 흐름 도식 추가 및 영문화 | 브랜치 전략·커밋 체크포인트·PR 플로우·다중 환경 동기화를 한눈에 보여주는 다이어그램 부재 | (`de6e7e6`) GIT_GUIDE.md 최상단에 ASCII 다이어그램(섹션 0) 추가. (`38981aa`) 문서 전체가 영어로 작성돼 있어 다이어그램의 한글 텍스트를 영문으로 통일 | - |
 | 2026-07-13 | PR #71 | 9차 릴리스 | - | `develop→main` 머지(main=`a772361`) — PR #57~#70 전체 포함(스케줄 자동저장 버그 수정 3건, render/refine 플러그인 아키텍처 도입, 로그인 키 버그 수정, 문서 폴더명 변경, PyInstaller 배포 파이프라인 신설+버그 수정 3건, GIT_GUIDE 다이어그램) | - |
+| 2026-07-15 | 이슈㉖, `85463ef` (사용자 실사용 중 리포트) | CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성하던 문제 수정 | `build-exe.ps1 -SeqNo 000000`로 정제 규칙(refine)만 있는 고객을 빌드·배포했는데, 실행 후 `%LOCALAPPDATA%\CollectorApp\custom_rules\`에 불필요한 `render\` 빈 폴더까지 생성됨을 발견. 원인은 `conf.CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 `os.makedirs()`로 항상 만들고 있었기 때문 — `resolve_path()`가 이미 실제 시딩 대상(`default_source`)이 존재할 때만 온디맨드로 폴더를 만들고 있어 `__init__()`의 선제적 생성은 불필요했을 뿐 아니라 "설정이 있는 kind만 폴더가 생긴다"는 기대와 어긋났음 | `__init__()`의 `for kind in self._KINDS: os.makedirs(...)` 루프 제거, `resolve_path()`의 기존 온디맨드 생성 로직에만 의존하도록 정리 | 임시 uv venv 스크립트로 `CustomModuleStorage`를 격리 재현 — refine만 번들된 상태에서 `has_refine()` 호출 시 `refine/` 폴더+파일만 생성되고 `render/` 폴더는 생성되지 않음을 확인(PASS, 검증 후 스크립트 삭제) |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
