@@ -3,6 +3,9 @@
 > A shared team guide for writing efficient, readable, and correct code.
 > Centered on universal, language-agnostic principles, with language-specific examples where helpful.
 
+> [!IMPORTANT]
+> For PyQt/PySide desktop UI code (layout, threading, styling, UX patterns, accessibility, etc.), also consult `PyQt_UIUX_GUIDE.md` — it is subordinate to this guide and covers PyQt-specific review items this document doesn't.
+
 ---
 
 ## Table of Contents
