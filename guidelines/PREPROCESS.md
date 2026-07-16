@@ -4,7 +4,7 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-17 02:29
+- **최신 갱신**: 2026-07-17 02:38
 
 ---
 
@@ -67,7 +67,7 @@ DataRefiner.run()
 활성화 값의 출처와 UI 갱신 여부뿐입니다.
 
 - **수동 정제** (GUI "② 정제 규칙 설정" 탭의 [정제 실행] 버튼,
-  `layout.py:786-788`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
+  `layout.py:789-791`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
   `self._drop_column_names`(§2.2 다이얼로그의 [적용] 시점에 갱신됨)·`fill_null_input`
   값을 그대로 읽어 `DataRefiner`를 구성합니다(`trigger.py:982-997`). 결과는
   Raw/Refined 결과 테이블과 §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
@@ -106,7 +106,7 @@ DataRefiner.run()
 - 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:518-526`
   `_refine_rules` 기본값, `_rule_checkboxes` 위젯은 `layout.py:696-702`)로
   수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
-  있음(`layout.py:680`, 토글 연결은 `layout.py:780`).
+  있음(`layout.py:680`, 토글 연결은 `layout.py:783`).
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
@@ -144,7 +144,7 @@ DataRefiner.run()
 
 현재 구조:
 
-- 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-771`),
+- 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-774`),
   버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1088`)가 필드 그리드를 담은
   `QDialog`를 띄웁니다.
 - **`self._collected_data`(Raw 수집 결과)가 비어 있으면 다이얼로그를 열지 않고**
@@ -156,8 +156,11 @@ DataRefiner.run()
   **두 지점에서 공유**합니다(2026-07-17, 코드 중복 방지 목적으로 헬퍼로 추출):
   1. "⚙ 필드 선택" 버튼 클릭 시(`_open_drop_columns_dialog()`)
   2. "제외 필드 지정" 규칙 체크박스를 체크할 때(`layout.py:763` `_on_drop_columns_toggled`)
-     — 데이터가 없으면 경고 후 **체크박스를 다시 해제**합니다(`cb.setChecked(False)`가
-     `stateChanged`를 재귀적으로 한 번 더 발생시켜 버튼/라벨 숨김까지 함께 처리됨).
+     — 데이터가 없으면 **경고창이 뜨기 전에 먼저 체크박스를 해제**합니다
+     (`cb.setChecked(False)`를 경고 호출보다 먼저 실행 — 이 호출이 `stateChanged`를
+     재귀적으로 한 번 더 발생시켜 버튼/라벨 숨김까지 먼저 끝낸 뒤에야 경고창이 뜸,
+     2026-07-17). 경고창이 표시되는 시점엔 체크박스·버튼·라벨이 이미 전부 꺼진
+     상태로 화면에 반영돼 있어, 체크된 상태가 잠깐이라도 보이는 일이 없습니다.
      체크박스가 꺼져 있는 한 버튼 자체가 안 보이므로, 실질적으로 대부분의 경로는
      체크박스 시점에서 먼저 걸러지고 버튼 클릭 경로는 안전망 역할입니다.
 - **source of truth는 `self._drop_column_names`**(`list[str]`)입니다. 다이얼로그를
@@ -170,7 +173,7 @@ DataRefiner.run()
 - 필드가 수십 개일 수 있다는 전제로 다이얼로그 내부는 4열 `QGridLayout` + 고정 높이
   (200px) `QScrollArea`로 구성해 스크롤로 대응합니다. 필드가 없으면 안내 레이블을 표시합니다.
 - 행의 `⚙ 필드 선택` 버튼과 요약 라벨은 **규칙 체크박스가 켜져 있을 때만 보입니다**
-  (`layout.py:752-771`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
+  (`layout.py:752-774`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
   동일한 모양이 됩니다.
 - `_run_refine()`(`trigger.py:963`)은 `self._drop_column_names`를 그대로 읽어
   `DataRefiner(drop_columns=...)`에 전달합니다 — 인터페이스 자체는 기존과 동일해

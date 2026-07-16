@@ -762,8 +762,11 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
                 def _on_drop_columns_toggled(state, cb=cb, b=drop_columns_settings_btn, l=self.drop_columns_summary_lbl):
                     checked = state == Qt.CheckState.Checked.value
-                    if checked and not self._has_collected_data_or_warn():
-                        cb.setChecked(False)  # 데이터 없음 경고 후 체크 해제(재귀적으로 아래 분기가 처리)
+                    if checked and not self._collected_data:
+                        # 경고창이 뜨기 전에 체크박스를 먼저 되돌림 — setChecked(False)가
+                        # 이 핸들러를 재귀 호출해 버튼/라벨 숨김까지 먼저 끝낸 뒤에 경고 표시
+                        cb.setChecked(False)
+                        self._has_collected_data_or_warn()
                         return
                     b.setVisible(checked)
                     l.setVisible(checked)
