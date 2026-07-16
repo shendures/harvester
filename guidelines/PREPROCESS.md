@@ -4,6 +4,8 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
+- **최신 갱신**: 2026-07-16 19:49
+
 ---
 
 ## 1. 정제 파이프라인 개요
@@ -59,7 +61,7 @@ DataRefiner.run()
   `drop_col_input`·`fill_null_input` 값을 그대로 읽어 `DataRefiner`를
   구성합니다(`trigger.py:1074-1090`). 결과는 Raw/Refined 결과 테이블과
   §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
-- **스케줄 자동 저장** (`trigger.py:3736-3748`, `_on_finished()` 내부):
+- **스케줄 자동 저장** (`trigger.py:3644-3656`, `_on_finished()` 내부):
   무인 실행이라 화면 체크박스를 사람이 확인·조정할 수 없으므로,
   `task["extract"]["auto_save_source"] == "refined"`이고
   `task["job"] == "스케줄 실행"`일 때만 화면 상태를 완전히 무시하는 고정
@@ -67,7 +69,7 @@ DataRefiner.run()
   "커스텀 정제 규칙 적용" 체크 시 자동 연동되는 조합과 동일)로
   `rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True`를 호출합니다.
   `skip_ui_update=True`이면 결과 테이블·비교 탭 갱신과 탭 자동 전환을 모두
-  건너뜁니다(`trigger.py:1142-1149`) — 무인 실행 중 화면이 갑자기 바뀌는
+  건너뜁니다(`trigger.py:1050-1057`) — 무인 실행 중 화면이 갑자기 바뀌는
   것을 방지하기 위함입니다.
 
 관련 잠재 리스크는 `ISSUES.md` 이슈 ⑱(보류) 참고.
@@ -102,9 +104,9 @@ DataRefiner.run()
 
 ### 2.1 정제 결과 시각화 — Before/After 비교 탭
 
-"④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 842-914줄)이
+"④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 861-933줄)이
 `RefineStats`를 시각화하는 유일한 화면입니다. `_update_compare_tab()`
-(`trigger.py:1194-1284`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
+(`trigger.py:1102-1192`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
 데이터를 나란히 표시하며:
 
 - `stats.deleted_indices`로 제거된 Raw 행을 강조 표시
@@ -171,7 +173,7 @@ DataRefiner.run()
 
 ### 3.2 함수 계약
 
-파일 안에 아래 둘 중 하나를 정의합니다 (`preprocess.py:20-23`).
+파일 안에 아래 둘 중 하나를 정의합니다 (`preprocess.py:24-26`).
 
 ```python
 def refine(data: list[dict]) -> list[dict]: ...   # 전체 목록 단위, 있으면 우선 사용
@@ -182,25 +184,25 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 로드(파일 찾기·`exec`)와 실행(호출·검증)이 서로 다른 계층에서 처리됩니다.
 
-- **로드** (`trigger.py:1096-1113`, `_run_refine()`): 해당 수집(task)의
+- **로드** (`trigger.py:1004-1021`, `_run_refine()`): 해당 수집(task)의
   `needs_cleaning=True` **그리고** `seq_no`가 존재할 때만
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
   지점에서 잡아 `err` 로그를 남기고 `custom_rule_fn = None`으로 진행합니다.
-- **실행** (`preprocess.py:213` `DataRefiner._step_custom_rule()`): 로드된
+- **실행** (`preprocess.py:211` `DataRefiner._step_custom_rule()`): 로드된
   콜러블은 `DataRefiner(custom_rule=...)`로 전달되고, `rules["custom_rule"]`이
   켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
   입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
-  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:228`).
-  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:232`).
+  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:226`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:229`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
-  `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1130-1140`,
-  실제 로그 반영은 `trigger.py:1152-1158`) — 커스텀 규칙의 버그가 수집
+  `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1038-1048`,
+  실제 로그 반영은 `trigger.py:1059-1066`) — 커스텀 규칙의 버그가 수집
   자체를 막지는 않지만, 배포 전 테스트하지 않으면 실패가 로그로만 조용히
   남고 지나갈 수 있습니다.
 - GUI는 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데
   `custom_rule_exists(seq_no)`가 `False`이면 1회 경고 팝업으로 안내합니다
-  (연결부 `layout.py:578`, 핸들러 `trigger.py:1014-1036`
+  (연결부 `layout.py:576`, 핸들러 `trigger.py:923-945`
   `_on_monitor_tab_changed()`). 이 팝업은 파일 존재 여부만 확인하며,
   "커스텀 정제 규칙 적용" 체크박스(§1)가 꺼져 있는 경우는 별도로 안내하지
   않습니다.
