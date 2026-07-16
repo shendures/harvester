@@ -23,7 +23,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget,
     QSizePolicy, QSystemTrayIcon, QMainWindow,
-    QTextEdit, QMenu, QSpinBox, QDoubleSpinBox, QDateEdit
+    QTextEdit, QMenu, QSpinBox, QDoubleSpinBox, QDateEdit,
+    QScrollArea
 )
 from PyQt6.QtCore import Qt, QTimer, QDate, pyqtSignal
 from PyQt6.QtGui import QColor, QTextDocument, QTextCursor
@@ -983,10 +984,8 @@ class MonitorPageTriggers:
             for key, cb in self._rule_checkboxes.items():
                 self._refine_rules[key] = cb.isChecked()
 
-            # 제외 컬럼 — 필드 버튼 그리드에서 체크된 항목만 수집
-            field_buttons = getattr(self, 'drop_field_buttons', None)
-            if field_buttons is not None:
-                self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
+            # 제외 컬럼 — "제외 필드 지정" 다이얼로그의 적용 시 self._drop_column_names에
+            # 이미 반영되어 있으므로 여기서는 그대로 사용
 
             # null 치환값 파싱 (입력창 기본값은 빈 문자열 — 비워두면 빈 값으로 치환)
             raw_fill = getattr(self, 'fill_null_input', None)
@@ -1064,6 +1063,95 @@ class MonitorPageTriggers:
                 f"(제거 {stats.removed}행, 치환 {stats.filled}건, 정제율 {stats.refine_rate}"
                 f"{custom_rule_note})"
             )
+
+    # ── "제외 필드 지정"(⑥) 요약 라벨 갱신 ───────────────────────────
+    def _update_drop_columns_summary(self):
+        n = len(self._drop_column_names)
+        self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
+
+    # ── "제외 필드 지정"(⑥) 필드 다중 선택 Dialog ───────────────────
+    def _open_drop_columns_dialog(self):
+        """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
+
+        체크 상태의 source of truth는 self._drop_column_names(list[str])이며,
+        이 다이얼로그의 버튼은 열 때마다 새로 만들어 그 값으로 초기화하고
+        [적용] 시에만 다시 self._drop_column_names에 반영합니다 — 다이얼로그를
+        닫아도(취소) 값이 유지되도록.
+        """
+        dlg = QDialog(self)
+        dlg.setWindowTitle("제외 필드 선택")
+        dlg.setFixedWidth(420)
+        dlg.setStyleSheet(f"""
+            QDialog {{
+                background:{BG_SECONDARY};
+                border:1px solid {BORDER};
+                border-radius:10px;
+            }}
+        """)
+
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(22, 18, 22, 18)
+        vl.setSpacing(0)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(parts.make_label("제외 필드 선택", TEXT_PRIMARY, 14, True))
+        title_row.addStretch()
+        vl.addLayout(title_row)
+        vl.addSpacing(10)
+        vl.addWidget(Divider())
+        vl.addSpacing(14)
+
+        vl.addWidget(parts.make_label("추출 결과에서 제외할 필드를 선택하세요.", TEXT_MUTED, 11))
+        vl.addSpacing(10)
+
+        field_names = self._get_result_columns()
+        field_buttons: dict[str, TagButton] = {}
+
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(6)
+
+        if field_names:
+            cols = 4
+            for i, field in enumerate(field_names):
+                btn = TagButton(field)
+                btn.setChecked(field in self._drop_column_names)
+                field_buttons[field] = btn
+                grid.addWidget(btn, i // cols, i % cols)
+        else:
+            grid.addWidget(parts.make_label("설정된 필드가 없습니다.", TEXT_MUTED, 11), 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(200)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;}}"
+        )
+        scroll.setWidget(container)
+        vl.addWidget(scroll)
+        vl.addSpacing(16)
+        vl.addWidget(Divider())
+        vl.addSpacing(12)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        def _apply():
+            self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
+            self._update_drop_columns_summary()
+            dlg.accept()
+
+        apply_btn = parts.action_btn("적용")
+        apply_btn.clicked.connect(_apply)
+        cancel_btn = parts.outline_btn("취소")
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(cancel_btn)
+        vl.addLayout(btn_row)
+
+        dlg.adjustSize()
+        dlg.exec()
 
     def _populate_refined_table(self, data: list):
         """정제 결과 탭 테이블에 데이터 채우기"""

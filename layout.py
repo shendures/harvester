@@ -695,6 +695,10 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         self._rule_checkboxes: dict[str, QCheckBox] = {}
 
+        # 체크박스 옆에 별도 입력/선택 컨트롤이 붙는 규칙 — 컨트롤을 텍스트 바로
+        # 옆에 붙이고 남는 공간은 그 뒤로 보내, 카드 오른쪽 끝에 붙어 보이지 않게 함
+        rows_with_control = ("fill_null", "drop_columns")
+
         for key, title, desc_text in rule_defs:
             cb = QCheckBox()
             cb.setChecked(self._refine_rules[key])
@@ -724,22 +728,45 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             )
             text_col.addWidget(title_lbl)
             text_col.addWidget(desc_lbl)
-            row_l.addLayout(text_col, 1)
+
+            has_control = key in rows_with_control
+            row_l.addLayout(text_col, 0 if has_control else 1)
+            if has_control:
+                row_l.addSpacing(16)
 
             if key == "fill_null":
                 self.fill_null_input = QLineEdit()
                 self.fill_null_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
-                self.fill_null_input.setFixedWidth(280)
+                self.fill_null_input.setFixedWidth(220)
+                self.fill_null_input.setEnabled(cb.isChecked())
                 self.fill_null_input.setStyleSheet(
                     f"background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; "
                     f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
                 )
+                cb.stateChanged.connect(
+                    lambda state, w=self.fill_null_input: w.setEnabled(
+                        state == Qt.CheckState.Checked.value)
+                )
                 row_l.addWidget(self.fill_null_input)
 
-            rl.addWidget(row_w)
-
             if key == "drop_columns":
-                rl.addWidget(self._build_drop_column_picker())
+                self.drop_columns_summary_lbl = parts.make_label("", TEXT_MUTED, 11)
+                self._update_drop_columns_summary()
+                row_l.addWidget(self.drop_columns_summary_lbl)
+
+                drop_columns_settings_btn = parts.settings_btn("⚙  필드 선택")
+                drop_columns_settings_btn.setEnabled(cb.isChecked())
+                drop_columns_settings_btn.clicked.connect(self._open_drop_columns_dialog)
+                cb.stateChanged.connect(
+                    lambda state, b=drop_columns_settings_btn: b.setEnabled(
+                        state == Qt.CheckState.Checked.value)
+                )
+                row_l.addWidget(drop_columns_settings_btn)
+
+            if has_control:
+                row_l.addStretch()
+
+            rl.addWidget(row_w)
 
         # 커스텀 정제 규칙 체크 시 규칙 ②~⑤(remove_duplicate/remove_null_row/
         # fill_null/trim_whitespace)를 자동으로 켬 (해제 시에는 영향 없음)
@@ -758,34 +785,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         bl.addWidget(rw)
         bl.addStretch()
         self.tab_widget.addTab(rules_widget, "② 정제 규칙 설정")
-
-    # ── "제외 필드 지정" 필드 선택 버튼 그리드 (다중 선택, 필드 수십 개 대응) ──
-    def _build_drop_column_picker(self) -> QScrollArea:
-        self.drop_field_buttons: dict[str, TagButton] = {}
-        field_names = self._get_result_columns()
-
-        container = QWidget()
-        grid = QGridLayout(container)
-        grid.setContentsMargins(8, 8, 8, 8)
-        grid.setSpacing(6)
-
-        if field_names:
-            cols = 5
-            for i, field in enumerate(field_names):
-                btn = TagButton(field)
-                self.drop_field_buttons[field] = btn
-                grid.addWidget(btn, i // cols, i % cols)
-        else:
-            grid.addWidget(parts.make_label("설정된 필드가 없습니다.", TEXT_MUTED, 11), 0, 0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(140)
-        scroll.setStyleSheet(
-            f"QScrollArea{{background:{BG_SECONDARY}; border:1px solid {BORDER}; border-radius:4px;}}"
-        )
-        scroll.setWidget(container)
-        return scroll
 
     # ── 탭 ③ 정제 결과 ────────────────────────────────────────────────
     def _build_refined_tab(self):
