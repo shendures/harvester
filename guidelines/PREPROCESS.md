@@ -4,7 +4,7 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-17 01:54
+- **최신 갱신**: 2026-07-17 02:05
 
 ---
 
@@ -147,6 +147,11 @@ DataRefiner.run()
 - 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-768`),
   버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1073`)가 필드 그리드를 담은
   `QDialog`를 띄웁니다.
+- **`self._collected_data`(Raw 수집 결과)가 비어 있으면 다이얼로그를 열지 않고**
+  `QMessageBox.warning()`으로 "수집을 먼저 진행한 후 필드를 선택해 주세요" 안내만
+  띄웁니다(`_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일 패턴, 2026-07-17).
+  필드 목록 자체는 `_get_result_columns()`(blueprint 기준)라 수집 없이도 알 수 있지만,
+  실제 수집 결과를 보기 전에는 제외 설정을 하지 못하도록 의도적으로 게이트를 걸었습니다.
 - **source of truth는 `self._drop_column_names`**(`list[str]`)입니다. 다이얼로그를
   열 때마다 `_get_result_columns()`(`layout.py:939`, blueprint의 `conditions.items`
   키에서 `root`/`detail_root`/`main_root`/`detail` 제외)로 얻은 필드마다 `TagButton`을

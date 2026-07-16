@@ -1078,6 +1078,13 @@ class MonitorPageTriggers:
         [적용] 시에만 다시 self._drop_column_names에 반영합니다 — 다이얼로그를
         닫아도(취소) 값이 유지되도록.
         """
+        if not self._collected_data:
+            QMessageBox.warning(
+                self, "필드 선택 불가",
+                "수집된 데이터가 없습니다.\n수집을 먼저 진행한 후 필드를 선택해 주세요."
+            )
+            return
+
         dlg = QDialog(self)
         dlg.setWindowTitle("제외 필드 선택")
         dlg.setFixedWidth(420)

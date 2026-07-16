@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-17 01:54
+- **최신 갱신**: 2026-07-17 02:05
 
 ---
 
@@ -87,6 +87,8 @@
 | 2026-07-17 | `6263b55` | 정제 규칙 순서 재배치 — `custom_rule`을 ②번으로 이동 | 만 건 이상 규모에서 메모리 절감을 더 밀어붙이기 위해 "불필요한 값·행을 먼저 제거한 뒤 커스텀 정제를 적용"하는 방향 검토 요청. 검토 결과 `custom_rule`을 아예 뒤(4번째)로 미루는 안은 ②③(중복/전체-null 판정)이 사이트별로 정규화되지 않은 원시 데이터를 기준으로 판정하게 돼 위험(사이트마다 dedup/null 판정 결과가 달라질 수 있음) — `custom_rule`은 항상 맨 먼저 실행된다는 기존 설계 전제와 정면 충돌. 절충안으로 계산량이 가장 가벼운 `remove_null_row`만 `custom_rule`보다 앞에 두는 안을 제시했고, 추가로 `trim_whitespace`를 `remove_duplicate`보다 앞에 둬 공백만 다른 값도 중복으로 정확히 판정되도록 개선하는 안을 사용자가 함께 채택 | 새 순서: ①remove_null_row→②custom_rule→③trim_whitespace→④remove_duplicate→⑤drop_columns→⑥fill_null→⑦cast_numeric. `custom_rule`이 더 이상 "항상 맨 먼저"가 아니라 "①remove_null_row 다음"으로 계약이 바뀜 — `preprocess.py` 모듈/클래스 docstring에 이 변경 사실과 이유를 명시. `run()` 호출 순서·`_step_*` 메서드 물리적 정의 순서·`DEFAULT_RULES`·`RefineStats` 필드 주석 모두 재배치. `layout.py`/`trigger.py`의 `rule_defs`·`_refine_rules`·`SCHEDULED_REFINE_RULES`·자동 연동 대상 키 집합(신 ①③④⑥)도 동기화 | `preprocess.DataRefiner` 직접 호출 4개 시나리오 — (1) 공백-only 값 fill 치환 유지 확인, (2) trim-before-dedup으로 공백만 다른 행이 정확히 중복 판정됨 확인(신규), (3) `custom_rule`이 `remove_null_row` 이후의 축소된 데이터를 받음 확인(신규), (4) drop_columns가 cast_numeric보다 먼저 실행되어 제외 컬럼은 변환 대상에서도 빠짐 확인, (5) 기본 파이프라인 정상 동작. 헤드리스 PyQt6 — GUI 순서·`SCHEDULED_REFINE_RULES`·자동 연동 키 집합(①③④⑥) 확인. `PREPROCESS.md` 전체 재검증 |
 
 | 2026-07-17 | `7d69f36` | 정제 규칙 활성화 기본값을 ①~④번만 활성으로 변경 | 새 순서(①remove_null_row~⑦cast_numeric) 기준으로 앞 4개 규칙만 기본 활성화되도록 요청 | 확인 결과 ①②③④는 이미 기본 활성, ⑤⑦은 이미 기본 비활성이라 ⑥`fill_null`만 기본값을 `True`→`False`로 변경. `preprocess.py`의 `DEFAULT_RULES`·모듈 docstring 사용 예, `layout.py`의 `_refine_rules`, `PREPROCESS.md` §2 표의 ⑥ 행(기본값 열) 동기화. `SCHEDULED_REFINE_RULES`(스케줄 무인 실행용 고정 규칙)는 "기본값"과 별개 정책이라 변경하지 않음 | `preprocess.DEFAULT_RULES` 값 직접 대조, 헤드리스 PyQt6 — `_refine_rules` 및 체크박스 초기 상태가 ①②③④만 체크됨을 확인 |
+
+| 2026-07-17 | `c7ed3f8` | "제외 필드 지정" 필드 선택을 Raw 수집 결과 존재 시로 제한 | 필드 목록 자체는 blueprint 설정으로 수집 없이도 알 수 있지만, 실제 수집 결과를 보기 전에는 제외 설정을 하지 못하게 막고 싶다는 요청 | `_open_drop_columns_dialog()`(`trigger.py:1073`) 맨 앞에 `_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일한 패턴으로 `self._collected_data` 빈 값 체크 추가 — 비어 있으면 "필드 선택 불가" `QMessageBox.warning()`만 띄우고 다이얼로그는 열지 않음 | 헤드리스 PyQt6 — (1) `_collected_data=[]`일 때 경고만 뜨고 `QDialog.exec()` 미호출 확인, (2) 데이터가 있을 때는 다이얼로그가 정상적으로 열림(`exec()` 호출) 확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
