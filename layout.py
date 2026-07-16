@@ -760,10 +760,13 @@ class MonitorPage(QWidget, MonitorPageTriggers):
                 self.drop_columns_summary_lbl.setVisible(cb.isChecked())
                 row_l.addWidget(self.drop_columns_summary_lbl)
 
-                def _on_drop_columns_toggled(state, b=drop_columns_settings_btn, l=self.drop_columns_summary_lbl):
-                    visible = state == Qt.CheckState.Checked.value
-                    b.setVisible(visible)
-                    l.setVisible(visible)
+                def _on_drop_columns_toggled(state, cb=cb, b=drop_columns_settings_btn, l=self.drop_columns_summary_lbl):
+                    checked = state == Qt.CheckState.Checked.value
+                    if checked and not self._has_collected_data_or_warn():
+                        cb.setChecked(False)  # 데이터 없음 경고 후 체크 해제(재귀적으로 아래 분기가 처리)
+                        return
+                    b.setVisible(checked)
+                    l.setVisible(checked)
 
                 cb.stateChanged.connect(_on_drop_columns_toggled)
 

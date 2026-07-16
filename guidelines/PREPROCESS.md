@@ -4,7 +4,7 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-17 02:05
+- **최신 갱신**: 2026-07-17 02:29
 
 ---
 
@@ -67,7 +67,7 @@ DataRefiner.run()
 활성화 값의 출처와 UI 갱신 여부뿐입니다.
 
 - **수동 정제** (GUI "② 정제 규칙 설정" 탭의 [정제 실행] 버튼,
-  `layout.py:783-785`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
+  `layout.py:786-788`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
   `self._drop_column_names`(§2.2 다이얼로그의 [적용] 시점에 갱신됨)·`fill_null_input`
   값을 그대로 읽어 `DataRefiner`를 구성합니다(`trigger.py:982-997`). 결과는
   Raw/Refined 결과 테이블과 §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
@@ -106,7 +106,7 @@ DataRefiner.run()
 - 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:518-526`
   `_refine_rules` 기본값, `_rule_checkboxes` 위젯은 `layout.py:696-702`)로
   수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
-  있음(`layout.py:680`, 토글 연결은 `layout.py:777`).
+  있음(`layout.py:680`, 토글 연결은 `layout.py:780`).
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
@@ -115,9 +115,9 @@ DataRefiner.run()
 
 ### 2.1 정제 결과 시각화 — Before/After 비교 탭
 
-"④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 864-936줄)이
+"④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 867-939줄)이
 `RefineStats`를 시각화하는 유일한 화면입니다. `_update_compare_tab()`
-(`trigger.py:1190-1280`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
+(`trigger.py:1208-1298`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
 데이터를 나란히 표시하며:
 
 - `stats.deleted_indices`로 제거된 Raw 행을 강조 표시
@@ -144,25 +144,33 @@ DataRefiner.run()
 
 현재 구조:
 
-- 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-768`),
-  버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1073`)가 필드 그리드를 담은
+- 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-771`),
+  버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1088`)가 필드 그리드를 담은
   `QDialog`를 띄웁니다.
 - **`self._collected_data`(Raw 수집 결과)가 비어 있으면 다이얼로그를 열지 않고**
   `QMessageBox.warning()`으로 "수집을 먼저 진행한 후 필드를 선택해 주세요" 안내만
-  띄웁니다(`_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일 패턴, 2026-07-17).
-  필드 목록 자체는 `_get_result_columns()`(blueprint 기준)라 수집 없이도 알 수 있지만,
-  실제 수집 결과를 보기 전에는 제외 설정을 하지 못하도록 의도적으로 게이트를 걸었습니다.
+  띄웁니다. 필드 목록 자체는 `_get_result_columns()`(blueprint 기준)라 수집 없이도
+  알 수 있지만, 실제 수집 결과를 보기 전에는 제외 설정을 하지 못하도록 의도적으로
+  게이트를 걸었습니다. 이 확인은 `_has_collected_data_or_warn()`(`trigger.py:1073`,
+  `_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일 문구)로 공통화되어 있으며,
+  **두 지점에서 공유**합니다(2026-07-17, 코드 중복 방지 목적으로 헬퍼로 추출):
+  1. "⚙ 필드 선택" 버튼 클릭 시(`_open_drop_columns_dialog()`)
+  2. "제외 필드 지정" 규칙 체크박스를 체크할 때(`layout.py:763` `_on_drop_columns_toggled`)
+     — 데이터가 없으면 경고 후 **체크박스를 다시 해제**합니다(`cb.setChecked(False)`가
+     `stateChanged`를 재귀적으로 한 번 더 발생시켜 버튼/라벨 숨김까지 함께 처리됨).
+     체크박스가 꺼져 있는 한 버튼 자체가 안 보이므로, 실질적으로 대부분의 경로는
+     체크박스 시점에서 먼저 걸러지고 버튼 클릭 경로는 안전망 역할입니다.
 - **source of truth는 `self._drop_column_names`**(`list[str]`)입니다. 다이얼로그를
-  열 때마다 `_get_result_columns()`(`layout.py:939`, blueprint의 `conditions.items`
+  열 때마다 `_get_result_columns()`(`layout.py:942`, blueprint의 `conditions.items`
   키에서 `root`/`detail_root`/`main_root`/`detail` 제외)로 얻은 필드마다 `TagButton`을
   새로 생성해 `self._drop_column_names`에 있는지 여부로 초기 체크 상태를 설정합니다.
   [적용] 클릭 시에만 체크된 필드명을 다시 `self._drop_column_names`에 반영하고
-  요약 라벨을 갱신합니다(`trigger.py:1140-1143` `_apply()`) — [취소]하면 다이얼로그를
+  요약 라벨을 갱신합니다(`trigger.py:1158-1161` `_apply()`) — [취소]하면 다이얼로그를
   닫아도 이전 선택이 그대로 유지됩니다.
 - 필드가 수십 개일 수 있다는 전제로 다이얼로그 내부는 4열 `QGridLayout` + 고정 높이
   (200px) `QScrollArea`로 구성해 스크롤로 대응합니다. 필드가 없으면 안내 레이블을 표시합니다.
 - 행의 `⚙ 필드 선택` 버튼과 요약 라벨은 **규칙 체크박스가 켜져 있을 때만 보입니다**
-  (`layout.py:752-768`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
+  (`layout.py:752-771`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
   동일한 모양이 됩니다.
 - `_run_refine()`(`trigger.py:963`)은 `self._drop_column_names`를 그대로 읽어
   `DataRefiner(drop_columns=...)`에 전달합니다 — 인터페이스 자체는 기존과 동일해

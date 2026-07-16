@@ -1069,6 +1069,21 @@ class MonitorPageTriggers:
         n = len(self._drop_column_names)
         self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
 
+    # ── Raw 수집 결과 존재 여부 확인 (없으면 경고) ───────────────────
+    def _has_collected_data_or_warn(self) -> bool:
+        """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
+
+        "제외 필드 지정" 체크박스 활성화 시(layout.py)와 "⚙ 필드 선택" 버튼
+        클릭 시(_open_drop_columns_dialog) 양쪽에서 공유하는 헬퍼입니다.
+        """
+        if self._collected_data:
+            return True
+        QMessageBox.warning(
+            self, "필드 선택 불가",
+            "수집된 데이터가 없습니다.\n수집을 먼저 진행한 후 필드를 선택해 주세요."
+        )
+        return False
+
     # ── "제외 필드 지정"(⑤) 필드 다중 선택 Dialog ───────────────────
     def _open_drop_columns_dialog(self):
         """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
@@ -1078,11 +1093,7 @@ class MonitorPageTriggers:
         [적용] 시에만 다시 self._drop_column_names에 반영합니다 — 다이얼로그를
         닫아도(취소) 값이 유지되도록.
         """
-        if not self._collected_data:
-            QMessageBox.warning(
-                self, "필드 선택 불가",
-                "수집된 데이터가 없습니다.\n수집을 먼저 진행한 후 필드를 선택해 주세요."
-            )
+        if not self._has_collected_data_or_warn():
             return
 
         dlg = QDialog(self)
