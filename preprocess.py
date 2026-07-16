@@ -40,7 +40,7 @@ load_custom_rule() 함수
         "trim_whitespace":  True,
         "remove_duplicate": True,
         "drop_columns":     False,
-        "fill_null":        True,
+        "fill_null":        False,
         "cast_numeric":     False,
     }
 
@@ -97,7 +97,7 @@ DEFAULT_RULES: dict[str, bool] = {
     "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
     "remove_duplicate": True,   # 중복 행 제거
     "drop_columns":     False,  # 선택 필드 제외 (기본 비활성)
-    "fill_null":        True,   # null → 지정값 치환 (기본 빈 값)
+    "fill_null":        False,  # null → 지정값 치환 (기본 비활성)
     "cast_numeric":     False,  # 숫자 타입 변환  (기본 비활성)
 }
 

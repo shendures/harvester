@@ -521,7 +521,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "remove_duplicate":  True,   # 중복 행 제거
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
-            "fill_null":         True,   # null → 지정값 치환 (기본: 빈 값)
+            "fill_null":         False,  # null → 지정값 치환 (비활성 기본)
             "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
         }
         self._drop_column_names: list[str] = []   # 제외할 컬럼명 목록

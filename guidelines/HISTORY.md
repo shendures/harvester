@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-17 01:46
+- **최신 갱신**: 2026-07-17 01:54
 
 ---
 
@@ -85,6 +85,8 @@
 | 2026-07-16 | `38740bf`, `fbc08aa` | 정제 규칙 실행 순서 재배치 및 넘버링 재부여 | 만 건 이상 규모 처리 시 메모리/CPU 절감 여지 검토 요청 — ②remove_duplicate(행 전체 정렬 비교, 상대적으로 비쌈)가 ③remove_null_row(단순 순회, 저렴)보다 먼저 실행돼 비싼 연산이 더 많은 행에 적용되고 있었음. ⑥drop_columns도 값 변환 규칙(④⑤) 뒤에 있어 제외될 컬럼까지 매번 순회·가공하고 있었음. ④fill_null이 ⑤trim_whitespace보다 먼저 실행돼 공백만 있는 값(`"  "`)이 `_NULL_VALUES`(정확히 `""`만 포함)에 안 걸려 fill_null을 통과했다가 trim 후 빈 문자열로 남는 정확성 문제도 있었음 | 새 순서: ①custom_rule→②remove_null_row→③remove_duplicate→④drop_columns→⑤trim_whitespace→⑥fill_null→⑦cast_numeric. `preprocess.py`의 `run()` 호출 순서·`_step_*` 메서드 물리적 정의 순서·클래스 docstring·`DEFAULT_RULES`를 모두 새 순서로 재배치. `layout.py`의 `rule_defs`/`_refine_rules` GUI 표시 순서, `trigger.py`의 `SCHEDULED_REFINE_RULES`·자동 연동 대상 키 집합(구 ②~⑤ → 신 ②③⑤⑥)도 동기화. `drop_columns`는 정확성 우선으로 보수적 배치(②③의 중복/전체-null 판정은 원본 전체 컬럼 기준 그대로 유지) | `preprocess.DataRefiner` 직접 호출 — (1) 공백만 있는 값이 trim 후 fill_null 치환값으로 대체됨 확인, (2) drop_columns가 ②③ 판정에 영향 안 주면서 최종 결과에서는 컬럼 제외됨 확인, (3) 기본 파이프라인 전체 정상 동작 확인. 헤드리스 PyQt6 — GUI 체크박스 표시 순서, 커스텀 규칙 자동 연동 대상(②③⑤⑥), `SCHEDULED_REFINE_RULES` 순서/값 확인. `PREPROCESS.md` 전체 재검증(§1 다이어그램, §2 표, §2.2, §3.3 등 모든 파일:줄번호 인용 재확인) |
 
 | 2026-07-17 | `6263b55` | 정제 규칙 순서 재배치 — `custom_rule`을 ②번으로 이동 | 만 건 이상 규모에서 메모리 절감을 더 밀어붙이기 위해 "불필요한 값·행을 먼저 제거한 뒤 커스텀 정제를 적용"하는 방향 검토 요청. 검토 결과 `custom_rule`을 아예 뒤(4번째)로 미루는 안은 ②③(중복/전체-null 판정)이 사이트별로 정규화되지 않은 원시 데이터를 기준으로 판정하게 돼 위험(사이트마다 dedup/null 판정 결과가 달라질 수 있음) — `custom_rule`은 항상 맨 먼저 실행된다는 기존 설계 전제와 정면 충돌. 절충안으로 계산량이 가장 가벼운 `remove_null_row`만 `custom_rule`보다 앞에 두는 안을 제시했고, 추가로 `trim_whitespace`를 `remove_duplicate`보다 앞에 둬 공백만 다른 값도 중복으로 정확히 판정되도록 개선하는 안을 사용자가 함께 채택 | 새 순서: ①remove_null_row→②custom_rule→③trim_whitespace→④remove_duplicate→⑤drop_columns→⑥fill_null→⑦cast_numeric. `custom_rule`이 더 이상 "항상 맨 먼저"가 아니라 "①remove_null_row 다음"으로 계약이 바뀜 — `preprocess.py` 모듈/클래스 docstring에 이 변경 사실과 이유를 명시. `run()` 호출 순서·`_step_*` 메서드 물리적 정의 순서·`DEFAULT_RULES`·`RefineStats` 필드 주석 모두 재배치. `layout.py`/`trigger.py`의 `rule_defs`·`_refine_rules`·`SCHEDULED_REFINE_RULES`·자동 연동 대상 키 집합(신 ①③④⑥)도 동기화 | `preprocess.DataRefiner` 직접 호출 4개 시나리오 — (1) 공백-only 값 fill 치환 유지 확인, (2) trim-before-dedup으로 공백만 다른 행이 정확히 중복 판정됨 확인(신규), (3) `custom_rule`이 `remove_null_row` 이후의 축소된 데이터를 받음 확인(신규), (4) drop_columns가 cast_numeric보다 먼저 실행되어 제외 컬럼은 변환 대상에서도 빠짐 확인, (5) 기본 파이프라인 정상 동작. 헤드리스 PyQt6 — GUI 순서·`SCHEDULED_REFINE_RULES`·자동 연동 키 집합(①③④⑥) 확인. `PREPROCESS.md` 전체 재검증 |
+
+| 2026-07-17 | `7d69f36` | 정제 규칙 활성화 기본값을 ①~④번만 활성으로 변경 | 새 순서(①remove_null_row~⑦cast_numeric) 기준으로 앞 4개 규칙만 기본 활성화되도록 요청 | 확인 결과 ①②③④는 이미 기본 활성, ⑤⑦은 이미 기본 비활성이라 ⑥`fill_null`만 기본값을 `True`→`False`로 변경. `preprocess.py`의 `DEFAULT_RULES`·모듈 docstring 사용 예, `layout.py`의 `_refine_rules`, `PREPROCESS.md` §2 표의 ⑥ 행(기본값 열) 동기화. `SCHEDULED_REFINE_RULES`(스케줄 무인 실행용 고정 규칙)는 "기본값"과 별개 정책이라 변경하지 않음 | `preprocess.DEFAULT_RULES` 값 직접 대조, 헤드리스 PyQt6 — `_refine_rules` 및 체크박스 초기 상태가 ①②③④만 체크됨을 확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
