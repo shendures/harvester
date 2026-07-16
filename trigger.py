@@ -983,11 +983,10 @@ class MonitorPageTriggers:
             for key, cb in self._rule_checkboxes.items():
                 self._refine_rules[key] = cb.isChecked()
 
-            # 제외 컬럼 파싱
-            raw_drop = getattr(self, 'drop_col_input', None)
-            if raw_drop is not None:
-                col_text = raw_drop.text().strip()
-                self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
+            # 제외 컬럼 — 필드 버튼 그리드에서 체크된 항목만 수집
+            field_buttons = getattr(self, 'drop_field_buttons', None)
+            if field_buttons is not None:
+                self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
 
             # null 치환값 파싱 (입력창 기본값은 빈 문자열 — 비워두면 빈 값으로 치환)
             raw_fill = getattr(self, 'fill_null_input', None)

@@ -37,12 +37,12 @@ DataRefiner.run()
    전달 (파일이 없거나 로드 실패 시 `None` 전달, §3.3 참고).
 2. `DataRefiner.rules["custom_rule"]`이 켜져 있어야 함 — GUI "② 정제 규칙 설정" 탭의
    "커스텀 정제 규칙 적용" 체크박스로 나머지 6개 규칙과 동일하게 개별 on/off 가능
-   (`layout.py:520-528` `_refine_rules`, 기본값 `True`).
+   (`layout.py:518-526` `_refine_rules`, 기본값 `True`).
 
 둘 중 하나라도 해당 안 되면(파일 없음 / 체크박스 꺼짐) 이 단계는 조용히 건너뛰고
 범용 6규칙만 적용됩니다.
 
-**체크박스 자동 연동** (`trigger.py:1039-1050` `_on_custom_rule_toggled`): "커스텀
+**체크박스 자동 연동** (`trigger.py:948-959` `_on_custom_rule_toggled`): "커스텀
 정제 규칙 적용" 체크박스를 켤 때마다 ②~⑤(`remove_duplicate`/`remove_null_row`/
 `fill_null`/`trim_whitespace`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔
 상태여도 매번 덮어씀). 해제할 때는 ②~⑤에 영향을 주지 않고 직전 상태를 그대로
@@ -52,14 +52,14 @@ DataRefiner.run()
 
 ### 1.1 실행 트리거: 수동 정제 vs 스케줄 자동 저장
 
-`_run_refine(rules_override=None, skip_ui_update=False)`(`trigger.py:1053`)는
+`_run_refine(rules_override=None, skip_ui_update=False)`(`trigger.py:962`)는
 두 가지 경로로 호출됩니다 — ①~⑦ 파이프라인 자체는 동일하고, 차이는 규칙
 활성화 값의 출처와 UI 갱신 여부뿐입니다.
 
 - **수동 정제** (GUI "② 정제 규칙 설정" 탭의 [정제 실행] 버튼,
-  `layout.py:761-763`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
-  `drop_col_input`·`fill_null_input` 값을 그대로 읽어 `DataRefiner`를
-  구성합니다(`trigger.py:1074-1090`). 결과는 Raw/Refined 결과 테이블과
+  `layout.py:752-754`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
+  `drop_field_buttons`(§2.2)·`fill_null_input` 값을 그대로 읽어 `DataRefiner`를
+  구성합니다(`trigger.py:982-998`). 결과는 Raw/Refined 결과 테이블과
   §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
 - **스케줄 자동 저장** (`trigger.py:3644-3656`, `_on_finished()` 내부):
   무인 실행이라 화면 체크박스를 사람이 확인·조정할 수 없으므로,
@@ -89,13 +89,13 @@ DataRefiner.run()
 | ③ | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
 | ④ | `fill_null` | 잔존 null 값을 지정한 값으로 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일) | 활성 |
 | ⑤ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
-| ⑥ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 | 비활성 |
+| ⑥ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 — GUI는 필드명 버튼 다중 선택으로 지정(§2.2) | 비활성 |
 | ⑦ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
 
-- 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:520-528`
-  `_refine_rules` 기본값, `_rule_checkboxes` 위젯은 `layout.py:698-704`)로
+- 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:518-526`
+  `_refine_rules` 기본값, `_rule_checkboxes` 위젯은 `layout.py:696-702`)로
   수집 단위 개별 제어. `custom_rule`도 동일한 방식으로 켜고 끌 수
-  있음(`layout.py:682`, 토글 연결은 `layout.py:755`).
+  있음(`layout.py:680`, 토글 연결은 `layout.py:746`).
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
@@ -120,6 +120,35 @@ DataRefiner.run()
 (`skip_ui_update=True`)에서는 갱신되지 않습니다 — 무인 실행 결과를
 검토하려면 다음 수동 실행 전까지 이 탭에는 반영되지 않는다는 점에
 유의합니다.
+
+### 2.2 제외 필드 지정(`drop_columns`) 선택 UI
+
+2026-07-16 이전에는 쉼표로 구분한 컬럼명을 직접 입력하는 `QLineEdit`
+(`drop_col_input`)이었습니다 — 오타가 나도 에러 없이 그냥 매치되지
+않아 조용히 무시되는 문제가 있었습니다. 지금은 `MonitorPage`가 필드명당
+체크 가능한 `TagButton`을 생성해 선택하는 방식으로 바뀌었습니다
+(`layout.py:_build_drop_column_picker()`, `layout.py:763`).
+
+- 필드 목록은 `_get_result_columns()`(`layout.py:915`, blueprint의
+  `conditions.items` 키에서 `root`/`detail_root`/`main_root`/`detail`
+  제외)로 얻습니다 — 자유 입력이 아니라 실제 존재하는 필드명만 선택
+  가능하므로 오타로 인한 조용한 미적용이 구조적으로 사라집니다.
+- 필드 수가 수십 개일 수 있다는 전제로, 5열 `QGridLayout` + 고정 높이
+  (140px) `QScrollArea`로 구성해 스크롤로 대응합니다. 필드가 없으면
+  안내 레이블을 표시합니다.
+- 체크된 버튼들의 필드명만 `_run_refine()`(`trigger.py:987-989`)이
+  `self._drop_column_names`로 읽어갑니다 — 인터페이스(`_drop_column_names`
+  자체)는 기존과 동일해 정제 결과/비교 탭(§2.1) 등 하위 로직은 변경이
+  없습니다.
+- **적용 범위는 수동 정제 실행에 한정**됩니다. 스케줄 자동 저장 경로는
+  `rules_override`가 전달되면 `drop_columns`를 항상 빈 리스트로 강제하므로
+  (`trigger.py:979`) 이 UI 변경과 무관합니다.
+- 필드 목록은 앱 시작 시점에 1회 읽은 모듈 전역 `request_info`
+  (`layout.py:33`)를 기준으로 하므로, 런타임 중 blueprint가 reload돼도
+  갱신되지 않습니다 — Raw/정제/비교 탭의 컬럼 헤더가 이미 가진 것과
+  동일한 한계입니다.
+- 더 이상 쓰이지 않게 된 `DataRefiner.update_drop_columns()`(문자열 파싱
+  결과를 받아 교체하던 메서드, 호출부 전무)는 이 변경과 함께 삭제됐습니다.
 
 ---
 
