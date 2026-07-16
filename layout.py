@@ -516,11 +516,11 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {
-            "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
             "remove_null_row":   True,   # 모든 필드 null 행 제거
+            "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
+            "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "remove_duplicate":  True,   # 중복 행 제거
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
-            "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "fill_null":         True,   # null → 지정값 치환 (기본: 빈 값)
             "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
         }
@@ -677,16 +677,16 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         rl.addSpacing(8)
 
         rule_defs = [
-            ("custom_rule",      "커스텀 정제 규칙 적용",
-             "사용자 정의 정제 함수를 적용합니다."),
             ("remove_null_row",  "모든 필드 null 행 제거",
              "모든 필드가 null·빈 값인 행만 삭제합니다."),
+            ("custom_rule",      "커스텀 정제 규칙 적용",
+             "사용자 정의 정제 함수를 적용합니다."),
+            ("trim_whitespace",  "문자열 공백 trim",
+             "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
             ("remove_duplicate", "중복 행 제거",
              "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("drop_columns",     "제외 필드 지정",
              "추출에 불필요한 컬럼을 선택하여 제외합니다."),
-            ("trim_whitespace",  "문자열 공백 trim",
-             "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
             ("fill_null",        "결측값(N/A) 치환",
              "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
             ("cast_numeric",     "숫자 타입 변환",
@@ -772,8 +772,8 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
             rl.addWidget(row_w)
 
-        # 커스텀 정제 규칙 체크 시 규칙 ②③⑤⑥(remove_null_row/remove_duplicate/
-        # trim_whitespace/fill_null)를 자동으로 켬 (해제 시에는 영향 없음)
+        # 커스텀 정제 규칙 체크 시 규칙 ①③④⑥(remove_null_row/trim_whitespace/
+        # remove_duplicate/fill_null)를 자동으로 켬 (해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
 
         rl.addSpacing(12)

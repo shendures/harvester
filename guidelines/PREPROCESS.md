@@ -4,32 +4,34 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-16 23:38
+- **최신 갱신**: 2026-07-17 01:46
 
 ---
 
 ## 1. 정제 파이프라인 개요
 
 `DataRefiner`가 7개 규칙을 모두 소유하고 순차 적용합니다. 커스텀 규칙(`custom_rule`,
-seq_no별 플러그인)이 **항상 맨 먼저 실행되는 ①번 규칙**입니다 — 사이트별 원시 데이터를
-정규화한 뒤, 그 위에서 범용 규칙(중복 제거 등)을 적용하기 위함 (`preprocess.py:108` 주석 참고).
+seq_no별 플러그인)은 **②번 규칙**으로, 완전 공백 행을 미리 걸러내는 ①remove_null_row
+바로 다음, 나머지 범용 규칙(중복 제거 등)보다는 먼저 실행됩니다 — 사이트별 원시
+데이터를 정규화한 뒤, 그 위에서 나머지 범용 규칙을 적용하기 위함
+(`preprocess.py:110` 주석 참고).
 
-> **2026-07-16 순서 재배치**: 만 건 이상 규모 처리 시 메모리/CPU 절감과 정확성 개선을
-> 위해 ②~⑦의 실행 순서가 바뀌고 번호도 그 순서대로 다시 부여됐습니다(②remove_duplicate↔
-> ③remove_null_row 스왑, ⑥drop_columns→④로 이동, ④fill_null↔⑤trim_whitespace 스왑).
-> 이전 순서/번호는 `HISTORY.md`에서 확인할 수 있습니다.
+> **순서 재배치 이력**: 2026-07-16에 ②~⑦(당시 번호 기준) 순서를 한 차례 재배치했고,
+> 2026-07-17에 만 건 이상 규모 처리 시 메모리 절감을 위해 `custom_rule`을 맨 앞이
+> 아닌 ②번으로(①remove_null_row만 앞에 둠) 재배치하면서, `trim_whitespace`↔
+> `remove_duplicate` 순서도 함께 조정했습니다. 이전 순서/번호는 `HISTORY.md` 참고.
 
 ```
 raw 수집 데이터
     │
     ▼
 DataRefiner.run()
-    ├─ ① custom_rule       (seq_no별, 있고 활성화된 경우에만 — 항상 맨 먼저 실행)
-    ├─ ② remove_null_row   (③보다 계산량이 가벼워 먼저 실행 — 행 수를 먼저 줄임)
-    ├─ ③ remove_duplicate  (행 전체 정렬·비교라 상대적으로 비쌈 — ②로 줄어든 행에만 적용)
-    ├─ ④ drop_columns      (②③의 판정 기준은 원본 전체 컬럼 유지 — 그 뒤·⑤⑥⑦보다는 먼저
+    ├─ ① remove_null_row   (계산량이 가벼워 가장 먼저 실행 — ②의 처리 대상도 줄임)
+    ├─ ② custom_rule       (seq_no별, 있고 활성화된 경우에만 — ①을 제외한 나머지보다 먼저 실행)
+    ├─ ③ trim_whitespace   (④보다 먼저 실행 — 공백만 다른 값도 동일 값으로 인식돼 중복 판정에 걸리도록)
+    ├─ ④ remove_duplicate  (행 전체 정렬·비교라 상대적으로 비쌈 — ②③을 거쳐 정규화·trim된 뒤 실행)
+    ├─ ⑤ drop_columns      (④까지의 중복 판정 기준은 원본 전체 컬럼 유지 — 그 뒤·⑥⑦보다는 먼저
     │                        실행해 이후 단계가 불필요한 컬럼을 순회하지 않도록 함)
-    ├─ ⑤ trim_whitespace   (⑥보다 먼저 실행 — 공백만 있는 값도 trim 후 null 판정에 걸리도록)
     ├─ ⑥ fill_null
     └─ ⑦ cast_numeric
     │
@@ -49,11 +51,13 @@ DataRefiner.run()
 범용 6규칙만 적용됩니다.
 
 **체크박스 자동 연동** (`trigger.py:949-960` `_on_custom_rule_toggled`): "커스텀
-정제 규칙 적용" 체크박스를 켤 때마다 ②③⑤⑥(`remove_null_row`/`remove_duplicate`/
-`trim_whitespace`/`fill_null`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔
-상태여도 매번 덮어씀). 해제할 때는 ②③⑤⑥에 영향을 주지 않고 직전 상태를 그대로
+정제 규칙 적용" 체크박스를 켤 때마다 ①③④⑥(`remove_null_row`/`trim_whitespace`/
+`remove_duplicate`/`fill_null`)가 자동으로 켜집니다(사용자가 개별적으로 꺼둔
+상태여도 매번 덮어씀). 해제할 때는 ①③④⑥에 영향을 주지 않고 직전 상태를 그대로
 둡니다 — 커스텀 규칙이 정규화한 데이터에는 기본 위생 규칙(중복/결측 정리 등)이
-항상 함께 돌도록 하기 위한 편의 기능이며, ④`drop_columns`·⑦`cast_numeric`은
+항상 함께 돌도록 하기 위한 편의 기능입니다(단, ①remove_null_row는 예외적으로
+`custom_rule`보다 먼저 실행되므로 "정규화 이후"는 아니지만, 완전 공백 행 제거는
+정규화 여부와 무관하다고 판단해 함께 묶임). ⑤`drop_columns`·⑦`cast_numeric`은
 연동 대상이 아닙니다.
 
 ### 1.1 실행 트리거: 수동 정제 vs 스케줄 자동 저장
@@ -71,7 +75,7 @@ DataRefiner.run()
   무인 실행이라 화면 체크박스를 사람이 확인·조정할 수 없으므로,
   `task["extract"]["auto_save_source"] == "refined"`이고
   `task["job"] == "스케줄 실행"`일 때만 화면 상태를 완전히 무시하는 고정
-  규칙 `SCHEDULED_REFINE_RULES`(`trigger.py:71-79` — ①②③⑤⑥=True, ④⑦=False,
+  규칙 `SCHEDULED_REFINE_RULES`(`trigger.py:71-79` — ①②③④⑥=True, ⑤⑦=False,
   "커스텀 정제 규칙 적용" 체크 시 자동 연동되는 조합과 동일)로
   `rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True`를 호출합니다.
   `skip_ui_update=True`이면 결과 테이블·비교 탭 갱신과 탭 자동 전환을 모두
@@ -85,16 +89,17 @@ DataRefiner.run()
 ## 2. 범용 정제 규칙 (`DataRefiner`, ①~⑦)
 
 `preprocess.DataRefiner`가 아래 순서대로 적용합니다. **순서를 바꾸면 결과가
-달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:108` 주석 참고). 커스텀
-규칙(① `custom_rule`)은 이 6종보다 먼저 실행되며 상세는 §3 참고.
+달라지므로 임의로 바꾸지 않습니다** (`preprocess.py:110` 주석 참고). 커스텀
+규칙(② `custom_rule`)은 ①remove_null_row 다음, 나머지 5종보다는 먼저 실행되며
+상세는 §3 참고.
 
 | # | 규칙 키 | 내용 | 기본값 |
 |---|---|---|---|
-| ① | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) — **실행은 항상 맨 먼저** | 활성 |
-| ② | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 | 활성 |
-| ③ | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
-| ④ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 — GUI는 필드명 버튼 다중 선택 다이얼로그로 지정(§2.2) | 비활성 |
-| ⑤ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
+| ① | `remove_null_row` | 모든 필드가 null 판정값(`None`/`""`/`"null"`/`"None"`/`"NULL"`/`"N/A"`/`"n/a"`)인 행 제거 — **계산량이 가벼워 실행은 항상 맨 먼저** | 활성 |
+| ② | `custom_rule` | seq_no별 커스텀 규칙 적용 (§3) | 활성 |
+| ③ | `trim_whitespace` | 문자열 값의 앞뒤 공백 제거 | 활성 |
+| ④ | `remove_duplicate` | 행 전체를 비교해 중복 행 제거 | 활성 |
+| ⑤ | `drop_columns` | 지정한 컬럼(`drop_columns` 인자)을 결과에서 제외 — GUI는 필드명 버튼 다중 선택 다이얼로그로 지정(§2.2) | 비활성 |
 | ⑥ | `fill_null` | 잔존 null 값을 지정한 값으로 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일) | 활성 |
 | ⑦ | `cast_numeric` | 문자열을 int → float 순으로 변환 시도, 실패 시 원본 문자열 유지 | 비활성 |
 
@@ -127,7 +132,7 @@ DataRefiner.run()
 검토하려면 다음 수동 실행 전까지 이 탭에는 반영되지 않는다는 점에
 유의합니다.
 
-### 2.2 제외 필드 지정(`drop_columns`, ④) 선택 UI
+### 2.2 제외 필드 지정(`drop_columns`, ⑤) 선택 UI
 
 2026-07-16 세션 동안 두 단계로 바뀌었습니다:
 
@@ -236,12 +241,12 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
   지점에서 잡아 `err` 로그를 남기고 `custom_rule_fn = None`으로 진행합니다.
-- **실행** (`preprocess.py:217` `DataRefiner._step_custom_rule()`): 로드된
+- **실행** (`preprocess.py:244` `DataRefiner._step_custom_rule()`): 로드된
   콜러블은 `DataRefiner(custom_rule=...)`로 전달되고, `rules["custom_rule"]`이
   켜져 있을 때만(§1) 실제로 호출됩니다. 호출 중 예외, 또는 반환값이
   입력과 동일한 길이의 `list`가 아닌 경우 모두 **원본 데이터로 폴백**하고
-  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:231`).
-  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:234`).
+  `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:259`).
+  성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:262`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
   `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1038-1048`,
   실제 로그 반영은 `trigger.py:1059-1066`) — 커스텀 규칙의 버그가 수집

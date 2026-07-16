@@ -66,14 +66,14 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
 # 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 고정 규칙 —
-# "① 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(②③⑤⑥)과 동일.
+# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④⑥)과 동일.
 # 실행 시점의 화면 체크박스 상태에 의존하지 않도록 항상 이 값을 그대로 사용한다.
 SCHEDULED_REFINE_RULES = {
-    "custom_rule":      True,
     "remove_null_row":  True,
+    "custom_rule":      True,
+    "trim_whitespace":  True,
     "remove_duplicate": True,
     "drop_columns":     False,
-    "trim_whitespace":  True,
     "fill_null":        True,
     "cast_numeric":     False,
 }
@@ -947,10 +947,10 @@ class MonitorPageTriggers:
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(①) 체크 시 규칙 ②③⑤⑥(remove_null_row/
-        remove_duplicate/trim_whitespace/fill_null)를 자동으로 켭니다.
+        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④⑥(remove_null_row/
+        trim_whitespace/remove_duplicate/fill_null)를 자동으로 켭니다.
         체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ②③⑤⑥에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        ①③④⑥에 영향을 주지 않습니다(직전 상태 그대로 유지).
         """
         if state != Qt.CheckState.Checked.value:
             return
@@ -998,7 +998,7 @@ class MonitorPageTriggers:
 
         lm = getattr(self.window(), 'log_manager', None)
 
-        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ① custom_rule step이 담당 ──
+        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
         seq_no         = self._current_task.get("seq_no")
         needs_cleaning = self._current_task.get("needs_cleaning", False)
@@ -1064,12 +1064,12 @@ class MonitorPageTriggers:
                 f"{custom_rule_note})"
             )
 
-    # ── "제외 필드 지정"(④) 요약 라벨 갱신 ───────────────────────────
+    # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
     def _update_drop_columns_summary(self):
         n = len(self._drop_column_names)
         self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
 
-    # ── "제외 필드 지정"(④) 필드 다중 선택 Dialog ───────────────────
+    # ── "제외 필드 지정"(⑤) 필드 다중 선택 Dialog ───────────────────
     def _open_drop_columns_dialog(self):
         """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
 
@@ -2508,7 +2508,7 @@ class SchedulerPageTriggers:
         sched_auto_raw_btn.setChecked(sched_auto_save_source != "refined")
         sched_auto_ref_btn.setChecked(sched_auto_save_source == "refined")
         sched_auto_ref_btn.setToolTip(
-            "정제 선택 시 '① 커스텀 정제 규칙 적용' 및 자동 연동 규칙(②③⑤⑥)이 "
+            "정제 선택 시 '② 커스텀 정제 규칙 적용' 및 자동 연동 규칙(①③④⑥)이 "
             "항상 고정 적용됩니다. 현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
         )
 
