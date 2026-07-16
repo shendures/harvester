@@ -191,10 +191,6 @@ class DataRefiner:
             if key in rules:
                 self.rules[key] = bool(rules[key])
 
-    def update_drop_columns(self, columns: list[str]) -> None:
-        """제외할 컬럼명 목록을 교체합니다."""
-        self.drop_columns = [c for c in columns if isinstance(c, str) and c.strip()]
-
     # ── 유효성 검사 ───────────────────────────────────────────────────
     @staticmethod
     def _validate(raw_data: list[dict]) -> None:

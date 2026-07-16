@@ -14,7 +14,7 @@ from trigger import (
 from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QComboBox,
     QTableWidgetItem, QFrame, QProgressBar,
     QScrollArea, QStackedWidget,
@@ -726,16 +726,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             text_col.addWidget(desc_lbl)
             row_l.addLayout(text_col, 1)
 
-            if key == "drop_columns":
-                self.drop_col_input = QLineEdit()
-                self.drop_col_input.setPlaceholderText("제외할 컬럼명 (쉼표 구분, 예: price,brand)")
-                self.drop_col_input.setFixedWidth(280)
-                self.drop_col_input.setStyleSheet(
-                    f"background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; "
-                    f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
-                )
-                row_l.addWidget(self.drop_col_input)
-
             if key == "fill_null":
                 self.fill_null_input = QLineEdit()
                 self.fill_null_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
@@ -747,6 +737,9 @@ class MonitorPage(QWidget, MonitorPageTriggers):
                 row_l.addWidget(self.fill_null_input)
 
             rl.addWidget(row_w)
+
+            if key == "drop_columns":
+                rl.addWidget(self._build_drop_column_picker())
 
         # 커스텀 정제 규칙 체크 시 규칙 ②~⑤(remove_duplicate/remove_null_row/
         # fill_null/trim_whitespace)를 자동으로 켬 (해제 시에는 영향 없음)
@@ -765,6 +758,34 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         bl.addWidget(rw)
         bl.addStretch()
         self.tab_widget.addTab(rules_widget, "② 정제 규칙 설정")
+
+    # ── "제외 필드 지정" 필드 선택 버튼 그리드 (다중 선택, 필드 수십 개 대응) ──
+    def _build_drop_column_picker(self) -> QScrollArea:
+        self.drop_field_buttons: dict[str, TagButton] = {}
+        field_names = self._get_result_columns()
+
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(6)
+
+        if field_names:
+            cols = 5
+            for i, field in enumerate(field_names):
+                btn = TagButton(field)
+                self.drop_field_buttons[field] = btn
+                grid.addWidget(btn, i // cols, i % cols)
+        else:
+            grid.addWidget(parts.make_label("설정된 필드가 없습니다.", TEXT_MUTED, 11), 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(140)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG_SECONDARY}; border:1px solid {BORDER}; border-radius:4px;}}"
+        )
+        scroll.setWidget(container)
+        return scroll
 
     # ── 탭 ③ 정제 결과 ────────────────────────────────────────────────
     def _build_refined_tab(self):
