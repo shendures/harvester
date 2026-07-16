@@ -517,11 +517,11 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {
             "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
-            "remove_duplicate":  True,   # 중복 행 제거
             "remove_null_row":   True,   # 모든 필드 null 행 제거
-            "fill_null":         True,   # null → 지정값 치환 (기본: 빈 값)
-            "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
+            "remove_duplicate":  True,   # 중복 행 제거
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
+            "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
+            "fill_null":         True,   # null → 지정값 치환 (기본: 빈 값)
             "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
         }
         self._drop_column_names: list[str] = []   # 제외할 컬럼명 목록
@@ -679,16 +679,16 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         rule_defs = [
             ("custom_rule",      "커스텀 정제 규칙 적용",
              "사용자 정의 정제 함수를 적용합니다."),
-            ("remove_duplicate", "중복 행 제거",
-             "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("remove_null_row",  "모든 필드 null 행 제거",
              "모든 필드가 null·빈 값인 행만 삭제합니다."),
-            ("fill_null",        "결측값(N/A) 치환",
-             "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
-            ("trim_whitespace",  "문자열 공백 trim",
-             "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
+            ("remove_duplicate", "중복 행 제거",
+             "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
             ("drop_columns",     "제외 필드 지정",
              "추출에 불필요한 컬럼을 선택하여 제외합니다."),
+            ("trim_whitespace",  "문자열 공백 trim",
+             "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
+            ("fill_null",        "결측값(N/A) 치환",
+             "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
             ("cast_numeric",     "숫자 타입 변환",
              "문자열로 수집된 숫자 필드를 int / float으로 변환합니다."),
         ]
@@ -697,7 +697,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # 체크박스 옆에 별도 입력/선택 컨트롤이 붙는 규칙 — 컨트롤을 텍스트 바로
         # 옆에 붙이고 남는 공간은 그 뒤로 보내, 카드 오른쪽 끝에 붙어 보이지 않게 함
-        rows_with_control = ("fill_null", "drop_columns")
+        rows_with_control = ("drop_columns", "fill_null")
 
         for key, title, desc_text in rule_defs:
             cb = QCheckBox()
@@ -738,38 +738,42 @@ class MonitorPage(QWidget, MonitorPageTriggers):
                 self.fill_null_input = QLineEdit()
                 self.fill_null_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
                 self.fill_null_input.setFixedWidth(220)
-                self.fill_null_input.setEnabled(cb.isChecked())
+                self.fill_null_input.setVisible(cb.isChecked())
                 self.fill_null_input.setStyleSheet(
                     f"background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; "
                     f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
                 )
                 cb.stateChanged.connect(
-                    lambda state, w=self.fill_null_input: w.setEnabled(
+                    lambda state, w=self.fill_null_input: w.setVisible(
                         state == Qt.CheckState.Checked.value)
                 )
                 row_l.addWidget(self.fill_null_input)
 
             if key == "drop_columns":
+                drop_columns_settings_btn = parts.settings_btn("⚙  필드 선택")
+                drop_columns_settings_btn.setVisible(cb.isChecked())
+                drop_columns_settings_btn.clicked.connect(self._open_drop_columns_dialog)
+                row_l.addWidget(drop_columns_settings_btn)
+
                 self.drop_columns_summary_lbl = parts.make_label("", TEXT_MUTED, 11)
                 self._update_drop_columns_summary()
+                self.drop_columns_summary_lbl.setVisible(cb.isChecked())
                 row_l.addWidget(self.drop_columns_summary_lbl)
 
-                drop_columns_settings_btn = parts.settings_btn("⚙  필드 선택")
-                drop_columns_settings_btn.setEnabled(cb.isChecked())
-                drop_columns_settings_btn.clicked.connect(self._open_drop_columns_dialog)
-                cb.stateChanged.connect(
-                    lambda state, b=drop_columns_settings_btn: b.setEnabled(
-                        state == Qt.CheckState.Checked.value)
-                )
-                row_l.addWidget(drop_columns_settings_btn)
+                def _on_drop_columns_toggled(state, b=drop_columns_settings_btn, l=self.drop_columns_summary_lbl):
+                    visible = state == Qt.CheckState.Checked.value
+                    b.setVisible(visible)
+                    l.setVisible(visible)
+
+                cb.stateChanged.connect(_on_drop_columns_toggled)
 
             if has_control:
                 row_l.addStretch()
 
             rl.addWidget(row_w)
 
-        # 커스텀 정제 규칙 체크 시 규칙 ②~⑤(remove_duplicate/remove_null_row/
-        # fill_null/trim_whitespace)를 자동으로 켬 (해제 시에는 영향 없음)
+        # 커스텀 정제 규칙 체크 시 규칙 ②③⑤⑥(remove_null_row/remove_duplicate/
+        # trim_whitespace/fill_null)를 자동으로 켬 (해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
 
         rl.addSpacing(12)

@@ -34,11 +34,11 @@ load_custom_rule() 함수
 
     rules = {
         "custom_rule":      True,
-        "remove_duplicate": True,
         "remove_null_row":  True,
-        "fill_null":        True,
-        "trim_whitespace":  True,
+        "remove_duplicate": True,
         "drop_columns":     False,
+        "trim_whitespace":  True,
+        "fill_null":        True,
         "cast_numeric":     False,
     }
 
@@ -91,11 +91,11 @@ class RefineStats:
 # ── 기본 정제 규칙 ────────────────────────────────────────────────────
 DEFAULT_RULES: dict[str, bool] = {
     "custom_rule":       True,  # ① 커스텀 규칙(seq_no, 있으면) 적용
-    "remove_duplicate": True,   # 중복 행 제거
     "remove_null_row":  True,   # 모든 필드 null 행 제거
-    "fill_null":        True,   # null → 지정값 치환 (기본 빈 값)
-    "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
+    "remove_duplicate": True,   # 중복 행 제거
     "drop_columns":     False,  # 선택 필드 제외 (기본 비활성)
+    "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
+    "fill_null":        True,   # null → 지정값 치환 (기본 빈 값)
     "cast_numeric":     False,  # 숫자 타입 변환  (기본 비활성)
 }
 
@@ -107,13 +107,19 @@ class DataRefiner:
     """
     수집된 raw 데이터에 정제 규칙을 순차 적용하는 엔진.
 
-    규칙 적용 순서 (변경하지 마세요 — 순서가 결과에 영향을 미칩니다):
+    규칙 적용 순서 (변경하지 마세요 — 순서가 결과에 영향을 미칩니다.
+    2026-07-16, 만 건 이상 규모 처리 시 메모리/CPU 절감 + 정확성 개선을 위해 재배치됨
+    — 이전 순서는 HISTORY.md 참고):
         ① custom_rule       — 커스텀 규칙(seq_no, 있고 활성화된 경우) 적용, 나머지보다 먼저 실행
-        ② remove_duplicate  — 중복 행 제거
-        ③ remove_null_row   — 모든 필드 null 행 제거
-        ④ fill_null         — 잔존 null → 지정값 치환 (기본 빈 값)
-        ⑤ trim_whitespace   — 문자열 공백 제거
-        ⑥ drop_columns      — 지정 컬럼 제외
+        ② remove_null_row   — 모든 필드 null 행 제거 (③보다 계산량이 가벼워 먼저 실행)
+        ③ remove_duplicate  — 중복 행 제거 (행 전체를 정렬·비교하는 비교적 비싼 연산이라
+                               위 ②로 행 수를 줄인 뒤 실행)
+        ④ drop_columns      — 지정 컬럼 제외 (②③의 중복/전체-null 판정 기준은 원본 전체
+                               컬럼 그대로 유지하기 위해 그 뒤에 실행 — 아래보다 먼저 실행해
+                               이후 단계가 불필요한 컬럼까지 순회하지 않도록 함)
+        ⑤ trim_whitespace   — 문자열 공백 제거 (⑥ fill_null보다 먼저 실행 — 공백만 있는 값도
+                               trim 후 null 판정에 걸리도록 하기 위함)
+        ⑥ fill_null         — 잔존 null → 지정값 치환 (기본 빈 값)
         ⑦ cast_numeric      — 숫자 타입 변환
     """
 
@@ -127,10 +133,10 @@ class DataRefiner:
         """
         Args:
             rules:        규칙 활성화 딕셔너리. None이면 DEFAULT_RULES 사용.
-            drop_columns: ⑥ drop_columns 규칙 활성 시 제외할 컬럼명 목록.
+            drop_columns: ④ drop_columns 규칙 활성 시 제외할 컬럼명 목록.
             custom_rule:  ① custom_rule 규칙 활성 시 실행할 콜러블
                           (`load_custom_rule()`의 반환값). None이면 이 step은 건너뜁니다.
-            fill_value:   ④ fill_null 규칙 활성 시 null 값을 대체할 문자열. 기본 빈 값(`""`).
+            fill_value:   ⑥ fill_null 규칙 활성 시 null 값을 대체할 문자열. 기본 빈 값(`""`).
         """
         self.rules:        dict[str, bool] = {**DEFAULT_RULES, **(rules or {})}
         self.drop_columns: list[str]       = drop_columns or []
@@ -159,11 +165,11 @@ class DataRefiner:
         orig_indices = list(range(len(raw_data)))  # 각 행의 원본 위치 추적
 
         data, stats = self._step_custom_rule(data, stats)
-        data, stats, orig_indices = self._step_remove_duplicate(data, stats, orig_indices)
         data, stats, orig_indices = self._step_remove_null_row(data, stats, orig_indices)
-        data, stats = self._step_fill_null(data, stats)
-        data, stats = self._step_trim_whitespace(data, stats)
+        data, stats, orig_indices = self._step_remove_duplicate(data, stats, orig_indices)
         data        = self._step_drop_columns(data)
+        data, stats = self._step_trim_whitespace(data, stats)
+        data, stats = self._step_fill_null(data, stats)
         data        = self._step_cast_numeric(data)
 
         stats.refined_count  = len(data)
@@ -229,7 +235,30 @@ class DataRefiner:
         stats.custom_rule_applied = True
         return result, stats
 
-    # ── 규칙 ② 중복 행 제거 ──────────────────────────────────────────
+    # ── 규칙 ② 모든 필드 null 행 제거 ───────────────────────────────
+    def _step_remove_null_row(
+        self, data: list[dict], stats: RefineStats, orig_indices: list[int]
+    ) -> tuple[list[dict], RefineStats, list[int]]:
+        if not self.rules.get("remove_null_row"):
+            return data, stats, orig_indices
+
+        surviving, removed_idxs = [], []
+        for row, orig_idx in zip(data, orig_indices):
+            if all(v in _NULL_VALUES for v in row.values()):
+                removed_idxs.append(orig_idx)
+            else:
+                surviving.append((row, orig_idx))
+
+        stats.removed += len(removed_idxs)
+        for orig_idx in removed_idxs:
+            stats.deleted_reasons[orig_idx] = "전체 필드 NULL"
+
+        if surviving:
+            new_data, new_indices = zip(*surviving)
+            return list(new_data), stats, list(new_indices)
+        return [], stats, []
+
+    # ── 규칙 ③ 중복 행 제거 ──────────────────────────────────────────
     def _step_remove_duplicate(
         self, data: list[dict], stats: RefineStats, orig_indices: list[int]
     ) -> tuple[list[dict], RefineStats, list[int]]:
@@ -253,42 +282,12 @@ class DataRefiner:
                 stats.deleted_reasons[orig_idx] = "중복"
         return unique, stats, new_indices
 
-    # ── 규칙 ③ 모든 필드 null 행 제거 ───────────────────────────────
-    def _step_remove_null_row(
-        self, data: list[dict], stats: RefineStats, orig_indices: list[int]
-    ) -> tuple[list[dict], RefineStats, list[int]]:
-        if not self.rules.get("remove_null_row"):
-            return data, stats, orig_indices
-
-        surviving, removed_idxs = [], []
-        for row, orig_idx in zip(data, orig_indices):
-            if all(v in _NULL_VALUES for v in row.values()):
-                removed_idxs.append(orig_idx)
-            else:
-                surviving.append((row, orig_idx))
-
-        stats.removed += len(removed_idxs)
-        for orig_idx in removed_idxs:
-            stats.deleted_reasons[orig_idx] = "전체 필드 NULL"
-
-        if surviving:
-            new_data, new_indices = zip(*surviving)
-            return list(new_data), stats, list(new_indices)
-        return [], stats, []
-
-    # ── 규칙 ④ null → 지정값 치환 ─────────────────────────────────────
-    def _step_fill_null(
-        self, data: list[dict], stats: RefineStats
-    ) -> tuple[list[dict], RefineStats]:
-        if not self.rules.get("fill_null"):
-            return data, stats
-
-        for row in data:
-            for k, v in row.items():
-                if v in _NULL_VALUES:
-                    row[k] = self.fill_value
-                    stats.filled += 1
-        return data, stats
+    # ── 규칙 ④ 선택 필드 제외 ───────────────────────────────────────
+    def _step_drop_columns(self, data: list[dict]) -> list[dict]:
+        if not self.rules.get("drop_columns") or not self.drop_columns:
+            return data
+        drop_set = set(self.drop_columns)
+        return [{k: v for k, v in row.items() if k not in drop_set} for row in data]
 
     # ── 규칙 ⑤ 문자열 공백 trim ──────────────────────────────────────
     def _step_trim_whitespace(
@@ -303,12 +302,19 @@ class DataRefiner:
                     row[k] = v.strip()
         return data, stats
 
-    # ── 규칙 ⑥ 선택 필드 제외 ───────────────────────────────────────
-    def _step_drop_columns(self, data: list[dict]) -> list[dict]:
-        if not self.rules.get("drop_columns") or not self.drop_columns:
-            return data
-        drop_set = set(self.drop_columns)
-        return [{k: v for k, v in row.items() if k not in drop_set} for row in data]
+    # ── 규칙 ⑥ null → 지정값 치환 ─────────────────────────────────────
+    def _step_fill_null(
+        self, data: list[dict], stats: RefineStats
+    ) -> tuple[list[dict], RefineStats]:
+        if not self.rules.get("fill_null"):
+            return data, stats
+
+        for row in data:
+            for k, v in row.items():
+                if v in _NULL_VALUES:
+                    row[k] = self.fill_value
+                    stats.filled += 1
+        return data, stats
 
     # ── 규칙 ⑦ 숫자 타입 변환 ───────────────────────────────────────
     def _step_cast_numeric(self, data: list[dict]) -> list[dict]:
