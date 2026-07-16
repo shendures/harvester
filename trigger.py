@@ -23,7 +23,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget,
     QSizePolicy, QSystemTrayIcon, QMainWindow,
-    QTextEdit, QMenu, QSpinBox, QDoubleSpinBox, QDateEdit
+    QTextEdit, QMenu, QSpinBox, QDoubleSpinBox, QDateEdit,
+    QScrollArea
 )
 from PyQt6.QtCore import Qt, QTimer, QDate, pyqtSignal
 from PyQt6.QtGui import QColor, QTextDocument, QTextCursor
@@ -65,15 +66,15 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
 # 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 고정 규칙 —
-# "① 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(②~⑤)과 동일.
+# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④⑥)과 동일.
 # 실행 시점의 화면 체크박스 상태에 의존하지 않도록 항상 이 값을 그대로 사용한다.
 SCHEDULED_REFINE_RULES = {
-    "custom_rule":      True,
-    "remove_duplicate": True,
     "remove_null_row":  True,
-    "fill_null":        True,
+    "custom_rule":      True,
     "trim_whitespace":  True,
+    "remove_duplicate": True,
     "drop_columns":     False,
+    "fill_null":        True,
     "cast_numeric":     False,
 }
 
@@ -946,14 +947,14 @@ class MonitorPageTriggers:
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(①) 체크 시 규칙 ②~⑤(remove_duplicate/
-        remove_null_row/fill_null/trim_whitespace)를 자동으로 켭니다.
+        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④⑥(remove_null_row/
+        trim_whitespace/remove_duplicate/fill_null)를 자동으로 켭니다.
         체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ②~⑤에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        ①③④⑥에 영향을 주지 않습니다(직전 상태 그대로 유지).
         """
         if state != Qt.CheckState.Checked.value:
             return
-        for key in ("remove_duplicate", "remove_null_row", "fill_null", "trim_whitespace"):
+        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace", "fill_null"):
             cb = self._rule_checkboxes.get(key)
             if cb is not None:
                 cb.setChecked(True)
@@ -983,11 +984,8 @@ class MonitorPageTriggers:
             for key, cb in self._rule_checkboxes.items():
                 self._refine_rules[key] = cb.isChecked()
 
-            # 제외 컬럼 파싱
-            raw_drop = getattr(self, 'drop_col_input', None)
-            if raw_drop is not None:
-                col_text = raw_drop.text().strip()
-                self._drop_column_names = [c.strip() for c in col_text.split(",") if c.strip()]
+            # 제외 컬럼 — "제외 필드 지정" 다이얼로그의 적용 시 self._drop_column_names에
+            # 이미 반영되어 있으므로 여기서는 그대로 사용
 
             # null 치환값 파싱 (입력창 기본값은 빈 문자열 — 비워두면 빈 값으로 치환)
             raw_fill = getattr(self, 'fill_null_input', None)
@@ -1000,7 +998,7 @@ class MonitorPageTriggers:
 
         lm = getattr(self.window(), 'log_manager', None)
 
-        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ① custom_rule step이 담당 ──
+        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
         seq_no         = self._current_task.get("seq_no")
         needs_cleaning = self._current_task.get("needs_cleaning", False)
@@ -1065,6 +1063,113 @@ class MonitorPageTriggers:
                 f"(제거 {stats.removed}행, 치환 {stats.filled}건, 정제율 {stats.refine_rate}"
                 f"{custom_rule_note})"
             )
+
+    # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
+    def _update_drop_columns_summary(self):
+        n = len(self._drop_column_names)
+        self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
+
+    # ── Raw 수집 결과 존재 여부 확인 (없으면 경고) ───────────────────
+    def _has_collected_data_or_warn(self) -> bool:
+        """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
+
+        "제외 필드 지정" 체크박스 활성화 시(layout.py)와 "⚙ 필드 선택" 버튼
+        클릭 시(_open_drop_columns_dialog) 양쪽에서 공유하는 헬퍼입니다.
+        """
+        if self._collected_data:
+            return True
+        QMessageBox.warning(
+            self, "필드 선택 불가",
+            "수집된 데이터가 없습니다.\n수집을 먼저 진행한 후 필드를 선택해 주세요."
+        )
+        return False
+
+    # ── "제외 필드 지정"(⑤) 필드 다중 선택 Dialog ───────────────────
+    def _open_drop_columns_dialog(self):
+        """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
+
+        체크 상태의 source of truth는 self._drop_column_names(list[str])이며,
+        이 다이얼로그의 버튼은 열 때마다 새로 만들어 그 값으로 초기화하고
+        [적용] 시에만 다시 self._drop_column_names에 반영합니다 — 다이얼로그를
+        닫아도(취소) 값이 유지되도록.
+        """
+        if not self._has_collected_data_or_warn():
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("제외 필드 선택")
+        dlg.setFixedWidth(420)
+        dlg.setStyleSheet(f"""
+            QDialog {{
+                background:{BG_SECONDARY};
+                border:1px solid {BORDER};
+                border-radius:10px;
+            }}
+        """)
+
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(22, 18, 22, 18)
+        vl.setSpacing(0)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(parts.make_label("제외 필드 선택", TEXT_PRIMARY, 14, True))
+        title_row.addStretch()
+        vl.addLayout(title_row)
+        vl.addSpacing(10)
+        vl.addWidget(Divider())
+        vl.addSpacing(14)
+
+        vl.addWidget(parts.make_label("추출 결과에서 제외할 필드를 선택하세요.", TEXT_MUTED, 11))
+        vl.addSpacing(10)
+
+        field_names = self._get_result_columns()
+        field_buttons: dict[str, TagButton] = {}
+
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(6)
+
+        if field_names:
+            cols = 4
+            for i, field in enumerate(field_names):
+                btn = TagButton(field)
+                btn.setChecked(field in self._drop_column_names)
+                field_buttons[field] = btn
+                grid.addWidget(btn, i // cols, i % cols)
+        else:
+            grid.addWidget(parts.make_label("설정된 필드가 없습니다.", TEXT_MUTED, 11), 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(200)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;}}"
+        )
+        scroll.setWidget(container)
+        vl.addWidget(scroll)
+        vl.addSpacing(16)
+        vl.addWidget(Divider())
+        vl.addSpacing(12)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        def _apply():
+            self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
+            self._update_drop_columns_summary()
+            dlg.accept()
+
+        apply_btn = parts.action_btn("적용")
+        apply_btn.clicked.connect(_apply)
+        cancel_btn = parts.outline_btn("취소")
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(cancel_btn)
+        vl.addLayout(btn_row)
+
+        dlg.adjustSize()
+        dlg.exec()
 
     def _populate_refined_table(self, data: list):
         """정제 결과 탭 테이블에 데이터 채우기"""
@@ -2421,7 +2526,7 @@ class SchedulerPageTriggers:
         sched_auto_raw_btn.setChecked(sched_auto_save_source != "refined")
         sched_auto_ref_btn.setChecked(sched_auto_save_source == "refined")
         sched_auto_ref_btn.setToolTip(
-            "정제 선택 시 '① 커스텀 정제 규칙 적용' 및 자동 연동 규칙(②~⑤)이 "
+            "정제 선택 시 '② 커스텀 정제 규칙 적용' 및 자동 연동 규칙(①③④⑥)이 "
             "항상 고정 적용됩니다. 현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
         )
 

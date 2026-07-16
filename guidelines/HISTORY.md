@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-15 04:16
+- **최신 갱신**: 2026-07-17 02:38
 
 ---
 
@@ -78,6 +78,21 @@
 | 2026-07-13 | PR #71 | 9차 릴리스 | - | `develop→main` 머지(main=`a772361`) — PR #57~#70 전체 포함(스케줄 자동저장 버그 수정 3건, render/refine 플러그인 아키텍처 도입, 로그인 키 버그 수정, 문서 폴더명 변경, PyInstaller 배포 파이프라인 신설+버그 수정 3건, GIT_GUIDE 다이어그램) | - |
 | 2026-07-15 | 이슈㉖, `85463ef` (사용자 실사용 중 리포트) | CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성하던 문제 수정 | `build-exe.ps1 -SeqNo 000000`로 정제 규칙(refine)만 있는 고객을 빌드·배포했는데, 실행 후 `%LOCALAPPDATA%\CollectorApp\custom_rules\`에 불필요한 `render\` 빈 폴더까지 생성됨을 발견. 원인은 `conf.CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 `os.makedirs()`로 항상 만들고 있었기 때문 — `resolve_path()`가 이미 실제 시딩 대상(`default_source`)이 존재할 때만 온디맨드로 폴더를 만들고 있어 `__init__()`의 선제적 생성은 불필요했을 뿐 아니라 "설정이 있는 kind만 폴더가 생긴다"는 기대와 어긋났음 | `__init__()`의 `for kind in self._KINDS: os.makedirs(...)` 루프 제거, `resolve_path()`의 기존 온디맨드 생성 로직에만 의존하도록 정리 | 임시 uv venv 스크립트로 `CustomModuleStorage`를 격리 재현 — refine만 번들된 상태에서 `has_refine()` 호출 시 `refine/` 폴더+파일만 생성되고 `render/` 폴더는 생성되지 않음을 확인(PASS, 검증 후 스크립트 삭제) |
 | 2026-07-15 | `5f71967` | `build-exe.ps1 -AppName`이 앱 데이터 폴더명까지 결정하도록 개선 | `-AppName "DataCrawler"`로 빌드해도 `BlueprintStorage`/`CustomModuleStorage`/`SchedulerPage` 세 곳이 각자 `"CollectorApp"`을 리터럴로 하드코딩하고 있어 `%LOCALAPPDATA%`에는 항상 `CollectorApp` 폴더가 생성됨(exe 파일명과 실제 앱 데이터 폴더명 불일치) — 사용자가 실 배포 exe에서 재현·리포트 | `utility.get_app_name()` 신설(`sys.frozen`이면 `sys.executable` 파일명에서, 아니면 기본값 `"CollectorApp"` 반환 — `build-exe.ps1`이 `pyinstaller --name $AppName`으로 이미 exe 파일명을 정하므로 그 값을 런타임에 역으로 읽음). `conf.py`의 `BlueprintStorage`/`CustomModuleStorage` 기본 `app_name` 파라미터와 `layout.py`의 `SchedulerPage.__init__` 하드코딩 3곳 모두 이 함수로 교체해 세 저장소가 항상 같은 폴더명을 쓰도록 통일. `build-exe.ps1`의 `-AppName` 파라미터에 이 연동 관계를 설명하는 주석 추가(exe 파일명을 빌드 후 직접 바꾸면 앱 데이터 폴더도 따라간다는 주의사항 포함) | `python -m py_compile`/`ruff check` 통과. 임시 uv venv 스크립트로 `sys.frozen=True`+`sys.executable=".../DataCrawler.exe"` 시뮬레이션 — dev 환경(`sys.frozen` 없음)은 기존 기본값 `"CollectorApp"` 유지, frozen 환경은 `get_app_name()`이 `"DataCrawler"` 반환 및 `BlueprintStorage`/`CustomModuleStorage`의 실제 기본 `app_name`이 `"DataCrawler"`로 바뀜을 확인(PASS, 검증 후 스크립트 삭제). Windows 실 빌드로 세 저장소(`request_info.json`/`custom_rules`/`schedules.json`)가 동일 폴더에 모이는지 최종 확인 필요(WSL 환경 한계로 미실시) |
+| 2026-07-15 | PR #77 | 10차 릴리스 | - | `develop→main` 머지(`gh pr merge --admin`, main=`e6d1e25`) — PR #75(이슈㉖, CustomModuleStorage 불필요 render 폴더 생성 수정) + PR #76(`build-exe.ps1 -AppName` 앱 데이터 폴더명 반영) 포함 | - |
+| 2026-07-16 | PR #80 | "제외 필드 지정" 텍스트 입력 → 필드명 버튼 다중 선택 전환 | `drop_col_input`(QLineEdit, 쉼표 구분 자유 텍스트)이 오타가 나도 에러 없이 조용히 무시됨(제외 실패). 사용자 요청으로 필드명 선택 방식 검토 후 승인 | `layout.py`의 `drop_col_input`을 `_build_drop_column_picker()`로 교체 — `_get_result_columns()` 필드마다 체크 가능한 `TagButton`을 5열 그리드+스크롤(필드 수십 개 대응)로 배치. `trigger.py:_run_refine()`의 파싱 로직을 체크 상태 수집으로 교체(`_drop_column_names` 인터페이스는 동일 유지, 하위 로직 무변경). 적용 범위는 수동 정제 실행에 한정 — 스케줄 자동 저장 경로는 기존과 동일하게 `drop_columns` 항상 빈 값 강제. 미사용이던 `DataRefiner.update_drop_columns()` 삭제 | 헤드리스 PyQt6(uv venv 3.12) — 필드 버튼이 `_get_result_columns()`와 일치, 필드 37개(수십 개 가정)에서도 그리드 생성 성공, 체크된 필드만 추출됨, `update_drop_columns` 제거 확인 4개 시나리오 PASS(검증 후 스크립트 삭제) |
+| 2026-07-16 | PR #81 | `PREPROCESS.md` 줄번호 인용 전수 재검증 | drop_columns 관련 작업 중 이번 변경과 무관한 줄번호 인용도 실제 코드와 어긋난 것을 발견 — 전수 확인 결과 `trigger.py` 인용 다수가 실제 위치보다 약 90여 줄 앞선 값을 가리키고 있었음(과거 어느 시점 trigger.py에서 90여 줄 규모 변경이 있었는데 문서가 함께 갱신되지 않은 것으로 추정, 원인 커밋은 특정하지 않음) | `preprocess.py`/`layout.py`/`trigger.py`의 실제 함수·상수 정의를 `grep`/직접 열람으로 재확인해 문서 내 인용 12곳 정정(`_build_compare_tab()`, `_update_compare_tab()`, `_step_custom_rule()`, `_on_monitor_tab_changed()`, 커스텀 규칙 로드/로그 반영 구간, 스케줄 자동저장 구간 등). 누락돼 있던 "최신 갱신" 필드도 함께 추가 | 인용된 함수/상수 정의부를 전부 `grep -n`/`Read`로 직접 대조해 수정 후 재확인. 코드 변경 없음(문서 전용) |
+| 2026-07-16 | `38740bf`, `fbc08aa` | ④ 제외 필드 지정을 다이얼로그로 분리, ④/⑥(구 넘버링) UI 다듬기 | UI/UX 검토 결과 필드 수십 개짜리 인라인 그리드가 다른 규칙 행과 시각적 리듬이 안 맞고, 규칙이 꺼져 있어도 입력창/버튼이 그대로 보여 "꺼진 설정을 만질 수 있는" 혼란 소지가 있었음 | `_open_drop_columns_dialog()`(`_open_output_settings_dialog`와 동일 패턴) 신설 — 요약 라벨+`⚙ 필드 선택` 버튼만 행에 남기고 다이얼로그에서 다중 선택. `self._drop_column_names`를 source of truth로 유지해 취소 시 이전 선택 보존. 이후 요약 라벨을 버튼 오른쪽으로 재배치, 규칙 체크박스 off 시 입력창/버튼/라벨을 `setEnabled` 대신 `setVisible`로 전환해 꺼진 규칙 행이 나머지 단순 행과 동일한 모양이 되도록 개선 | 헤드리스 PyQt6 — 체크박스 on/off에 따른 `isVisible()` 토글, 다이얼로그 구성 예외 없음, 위젯 배치 순서 확인 |
+| 2026-07-16 | `38740bf`, `fbc08aa` | 정제 규칙 실행 순서 재배치 및 넘버링 재부여 | 만 건 이상 규모 처리 시 메모리/CPU 절감 여지 검토 요청 — ②remove_duplicate(행 전체 정렬 비교, 상대적으로 비쌈)가 ③remove_null_row(단순 순회, 저렴)보다 먼저 실행돼 비싼 연산이 더 많은 행에 적용되고 있었음. ⑥drop_columns도 값 변환 규칙(④⑤) 뒤에 있어 제외될 컬럼까지 매번 순회·가공하고 있었음. ④fill_null이 ⑤trim_whitespace보다 먼저 실행돼 공백만 있는 값(`"  "`)이 `_NULL_VALUES`(정확히 `""`만 포함)에 안 걸려 fill_null을 통과했다가 trim 후 빈 문자열로 남는 정확성 문제도 있었음 | 새 순서: ①custom_rule→②remove_null_row→③remove_duplicate→④drop_columns→⑤trim_whitespace→⑥fill_null→⑦cast_numeric. `preprocess.py`의 `run()` 호출 순서·`_step_*` 메서드 물리적 정의 순서·클래스 docstring·`DEFAULT_RULES`를 모두 새 순서로 재배치. `layout.py`의 `rule_defs`/`_refine_rules` GUI 표시 순서, `trigger.py`의 `SCHEDULED_REFINE_RULES`·자동 연동 대상 키 집합(구 ②~⑤ → 신 ②③⑤⑥)도 동기화. `drop_columns`는 정확성 우선으로 보수적 배치(②③의 중복/전체-null 판정은 원본 전체 컬럼 기준 그대로 유지) | `preprocess.DataRefiner` 직접 호출 — (1) 공백만 있는 값이 trim 후 fill_null 치환값으로 대체됨 확인, (2) drop_columns가 ②③ 판정에 영향 안 주면서 최종 결과에서는 컬럼 제외됨 확인, (3) 기본 파이프라인 전체 정상 동작 확인. 헤드리스 PyQt6 — GUI 체크박스 표시 순서, 커스텀 규칙 자동 연동 대상(②③⑤⑥), `SCHEDULED_REFINE_RULES` 순서/값 확인. `PREPROCESS.md` 전체 재검증(§1 다이어그램, §2 표, §2.2, §3.3 등 모든 파일:줄번호 인용 재확인) |
+
+| 2026-07-17 | `6263b55` | 정제 규칙 순서 재배치 — `custom_rule`을 ②번으로 이동 | 만 건 이상 규모에서 메모리 절감을 더 밀어붙이기 위해 "불필요한 값·행을 먼저 제거한 뒤 커스텀 정제를 적용"하는 방향 검토 요청. 검토 결과 `custom_rule`을 아예 뒤(4번째)로 미루는 안은 ②③(중복/전체-null 판정)이 사이트별로 정규화되지 않은 원시 데이터를 기준으로 판정하게 돼 위험(사이트마다 dedup/null 판정 결과가 달라질 수 있음) — `custom_rule`은 항상 맨 먼저 실행된다는 기존 설계 전제와 정면 충돌. 절충안으로 계산량이 가장 가벼운 `remove_null_row`만 `custom_rule`보다 앞에 두는 안을 제시했고, 추가로 `trim_whitespace`를 `remove_duplicate`보다 앞에 둬 공백만 다른 값도 중복으로 정확히 판정되도록 개선하는 안을 사용자가 함께 채택 | 새 순서: ①remove_null_row→②custom_rule→③trim_whitespace→④remove_duplicate→⑤drop_columns→⑥fill_null→⑦cast_numeric. `custom_rule`이 더 이상 "항상 맨 먼저"가 아니라 "①remove_null_row 다음"으로 계약이 바뀜 — `preprocess.py` 모듈/클래스 docstring에 이 변경 사실과 이유를 명시. `run()` 호출 순서·`_step_*` 메서드 물리적 정의 순서·`DEFAULT_RULES`·`RefineStats` 필드 주석 모두 재배치. `layout.py`/`trigger.py`의 `rule_defs`·`_refine_rules`·`SCHEDULED_REFINE_RULES`·자동 연동 대상 키 집합(신 ①③④⑥)도 동기화 | `preprocess.DataRefiner` 직접 호출 4개 시나리오 — (1) 공백-only 값 fill 치환 유지 확인, (2) trim-before-dedup으로 공백만 다른 행이 정확히 중복 판정됨 확인(신규), (3) `custom_rule`이 `remove_null_row` 이후의 축소된 데이터를 받음 확인(신규), (4) drop_columns가 cast_numeric보다 먼저 실행되어 제외 컬럼은 변환 대상에서도 빠짐 확인, (5) 기본 파이프라인 정상 동작. 헤드리스 PyQt6 — GUI 순서·`SCHEDULED_REFINE_RULES`·자동 연동 키 집합(①③④⑥) 확인. `PREPROCESS.md` 전체 재검증 |
+
+| 2026-07-17 | `7d69f36` | 정제 규칙 활성화 기본값을 ①~④번만 활성으로 변경 | 새 순서(①remove_null_row~⑦cast_numeric) 기준으로 앞 4개 규칙만 기본 활성화되도록 요청 | 확인 결과 ①②③④는 이미 기본 활성, ⑤⑦은 이미 기본 비활성이라 ⑥`fill_null`만 기본값을 `True`→`False`로 변경. `preprocess.py`의 `DEFAULT_RULES`·모듈 docstring 사용 예, `layout.py`의 `_refine_rules`, `PREPROCESS.md` §2 표의 ⑥ 행(기본값 열) 동기화. `SCHEDULED_REFINE_RULES`(스케줄 무인 실행용 고정 규칙)는 "기본값"과 별개 정책이라 변경하지 않음 | `preprocess.DEFAULT_RULES` 값 직접 대조, 헤드리스 PyQt6 — `_refine_rules` 및 체크박스 초기 상태가 ①②③④만 체크됨을 확인 |
+
+| 2026-07-17 | `c7ed3f8` | "제외 필드 지정" 필드 선택을 Raw 수집 결과 존재 시로 제한 | 필드 목록 자체는 blueprint 설정으로 수집 없이도 알 수 있지만, 실제 수집 결과를 보기 전에는 제외 설정을 하지 못하게 막고 싶다는 요청 | `_open_drop_columns_dialog()`(`trigger.py:1073`) 맨 앞에 `_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일한 패턴으로 `self._collected_data` 빈 값 체크 추가 — 비어 있으면 "필드 선택 불가" `QMessageBox.warning()`만 띄우고 다이얼로그는 열지 않음 | 헤드리스 PyQt6 — (1) `_collected_data=[]`일 때 경고만 뜨고 `QDialog.exec()` 미호출 확인, (2) 데이터가 있을 때는 다이얼로그가 정상적으로 열림(`exec()` 호출) 확인 |
+
+| 2026-07-17 | `cdbdeff` | "필드 선택 불가" 경고를 공통 헬퍼로 추출하고 체크박스 활성화 시점에도 적용 | 이전 검토(체크박스 활성화 시점으로 경고 이동)에서 버튼 클릭·체크박스 활성화 두 지점 모두에 동일 체크가 필요하다고 결론났는데, 그대로 두면 코드 중복이 우려된다는 요청. 체크박스 활성화 시 경고 후 체크박스를 다시 꺼지게 되돌리는 동작도 함께 요청 | `trigger.py`에 `_has_collected_data_or_warn()` 공통 헬퍼 신설(`self._collected_data` 확인 + "필드 선택 불가" 경고, 없으면 False 반환) — `_open_drop_columns_dialog()`와 `layout.py`의 `_on_drop_columns_toggled`(체크박스 `stateChanged` 핸들러) 양쪽에서 호출. 체크박스가 체크되는 순간 데이터가 없으면 `cb.setChecked(False)`로 되돌림(재귀적으로 같은 핸들러가 다시 호출돼 버튼/라벨 숨김까지 함께 처리됨) | 헤드리스 PyQt6 4개 시나리오 — (1) 데이터 없을 때 체크박스 체크 시 경고 1회 + 자동 체크 해제 + 버튼 숨김, (2) 데이터 없을 때 버튼 클릭(직접 호출)도 동일 헬퍼로 경고, (3) 데이터 있을 때 체크박스 정상 유지 + 버튼 노출, (4) 데이터 있을 때 버튼 클릭 시 다이얼로그 정상 오픈. `PREPROCESS.md` 관련 파일:줄번호 인용 전체 재검증(헬퍼 추가로 trigger.py/layout.py 줄 수가 밀린 지점 다수 정정) |
+
+| 2026-07-17 | `9cee586` | "제외 필드 지정" 체크박스 활성화 시 경고창 표시 순서를 체크박스 되돌림 이후로 변경 | 데이터 없이 체크박스를 체크하면 경고창(모달)이 먼저 뜨고, 사용자가 닫아야 체크박스가 꺼지는 순서라 경고창이 떠 있는 동안 체크박스가 여전히 켜진 채로 보임 — 경고창이 뜨는 시점에 이미 체크박스가 꺼진 상태로 보이게 해달라는 요청 | `layout.py`의 `_on_drop_columns_toggled`에서 `cb.setChecked(False)`를 `_has_collected_data_or_warn()` 호출보다 먼저 실행하도록 순서 변경 — `setChecked(False)`가 `stateChanged`를 재귀적으로 한 번 더 발생시켜 버튼/라벨 숨김까지 먼저 끝낸 뒤에야 경고창이 뜸. 경고 로직 자체는 계속 `_has_collected_data_or_warn()` 헬퍼로 공통화 유지(중복 없음) | 헤드리스 PyQt6 — `QMessageBox.warning`을 몽키패치해 **경고창이 호출되는 바로 그 순간**의 체크박스/버튼 상태를 스냅샷으로 확인, 이미 체크 해제·버튼 숨김 상태임을 검증. 데이터 있을 때/버튼 클릭 경로 회귀 테스트도 재확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
@@ -87,12 +102,13 @@
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `a772361` (PR #71) | ✅ | 미확인 |
-| `develop` | `f4c4939`(로컬 ref, PR #71 병합 커밋 자체만 미반영 — 내용상 main과 동일) | ✅ | 미확인 |
+| `main` | `e6d1e25` (PR #77) | ✅ | 미확인 |
+| `develop` | `4ee54f9`(내용상 main과 동일) | ✅ | 미확인 |
 
-`main`/`develop`이 PR #71 릴리스로 동기화됨 — 스케줄 자동저장 버그 수정,
-render/refine 플러그인 아키텍처 도입, 로그인 키 버그 수정, 문서 폴더명
-변경(`systems/`→`guidelines/`), PyInstaller 배포 파이프라인 신설 및
-버그 수정 3건, GIT_GUIDE 다이어그램까지 모두 포함. 미실시 release PR 없음.
+`main`/`develop`이 PR #77 릴리스로 동기화됨 — 이슈㉖(CustomModuleStorage가
+seq_no와 무관하게 render/refine 폴더를 항상 생성하던 문제) 수정,
+`build-exe.ps1 -AppName`이 앱 데이터 폴더명까지 결정하도록 하는 개선까지
+모두 포함. 미실시 release PR 없음. 두 건 모두 Windows 실 빌드로 최종 확인
+필요(WSL 환경 한계로 미실시, 각 PR 본문 참고).
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.

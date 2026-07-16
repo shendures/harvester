@@ -1,280 +1,330 @@
-# Documentation Guide — `guidelines/` 문서 작성·갱신 메커니즘
+# Documentation Guide — Writing and Updating Mechanics for `guidelines/` Documents
 
-> `guidelines/` 안의 문서들은 서로 유기적으로 연결된 프로젝트 기록·지침 체계입니다.
-> 이 문서는 "코드나 기능이 바뀔 때 어떤 md 파일을, 언제, 어떤 형식으로 갱신해야 하는가"(§1~§9)와
-> "소스 코드 안의 주석·docstring을 어떻게 쓰고 유지보수하는가"(§10)를 정리한 메타 가이드입니다.
-> md 문서나 코드 주석을 만들거나 고칠 때 먼저 이 문서를 참고하세요.
-
----
-
-## 목차
-
-1. [문서 지도](#1-문서-지도)
-2. [코드 변경 → 문서 반영 매핑](#2-코드-변경--문서-반영-매핑)
-3. [HISTORY.md 작성 규칙](#3-historymd-작성-규칙)
-4. [ISSUES.md 작성 규칙](#4-issuesmd-작성-규칙)
-5. [PROJECT_REPORT.md 작성 규칙](#5-project_reportmd-작성-규칙)
-6. [딥다이브 문서 작성 규칙](#6-딥다이브-문서-작성-규칙)
-7. [상호참조 정합성 원칙](#7-상호참조-정합성-원칙)
-8. ["최신 갱신" 필드 규칙](#8-최신-갱신-필드-규칙)
-9. [문서 갱신 체크리스트](#9-문서-갱신-체크리스트)
-10. [코드 내 주석 작성·유지보수 원칙](#10-코드-내-주석-작성유지보수-원칙)
+> The documents inside `guidelines/` form an interconnected system of project records and
+> guidelines. This document is a meta-guide covering "which md file to update, when, and in what
+> format, when code or a feature changes" (§1–§9), and "how to write and maintain comments/
+> docstrings in the source code" (§10).
+> Consult this document first whenever you create or edit an md document or a code comment.
 
 ---
 
-## 1. 문서 지도
+## Table of Contents
 
-`guidelines/`의 문서는 성격이 다른 두 그룹으로 나뉩니다. 이 구분을 먼저 이해해야 어떤 규칙을
-적용할지 알 수 있습니다.
+1. [Document Map](#1-document-map)
+2. [Code Change → Documentation Mapping](#2-code-change--documentation-mapping)
+3. [HISTORY.md Writing Rules](#3-historymd-writing-rules)
+4. [ISSUES.md Writing Rules](#4-issuesmd-writing-rules)
+5. [PROJECT_REPORT.md Writing Rules](#5-project_reportmd-writing-rules)
+6. [Deep-Dive Document Writing Rules](#6-deep-dive-document-writing-rules)
+7. [Cross-Reference Integrity Principles](#7-cross-reference-integrity-principles)
+8. ["Last Updated" Field Rules](#8-last-updated-field-rules)
+9. [Documentation Update Checklist](#9-documentation-update-checklist)
+10. [In-Code Comment Writing and Maintenance Principles](#10-in-code-comment-writing-and-maintenance-principles)
 
-### 1.1 정적 규칙집 — "이렇게 하라"
+---
 
-| 문서 | 역할 |
+## 1. Document Map
+
+Documents in `guidelines/` fall into two groups with different characters. Understanding this
+distinction first tells you which rules apply.
+
+### 1.1 Static Rulebooks — "Do it this way"
+
+| Document | Role |
 |---|---|
-| `CODING_GUIDE.md` | 언어 중립적 코딩 원칙 + 이 프로젝트 전용 컨벤션(명시적으로 구분 표기) |
-| `GIT_GUIDE.md` | Git 브랜치·커밋·PR 워크플로우 규칙 |
+| `CODING_GUIDE.md` | Language-neutral coding principles + this project's own conventions (explicitly marked as such) |
+| `GIT_GUIDE.md` | Git branch/commit/PR workflow rules |
 
-- **"최신 갱신" 필드가 없습니다** — 프로젝트 상태가 아니라 규칙 자체를 담기 때문에, 규칙이
-  바뀔 때만 편집하면 됩니다.
-- 문서 간 상호참조("관련 문서" 절)가 없습니다 — 독립적으로 완결된 규칙집입니다.
-- `GIT_GUIDE.md`는 마지막을 `## 9. Checklist`(체크박스 목록)로 마무리합니다. 이 문서도
-  같은 패턴을 따릅니다(§9 참고).
+- **Have no `최신 갱신` ("Last Updated") field** — they hold rules, not project state, so you
+  only edit them when a rule itself changes.
+- Have no cross-references to other documents (a `관련 문서`, "Related Documents", section) —
+  each is a self-contained rulebook.
+- `GIT_GUIDE.md` ends with `## 9. Checklist` (a checkbox list). This document follows the same
+  pattern (see §9).
 
-### 1.2 살아있는 프로젝트 상태 문서 — "지금 무엇이 어떻게 되어 있는가"
+### 1.2 Living Project-State Documents — "What's the current state of things"
 
-| 문서 | 역할 |
+| Document | Role |
 |---|---|
-| `PROJECT_REPORT.md` | 아키텍처·파일 구조 스냅샷 |
-| `HISTORY.md` | 완료된 작업의 연대기 (표 형식) |
-| `ISSUES.md` | 발견된 이슈의 해결/미해결/보류 상태 |
-| `PREPROCESS.md` | 정제 규칙(refine) 서브시스템 전용 딥다이브 — 유사 성격의 문서가 향후 다른 서브시스템에도 생길 수 있음(§6 참고) |
+| `PROJECT_REPORT.md` | Architecture / file-structure snapshot |
+| `HISTORY.md` | Chronicle of completed work (table format) |
+| `ISSUES.md` | Resolved / unresolved / deferred status of discovered issues |
+| `PREPROCESS.md` | Deep dive dedicated to the refine-rules subsystem — similar documents may appear for other subsystems in the future (see §6) |
 
-- 모두 **"최신 갱신" 필드**를 가집니다(§8 참고).
-- 서로 **상호참조**합니다 — `PREPROCESS.md`의 "관련 문서" 절, `PROJECT_REPORT.md` 상단의
-  "함께 관리되는 문서" 안내 등.
-- 코드가 바뀌면 **조용히 stale해질 위험**이 있습니다 — 이 그룹의 문서를 만질 때는 반드시
-  §5~§7의 재검증 원칙을 따르세요.
+- All of them carry a **`최신 갱신` ("Last Updated") field** (see §8).
+- They **cross-reference each other** — e.g. `PREPROCESS.md`'s `관련 문서` ("Related Documents")
+  section, the `함께 관리되는 문서` ("Documents Managed Together") note at the top of
+  `PROJECT_REPORT.md`, etc.
+- They risk **silently going stale** when the code changes — always follow the re-verification
+  principles in §5–§7 when touching a document in this group.
 
-### 1.3 이 가이드의 범위 밖
+### 1.3 Out of Scope for This Guide
 
-| 문서 | 이유 |
+| Document | Reason |
 |---|---|
-| `WORK_FLOW.md` | 고객 대응 비즈니스 프로세스 문서 — 코드 변경과 무관 |
-| `STUDY.md` | 개인 학습 노트, `.gitignore` 등록(git 미추적) — 프로젝트 기록이 아님 |
+| `WORK_FLOW.md` | Customer-facing business process document — unrelated to code changes |
+| `STUDY.md` | Personal study notes, `.gitignore`'d (untracked by git) — not a project record |
 
-이 두 문서는 "코드 변경 → 문서 갱신" 메커니즘에 포함되지 않습니다. 건드릴 필요가 있을 때는
-각 문서의 목적에 맞게 개별 판단하세요.
+These two documents are not covered by the "code change → documentation update" mechanism. If you
+ever need to touch them, judge each on its own purpose.
 
 ---
 
-## 2. 코드 변경 → 문서 반영 매핑
+## 2. Code Change → Documentation Mapping
 
-작업 종류별로 갱신해야 할 문서:
+Which documents to update, by kind of work:
 
-| 작업 | 갱신 대상 |
+| Work | Update target |
 |---|---|
-| 버그 수정 / 기능 추가 커밋 | `HISTORY.md`에 표 행 추가 (§3) |
-| 새로 발견된 미해결 문제 | `ISSUES.md` §2(리스트)에 등록 (§4) |
-| 기존 이슈 해결 | `ISSUES.md` §2에서 §1(표)로 이동, "현황" 카운트 갱신 (§4) |
-| 파일 삭제/생성, 대규모 리팩터, 함수 시그니처 변경 | `PROJECT_REPORT.md`의 관련 표(파일 규모·함수 목록 등) 갱신 (§5) |
-| 특정 서브시스템 동작 방식 변경 | 해당 딥다이브 문서(`PREPROCESS.md` 등) 갱신, 없으면 신설 검토 (§6) |
-| `develop→main` 릴리스 PR | `HISTORY.md`에 릴리스 행 추가 + "현재 브랜치 상태" 절 갱신 (§3) |
-| 새 컨벤션/규칙 확정 | `CODING_GUIDE.md`(프로젝트 전용 절) 또는 `GIT_GUIDE.md` |
+| Bug-fix / feature commit | Add a table row to `HISTORY.md` (§3) |
+| Newly discovered unresolved problem | Register it in `ISSUES.md` §2 (list) (§4) |
+| An existing issue gets resolved | Move it from `ISSUES.md` §2 to §1 (table), update the `현황` ("Status") count (§4) |
+| File deleted/created, large-scale refactor, function signature change | Update the relevant table in `PROJECT_REPORT.md` (file size, function list, etc.) (§5) |
+| A specific subsystem's behavior changes | Update the matching deep-dive document (e.g. `PREPROCESS.md`), or consider creating one if none exists (§6) |
+| `develop→main` release PR | Add a release row to `HISTORY.md` + update the `현재 브랜치 상태` ("Current Branch Status") section (§3) |
+| New convention/rule finalized | `CODING_GUIDE.md` (project-specific section) or `GIT_GUIDE.md` |
+| Lines added/removed in a `.py` file (refactor, function moved, etc.) | Detect and fix whether any file:line citations in documents referencing that file have shifted (§6.1) |
 
-같은 작업이 여러 문서에 걸치는 경우가 많습니다(예: 버그 수정 → `HISTORY.md` 행 추가 +
-`ISSUES.md` 이슈 이동을 동시에). §9 체크리스트로 누락을 방지하세요.
-
----
-
-## 3. HISTORY.md 작성 규칙
-
-`HISTORY.md`는 완료된 작업 하나당 표 한 행으로 기록합니다.
-
-- **스키마**: `날짜 | PR/커밋 | 항목 | 배경·원인 | 수정·내용 | 검증` (6열 고정)
-- **한 행 = 한 작업 단위**: 서로 밀접하게 관련된 커밋 여러 개(예: 기능 구현 + 후속 버그
-  수정 + 문서 동기화)는 하나의 행에 `(커밋해시)` 표기로 묶습니다. 관련성이 낮으면 별도
-  행으로 분리합니다.
-- **문서 전용(docs-only) 커밋**: 관련 기능 커밋에 딸린 문서 동기화(예: 기능 변경 후
-  `PROJECT_REPORT.md`를 갱신한 커밋)는 해당 기능 행의 "수정·내용" 컬럼에 짧게 fold-in합니다.
-  그 자체로 독립적인 의미가 있는 문서 작업(가이드 신설, 대규모 재구성 등)은 별도 행으로
-  기록합니다.
-- **릴리스도 반드시 한 행으로 기록**합니다(`develop→main` PR 머지). "수정·내용" 컬럼에
-  포함된 주요 변경 사항을 요약하고, 필요하면 이전 릴리스 이후 누락 없이 포함됐는지 확인.
-- 날짜가 커밋 메시지에 명시되지 않은 초기 항목은 `~날짜*` 표기 + 각주로 추정 근거를 남깁니다.
-- 표 셀 안에 여러 하위 항목을 나열해야 하면 `<br>`로 줄바꿈하거나 `①②③` 등으로 구분합니다
-  (표 셀 안에 리터럴 `|` 문자를 쓰면 표가 깨지므로 절대 사용하지 않습니다).
-- 하단 **"현재 브랜치 상태"** 절은 최신 릴리스 기준 `main`/`develop` 커밋 해시와 동기화
-  여부를 표로 유지합니다 — 릴리스가 있을 때마다 갱신합니다.
+The same piece of work often spans multiple documents (e.g. a bug fix → adding a `HISTORY.md` row
++ moving an `ISSUES.md` entry, at the same time). Use the §9 checklist to avoid missing one.
 
 ---
 
-## 4. ISSUES.md 작성 규칙
+## 3. HISTORY.md Writing Rules
 
-`ISSUES.md`는 상태에 따라 형식이 다릅니다 — **표 하나로 통일하지 않습니다.**
+`HISTORY.md` records one completed unit of work as one table row.
 
-- **§1 해결된 이슈 (표)**: `# | 이슈 | 위치 | 원인 | 해결 | PR/커밋` 6열. 이슈가 해결되면
-  이 표에 행을 추가합니다.
-- **§2 미해결·보류 이슈 (리스트 + 상세 설명)**: `### 항목명 — 상태 (날짜)` 헤딩 아래
-  `위치 / 상세 / 사유·필요 조치` 불릿으로 작성합니다. **표에 넣지 않는 이유**: 진행 중인
-  이슈는 원인 분석·대안 검토·잔여 리스크처럼 여러 문단에 걸친 서술이 필요한 경우가 많아,
-  표 셀에 압축하면 정보 손실이 큽니다.
-- **번호 체계**: 원문자(①②③…㉑㉒…)를 발견 순서대로 순환 부여. 이슈가 해결돼 §2→§1로
-  이동해도 번호는 유지합니다.
-- **이동 절차**: 이슈 해결 시 §2 항목을 삭제하고 §1 표에 행을 추가합니다. 절대 두 곳에
-  동시에 남기지 않습니다.
-- 상단의 **"현황" 필드**(`해결 N건 · 미해결 N건 · 보류 N건`)를 이슈를 추가/이동/해결할
-  때마다 실제 개수와 일치하도록 갱신합니다.
-
----
-
-## 5. PROJECT_REPORT.md 작성 규칙
-
-`PROJECT_REPORT.md`는 아키텍처 스냅샷이라 **가장 stale해지기 쉬운 문서**입니다. 이번
-세션에서 실제로 발견한 사례:
-
-- 이미 삭제된 파일(`frames_tmp.py`, `spiders/sample.py`)이 계속 파일 목록·줄 수 표에
-  남아있었음
-- 이미 고쳐진 버그(`RandomCookieMiddleware`, `DelaySchedulerMiddleware`)가 여전히
-  "⚠️ 반환값 이슈"/"⚠️ 미로드"로 표시돼 있었음
-- 삭제된 함수(`engine.run_login()`)가 함수 목록 표에 그대로 남아있었음
-- 파일 줄 수가 최대 121줄까지 실제 값과 차이
-
-**원칙**: 이 문서를 갱신할 때는 기존 서술을 신뢰하지 말고, 반드시 다음으로 재검증합니다.
-
-- `wc -l <파일>` — 줄 수 표 정확성
-- `ls`/`git log --follow` — 파일이 실제로 존재하는지, 삭제되지 않았는지
-- `grep -n "^def \|^class "` 등 — 함수/클래스 목록이 현재 코드와 일치하는지
-- `ISSUES.md`의 해당 이슈 상태(✅ 해결 여부) — "⚠️" 경고 문구가 여전히 유효한지
-- `git log`로 마지막 문서 갱신 이후 놓친 커밋이 없는지(특히 파일 삭제·리네임·대규모 리팩터)
+- **Schema**: `날짜 | PR/커밋 | 항목 | 배경·원인 | 수정·내용 | 검증` (Date | PR/Commit | Item |
+  Background/Cause | Change/Content | Verification) — 6 fixed columns.
+- **One row = one unit of work**: several closely related commits (e.g. a feature implementation +
+  a follow-up bug fix + a doc sync) get grouped into a single row, listed as `(commit hashes)`. If
+  they aren't closely related, split them into separate rows.
+- **Docs-only commits**: documentation sync that rides along with a related feature commit (e.g. a
+  commit that updates `PROJECT_REPORT.md` after a feature change) gets folded briefly into that
+  feature row's "수정·내용" (Change/Content) column. Documentation work that has independent
+  significance on its own (a new guide, a large-scale reorganization, etc.) gets its own row.
+- **Releases must also be recorded as a row each** (`develop→main` PR merge). Summarize the key
+  changes included in the "수정·내용" column, and if relevant, confirm nothing has been missed
+  since the previous release.
+- For early entries whose date isn't stated in the commit message, use `~date*` notation plus a
+  footnote explaining the basis for the estimate.
+- When a table cell needs to list several sub-items, use `<br>` for line breaks or circled numbers
+  (①②③, etc.) to separate them — never use a literal `|` character inside a cell, since it breaks
+  the table.
+- The **`현재 브랜치 상태`** ("Current Branch Status") section at the bottom keeps a table of the
+  latest release's `main`/`develop` commit hashes and sync status — update it on every release.
 
 ---
 
-## 6. 딥다이브 문서 작성 규칙
+## 4. ISSUES.md Writing Rules
 
-`PREPROCESS.md`처럼 특정 서브시스템(정제 규칙 등)을 깊이 다루는 문서입니다.
+`ISSUES.md`'s format differs by status — **it is not unified into a single table.**
 
-- 파일:줄번호 인용(`trigger.py:1042` 등)은 코드가 바뀌면 즉시 stale해집니다. 문서를
-  갱신할 때마다 인용된 줄번호를 실제 코드에서 재확인하세요 — 이번 세션에서
-  `PREPROCESS.md`의 줄번호 인용 6곳이 stale했던 것을 발견·수정했습니다.
-- 기능이 추가됐는데 문서에 반영되지 않은 채로 남는 경우가 있습니다(예: 스케줄 자동 저장
-  고정 규칙, Before/After 비교 탭 연동이 `PREPROCESS.md`에 통째로 누락돼 있었음). 딥다이브
-  문서를 갱신할 때는 관련 코드 전체(`grep`으로 관련 함수·상수 호출부 추적)를 훑어 누락된
-  기능이 없는지 확인하세요.
-- 새로운 서브시스템이 충분히 복잡해지면(플러그인 메커니즘, 다단계 파이프라인 등) 유사한
-  독립 딥다이브 문서를 신설할 수 있습니다. 신설 시 §1.2 문서 지도에 추가하고, 필요하면
-  `CLAUDE.md` 참조 목록 등록 여부를 사용자와 확인하세요.
-- 상단에 "구현 이력은 `HISTORY.md`(관련 PR/커밋), 이슈 상태는 `ISSUES.md` 참고"처럼
-  관련 문서를 명시적으로 링크합니다.
-
----
-
-## 7. 상호참조 정합성 원칙
-
-문서 간 참조(섹션 번호, 파일:줄번호, 문서명)는 한쪽만 바뀌어도 깨집니다.
-
-- **한 문서의 섹션 번호를 바꾸면**(예: ISSUES.md §5→§6), 그 섹션을 참조하는 다른 문서를
-  반드시 `grep -rn "ISSUES.md.*§5\|이슈.*§5"` 같은 검색으로 찾아 함께 갱신하세요 — 이번
-  세션에서 ISSUES.md를 재구성한 뒤 `PREPROCESS.md`의 `§4`/`§6` 참조가 실제로 깨졌던 것을
-  뒤늦게 발견했습니다.
-- **문서 폴더가 이동하거나 파일명이 바뀌면**(예: `systems/`→`guidelines/`), 모든 문서의
-  경로 참조와 `CLAUDE.md`의 참조 목록을 함께 검색해 갱신하세요.
-- **커밋 해시/PR 번호를 인용할 때**는 `git show -s --format='%s'`로 실제 커밋 메시지를
-  재확인한 뒤 적으세요 — 기억이나 추측으로 적지 않습니다.
+- **§1 Resolved Issues (table)**: 6 columns, `# | 이슈 | 위치 | 원인 | 해결 | PR/커밋` (# | Issue |
+  Location | Cause | Fix | PR/Commit). When an issue is resolved, add a row here.
+- **§2 Unresolved/Deferred Issues (list + detailed prose)**: written as a `### Item name — Status
+  (Date)` heading, followed by `위치 / 상세 / 사유·필요 조치` (Location / Details / Reason &
+  Required Action) bullets. **Why not a table**: an in-progress issue often needs multi-paragraph
+  narrative — cause analysis, alternatives considered, residual risk — and compressing that into a
+  table cell loses too much information.
+- **Numbering scheme**: circled-number markers (①②③…㉑㉒…) are assigned cyclically in discovery
+  order. When an issue is resolved and moves from §2 to §1, its number is kept unchanged.
+- **Move procedure**: when an issue is resolved, delete the §2 entry and add a row to the §1 table.
+  Never leave it in both places at once.
+- Keep the **`현황`** ("Status") field at the top (`Resolved N · Unresolved N · Deferred N`)
+  matching the actual counts every time you add, move, or resolve an issue.
 
 ---
 
-## 8. "최신 갱신" 필드 규칙
+## 5. PROJECT_REPORT.md Writing Rules
 
-- 형식은 `YYYY-MM-DD HH:MM` (날짜만이 아니라 시:분까지 기록).
-- **내용이 실질적으로 바뀔 때만** 갱신합니다 — 오타 수정처럼 사소한 변경까지 매번 갱신할
-  필요는 없지만, 이 가이드에서 다루는 "코드 변경 반영" 작업이라면 항상 갱신 대상입니다.
-- 여러 살아있는 문서(§1.2)를 한 세션에서 함께 갱신했다면, 모두 같은 시각으로 맞출 필요는
-  없습니다 — 각 문서를 실제로 마지막으로 편집한 시각을 기록하세요.
+`PROJECT_REPORT.md` is an architecture snapshot, which makes it **the document most prone to going
+stale**. Cases actually found in this session:
 
----
+- Already-deleted files (`frames_tmp.py`, `spiders/sample.py`) were still sitting in the file
+  list/line-count table
+- Already-fixed bugs (`RandomCookieMiddleware`, `DelaySchedulerMiddleware`) were still marked
+  `"⚠️ 반환값 이슈"` (lit. "⚠️ Return-value issue") / `"⚠️ 미로드"` (lit. "⚠️ Not loaded")
+- A deleted function (`engine.run_login()`) was still sitting in the function-list table as-is
+- File line counts were off from the real values by as much as 121 lines
 
-## 9. 문서 갱신 체크리스트
+**Principle**: when updating this document, don't trust the existing prose — always re-verify with
+the following:
 
-md 문서 작업을 마치기 전에 확인하세요:
-
-- [ ] 코드를 직접 열어 재확인했는가 (기존 문서 서술을 그대로 믿지 않음, §5)
-- [ ] `HISTORY.md`에 이번 작업이 표 행으로 반영됐는가 (§3)
-- [ ] `ISSUES.md`에 신규/해결 이슈가 반영됐는가, "현황" 카운트가 맞는가 (§4)
-- [ ] `PROJECT_REPORT.md`의 관련 서술(파일 목록·줄 수·함수 표·이슈 경고 문구)이 여전히
-      맞는가 (§5)
-- [ ] 관련 딥다이브 문서(`PREPROCESS.md` 등) 갱신이 필요한가, 파일:줄번호 인용이 여전히
-      맞는가 (§6)
-- [ ] 문서 간 상호참조(섹션 번호, 파일:줄번호, 경로)가 깨지지 않았는가 (§7)
-- [ ] "최신 갱신" 필드를 갱신했는가 (§8)
-- [ ] 코드 자체를 수정했다면, 그 코드를 설명하던 주석·docstring도 §10 기준으로 함께 확인했는가
+- `wc -l <file>` — accuracy of the line-count table
+- `ls` / `git log --follow` — whether the file actually still exists and hasn't been deleted
+- `grep -n "^def \|^class "` etc. — whether the function/class list matches the current code
+- The corresponding issue's status in `ISSUES.md` (✅ resolved or not) — whether a "⚠️" warning is
+  still valid
+- `git log` — whether any commits have been missed since the last documentation update (especially
+  file deletions/renames/large refactors)
 
 ---
 
-## 10. 코드 내 주석 작성·유지보수 원칙
+## 6. Deep-Dive Document Writing Rules
 
-이 절은 `guidelines/` md 문서가 아니라 소스 코드(`.py`) 안의 주석·docstring·런타임 메시지에
-대한 지침입니다. 2026-07-15 세션에서 프로젝트 전체(약 8,000줄)를 스캔해 실제 코드와 어긋나는
-주석 11건 — 그중 4건은 애초에 도달 불가능한 죽은 코드를 설명하고 있었음 — 을 발견·수정한
-경험을 근거로 합니다.
+Documents like `PREPROCESS.md` that go deep into a specific subsystem (e.g. the refine rules).
 
-### 10.1 코드를 고칠 때 주석도 함께 고친다
+- File:line citations (e.g. `trigger.py:1042`) go stale the instant the code changes. Re-verify
+  every cited line number against the actual code whenever you update the document — this session
+  found and fixed 6 stale line-number citations in `PREPROCESS.md`.
+- A feature can get added without ever making it into the document (e.g. the scheduled auto-save
+  fixed rule set and the Before/After comparison-tab integration were entirely missing from
+  `PREPROCESS.md`). When updating a deep-dive document, sweep the related code in full (trace
+  relevant function/constant call sites with `grep`) to check nothing is missing.
+- Once a new subsystem gets complex enough (a plugin mechanism, a multi-stage pipeline, etc.), you
+  can create a similar standalone deep-dive document. When you do, add it to the §1.2 document map,
+  and check with the user whether it should also be registered in `CLAUDE.md`'s reference list.
+- Explicitly link related documents at the top, e.g. "Implementation history: `HISTORY.md`
+  (relevant PR/commit); issue status: `ISSUES.md`."
 
-함수/변수의 동작, 기본값, 개수, 참조 대상(다른 함수·클래스·설정 키·파일 경로)을 바꾸면, 그
-코드를 설명하는 모든 주석·docstring을 **같은 변경 안에서** 업데이트합니다. "나중에 정리"로
-미루면, 같은 파일 안에 서로 모순된 주석 두 개가 공존하는 상태로 남습니다(실제 사례:
-`layout.py`에서 `fill_null` 기본값이 한 줄은 `""`(빈 값)로, 바로 다섯 줄 위는 여전히
-`"—"`로 서술돼 있었음).
+### 6.1 Detecting Line-Number Drift Caused by Code Edits
 
-다음을 바꿀 때 주석 갱신을 특히 빠뜨리기 쉬우니 각별히 확인하세요:
+The first bullet above ("re-verify whenever you update the document") is **reactive** — you only
+learn something is stale if you happen to reopen that document. But the drift actually happens
+**the moment a line is added or removed in the code**. It happens just the same in code work with
+no plan to touch documentation at all (a bug fix, a refactor, moving a function, etc.), and if left
+alone it quietly accumulates until someone next opens that document (see the 2026-07-16 session,
+where 12 such spots had accumulated before they were all found and fixed at once).
 
-- 함수/클래스 이름 변경, 파일·폴더 이동 (예: `CustomRuleStorage`→`CustomModuleStorage`,
+**Check the following after code work (before committing, or before wrapping up the session)**:
+
+1. Identify which `.py` files had their **line count change** this session (additions/deletions,
+   not a plain content substitution).
+2. For each such file, run `grep -rn "<filename>\.py:[0-9]" guidelines/*.md` to find every document
+   passage that cites it.
+3. Any cited line number that points **below (after) the edit point** is a suspect — citations
+   pointing above (before) the edit point are unaffected and don't need checking.
+4. Don't fix a suspect citation with arithmetic (e.g. "removed 10 lines, so subtract 10") — errors
+   compound easily if the same file was edited more than once in the same session. Instead,
+   re-find the function/class/constant name mentioned alongside the citation via
+   `grep -n "^def name\|^class name\|^name ="` and **replace it with its current actual
+   location**.
+5. Do this check not only "when you also plan to edit the document this time," but after **every**
+   code task that added or removed lines in referenced code. Even in a session that won't touch
+   documentation at all, check for drift, and fix it on the spot if you find it.
+
+---
+
+## 7. Cross-Reference Integrity Principles
+
+Cross-references between documents (section numbers, file:line, document names) break the moment
+either side changes.
+
+- **If you renumber a section in one document** (e.g. `ISSUES.md` §5→§6), you must search for
+  documents that reference that section — with something like `grep -rn "ISSUES.md.*§5\|이슈.*§5"`
+  — and update them together. This session discovered, only after the fact, that `PREPROCESS.md`'s
+  `§4`/`§6` references had actually broken once `ISSUES.md` was reorganized.
+- **If a document folder moves or a filename changes** (e.g. `systems/`→`guidelines/`), search for
+  and update every document's path references along with `CLAUDE.md`'s reference list.
+- **When citing a commit hash or PR number**, re-confirm the actual commit message with
+  `git show -s --format='%s'` before writing it down — never from memory or a guess.
+
+---
+
+## 8. "Last Updated" Field Rules
+
+- Format is `YYYY-MM-DD HH:MM` (record hours:minutes, not just the date).
+- Update it **only when content substantively changes** — you don't need to bump it for a trivial
+  change like a typo fix, but any "reflect a code change" work covered by this guide is always
+  grounds for an update.
+- If you update several living documents (§1.2) together in one session, they don't all need to
+  carry the same timestamp — record each document's actual last-edited time.
+
+---
+
+## 9. Documentation Update Checklist
+
+Check before finishing md document work:
+
+- [ ] Did you open the code directly and re-verify it, rather than trusting the existing document
+      prose as-is? (§5)
+- [ ] Has this work been reflected as a table row in `HISTORY.md`? (§3)
+- [ ] Have new/resolved issues been reflected in `ISSUES.md`, and does the `현황` ("Status") count
+      match? (§4)
+- [ ] Is the relevant description in `PROJECT_REPORT.md` (file list, line counts, function table,
+      issue warning text) still accurate? (§5)
+- [ ] Does the relevant deep-dive document (`PREPROCESS.md`, etc.) need an update, and are its
+      file:line citations still accurate? (§6)
+- [ ] If any `.py` file's line count changed this session, did you check whether the line numbers
+      in document passages citing that file have shifted? (§6.1)
+- [ ] Are cross-references between documents (section numbers, file:line, paths) still intact? (§7)
+- [ ] Did you update the `최신 갱신` ("Last Updated") field? (§8)
+- [ ] If you also modified the code itself, did you check the comments/docstrings describing that
+      code per the §10 criteria?
+
+---
+
+## 10. In-Code Comment Writing and Maintenance Principles
+
+This section is about comments/docstrings/runtime messages inside source code (`.py`), not about
+`guidelines/` md documents. It's grounded in the 2026-07-15 session, where scanning the whole
+project (~8,000 lines) turned up 11 comments that had drifted from the actual code — 4 of which
+were describing dead code that couldn't even be reached anymore.
+
+### 10.1 Fix the Comment in the Same Change That Fixes the Code
+
+When you change a function/variable's behavior, default value, count, or what it refers to
+(another function/class, a config key, a file path), update every comment/docstring describing
+that code **within that same change**. Putting it off for "cleanup later" leaves two mutually
+contradictory comments coexisting in the same file (an actual case: in `layout.py`, one line
+described the `fill_null` default as `""` (empty), while five lines above it still said `"—"`).
+
+Watch especially closely for missed comment updates when changing:
+
+- Function/class renames, file/folder moves (e.g. `CustomRuleStorage`→`CustomModuleStorage`,
   `custom_rules/{seq_no}.py`→`custom_rules/{kind}/{seq_no}.py`)
-- 기본값 변경 (예: `fill_value` `"—"` → `""`)
-- 규칙/항목 개수 변경 (예: 정제 규칙 6개→7개)
-- 다른 클래스/모듈로 로직 이관(Mixin 패턴 정리 등) — 이관 전 주석이 이관 후에도 옛 위치에
-  그대로 남아있는 경우가 많습니다.
+- Default-value changes (e.g. `fill_value` `"—"` → `""`)
+- Rule/item count changes (e.g. refine rules going from 6 to 7)
+- Logic moved to a different class/module (Mixin-pattern cleanup, etc.) — the pre-move comment is
+  often still sitting at the old location after the move.
 
-### 10.2 "stale 주석"의 유형
+### 10.2 Types of "Stale Comments"
 
-아래는 실제로 발견된 사례를 유형화한 것입니다. 코드 리뷰나 대규모 리팩터링 직후에는 이
-유형들을 의심하고 확인하세요.
+The following are actually discovered cases, categorized by type. Suspect and check for these
+types right after a code review or a large-scale refactor.
 
-| 유형 | 예시 |
+| Type | Example |
 |---|---|
-| 기본값/개수 불일치 | 주석이 옛 숫자·문자열을 그대로 서술 (`"기본 1.5s"`인데 실제 `setValue(0.5)`) |
-| 참조 대상 이름 불일치 | 런타임 경고가 `PROXY_LIST`를 언급하지만 실제 설정 키는 `ip_list` |
-| 패턴/문법 설명 불일치 | docstring이 설명하는 입력 패턴이 실제 정규식과 다름(`${item1,item2}`라 적혀있지만 정규식은 `${keywords:item1,item2}`만 매칭) |
-| 아키텍처 서술 불일치 | 렌더링 로직이 `engine.py`에 하드코딩되던 시절을 설명하지만 실제로는 플러그인 방식으로 전환됨 |
-| orphaned 라벨 | `"( CASE 1 )"`처럼 짝이 되는 `"CASE 2"`가 프로젝트 어디에도 없음 |
-| 죽은 코드를 살아있는 것처럼 설명 | docstring이 "이 메서드는 X 시그널을 받아 처리한다"고 말하지만, 실제로 그 시그널은 다른 메서드에 연결돼 있어 이 메서드는 호출되면 존재하지 않는 속성 참조로 크래시함 |
+| Default value/count mismatch | The comment states an old number/string as-is (comment says `"기본 1.5s"`, lit. "default 1.5s", while the code actually has `setValue(0.5)`) |
+| Referenced-name mismatch | A runtime warning mentions `PROXY_LIST`, but the actual config key is `ip_list` |
+| Pattern/syntax description mismatch | The input pattern a docstring describes doesn't match the real regex (documented as `${item1,item2}` but the regex only matches `${keywords:item1,item2}`) |
+| Architecture description mismatch | Describes rendering logic as hardcoded in `engine.py`, when it has actually since moved to a plugin approach |
+| Orphaned label | A `"( CASE 1 )"`-style label with no matching `"CASE 2"` anywhere in the project |
+| Describing dead code as if it were alive | A docstring claims `"이 메서드는 X 시그널을 받아 처리한다"` (lit. "this method receives and handles signal X"), but that signal is actually wired to a different method, so this one crashes on a nonexistent attribute reference if it's ever invoked |
 
-### 10.3 죽은 코드를 발견했을 때
+### 10.3 When You Discover Dead Code
 
-주석이 설명하는 동작이 실제로 전혀 실행되지 않는다는 것을 발견하면(호출부가 없거나, 다른
-메서드가 같은 시그널을 대신 처리하고 있거나, 참조하는 속성이 클래스에 없는 경우):
+If you find that the behavior a comment describes never actually executes (no call site, another
+method handles the same signal instead, or the referenced attribute doesn't exist on the class):
 
-1. `grep`으로 실제 호출부·시그널 연결을 전수 확인해 "정말 죽은 코드"인지 검증합니다(추측
-   금지 — 같은 이름의 메서드가 다른 클래스에도 있으면 착각하기 쉽습니다).
-2. 사용자가 "주석만 고쳐달라"고 했다면, 주석을 사실대로("미사용 — 호출되지 않음, 이유:
-   ...") 고치는 데 그치고 코드 자체는 삭제하지 않습니다 — 코드 삭제는 주석 수정보다 되돌리기
-   어려운 변경이므로 별도 요청을 기다립니다.
-3. 삭제 요청을 받으면, 그 죽은 코드에서만 쓰이던 다른 메서드·필드(2차 고아)까지 함께
-   확인해 정리합니다. 실제 사례: 죽은 메서드 1개를 지우려고 보니 같은 클래스 안에 동일한
-   문제(존재하지 않는 속성 참조)를 가진 메서드가 3개 더 있었고, 그 4개를 모두 지우고 나니
-   그 메서드들에서만 쓰이던 인스턴스 필드 2개도 완전히 고아가 되어 함께 제거했습니다.
-   `grep`으로 "정말 다른 곳에서 안 쓰는지"를 매 단계 재확인하세요.
+1. Confirm with `grep`, across every actual call site/signal connection, that it's "truly dead
+   code" (don't guess — it's easy to be fooled if another class happens to have a method of the
+   same name).
+2. If the user asked you to "just fix the comment," limit yourself to correcting it truthfully
+   (e.g. `"미사용 — 호출되지 않음, 이유: ..."`, lit. "Unused — never called, because …") and don't
+   delete the code itself — deleting code is a harder-to-revert change than fixing a comment, so
+   wait for a separate request.
+3. If you do get a deletion request, also check for and clean up any other methods/fields that were
+   used only by that dead code (secondary orphans). Actual case: deleting one dead method revealed
+   3 more methods in the same class with the identical problem (a reference to a nonexistent
+   attribute); deleting all 4 then left 2 instance fields — used only by those methods — completely
+   orphaned, and those were removed as well. Re-confirm with `grep` at every step that something is
+   "truly unused elsewhere."
 
-### 10.4 대규모 주석 감사(audit) 진행 방법
+### 10.4 How to Run a Large-Scale Comment Audit
 
-프로젝트 전체의 주석-코드 일치 여부를 점검할 때(정기 점검, 대규모 리팩터링 직후 등):
+When checking comment-to-code consistency across the whole project (a periodic check, right after
+a large refactor, etc.):
 
-- 파일 그룹별로 나눠 병렬 조사(Explore 에이전트 등)를 돌리되, 각 에이전트에게 "최근 어떤
-  리팩터링이 있었는지"(클래스명 변경, 기본값 변경, 아키텍처 전환 등)를 구체적으로 알려줘야
-  관련 stale 주석을 정확히 짚어낼 수 있습니다.
-- 에이전트가 "신뢰도: 낮음/중간"이라고 표시한 항목은 반드시 직접 코드를 읽어 재검증한 뒤
-  수정합니다 — 에이전트 보고를 그대로 믿고 고치지 않습니다.
-- 스타일 지적(있으나 마나 한 주석 등)과 사실관계 오류(stale 주석)를 구분해서, **사실관계
-  오류만** 수정 대상으로 삼습니다. "이 주석은 없어도 된다"류의 스타일 의견은 별도 요청이
-  없는 한 반영하지 않습니다.
-- 수정 후에는 변경한 파일 전체에 `python3 -m py_compile <파일>`(또는 해당 언어의 정적 문법
-  검사)을 돌려 문법 오류가 없는지 확인합니다.
+- Split the work by file group and run parallel investigations (e.g. Explore agents), but give each
+  agent specifics on "what refactoring happened recently" (class renames, default-value changes,
+  architecture shifts) — without that context, they can't reliably pinpoint the relevant stale
+  comments.
+- Any item an agent flags as "confidence: low/medium" must be independently re-verified by reading
+  the code directly before you fix it — don't take an agent's report at face value.
+- Separate style opinions (e.g. `"이 주석은 없어도 된다"`, lit. "this comment isn't needed") from
+  factual errors (stale comments), and fix **only the factual errors**. Don't act on style opinions
+  unless separately requested.
+- After fixing, run `python3 -m py_compile <file>` (or the equivalent static syntax check for the
+  language) on every changed file to confirm there are no syntax errors.
