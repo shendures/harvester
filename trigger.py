@@ -36,7 +36,7 @@ import utility
 import customized_settings
 from conf import DataStore
 from style import THEME, TagButton, Divider, Parts, build_refine_rule_rows
-from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
+from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists, DEFAULT_RULES
 
 store    = DataStore()
 theme    = THEME()
@@ -83,12 +83,18 @@ SCHEDULED_REFINE_RULES = {
     "cast_numeric":     False,
 }
 
-# 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES와
-# 동일 조합이되 "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다
-# (Raw 수집 결과를 봐야 설정 가능한 규칙이라 무인 실행에는 애초에 노출하지 않음 —
-# preprocess.DataRefiner는 누락된 키를 DEFAULT_RULES 기준 False로 취급한다).
+# 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
+# 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPage "②
+# 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
+# "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
+# 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
+# "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다(Raw 수집
+# 결과를 봐야 설정 가능한 규칙이라 무인 실행에는 애초에 노출하지 않음 —
+# preprocess.DataRefiner는 누락된 키를 DEFAULT_RULES 기준으로 취급하므로 문제
+# 없음). SCHEDULED_REFINE_RULES(실행 시 폴백값)와는 이제 별개 값이다 — fill_null이
+# DEFAULT_RULES 기준 False인 반면 SCHEDULED_REFINE_RULES는 True로 유지된다.
 SCHEDULED_REFINE_RULES_DIALOG_DEFAULT = {
-    k: v for k, v in SCHEDULED_REFINE_RULES.items() if k != "drop_columns"
+    k: v for k, v in DEFAULT_RULES.items() if k != "drop_columns"
 }
 
 
