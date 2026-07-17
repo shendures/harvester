@@ -2588,6 +2588,20 @@ class SchedulerPageTriggers:
         )
 
         sched_refine_cfg_btn = parts.settings_btn("⚙  정제 규칙 설정")
+        # settings_btn 기본 크기(padding 5px 12px/12px 폰트)는 옆에 나란히 놓인
+        # RAW/정제 TagButton(padding 3px 10px/11px 폰트)보다 눈에 띄게 커 보여
+        # 같은 행 크기에 맞춰 축소 — 다른 곳의 settings_btn에는 영향 없음
+        sched_refine_cfg_btn.setStyleSheet(f"""
+            QPushButton {{
+                background:{BG_SECONDARY}; color:{TEXT_SECONDARY};
+                border:1px solid {BORDER_LIGHT}; border-radius:4px;
+                padding:3px 10px; font-size:11px;
+            }}
+            QPushButton:hover {{
+                background:{BG_HOVER}; color:{ACCENT_LIGHT};
+                border-color:{ACCENT_LIGHT};
+            }}
+        """)
         sched_refine_cfg_btn.setVisible(sched_auto_ref_btn.isChecked())
         sched_refine_cfg_btn.clicked.connect(
             lambda: self._open_schedule_refine_rules_dialog(sched_refine_state)
