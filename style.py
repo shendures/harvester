@@ -763,6 +763,7 @@ def build_refine_rule_rows(
     on_drop_columns_check=None,
     on_drop_columns_warn=None,
     drop_columns_initial_summary: str = "",
+    fit_desc_one_line: bool = False,
 ) -> dict:
     """정제 규칙 체크박스 행들을 container_layout에 추가합니다.
 
@@ -781,6 +782,11 @@ def build_refine_rule_rows(
             (체크박스·버튼·라벨이 이미 꺼진 상태로 반영된 뒤 경고가 뜨도록
             순서를 맞추기 위해 check와 분리되어 있습니다).
         drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
+        fit_desc_one_line: True면 컨트롤이 붙는 행(drop_columns/fill_null)의
+            설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로 표시되도록 합니다.
+            컨테이너 폭이 넉넉한 호출부(MonitorPage 탭)에서만 켜야 합니다 —
+            폭이 좁게 제한된 호출부(스케줄 등록 패널, 260~400px)에서 켜면
+            최소폭 요구가 패널 최대폭을 넘어 레이아웃이 깨질 수 있습니다.
 
     Returns:
         {"fill_null_input": QLineEdit | None,
@@ -828,6 +834,11 @@ def build_refine_rule_rows(
         text_col.addWidget(desc_lbl)
 
         has_control = key in rows_with_control
+        if has_control and fit_desc_one_line:
+            # 컨트롤이 붙는 행은 text_col의 stretch factor가 0이라 wordWrap
+            # 라벨의 sizeHint()가 좁게 잡혀 컨테이너 폭이 넉넉해도 줄바꿈됨 —
+            # 실측 텍스트 폭을 최소폭으로 지정해 한 줄 렌더링을 강제
+            desc_lbl.setMinimumWidth(QFontMetrics(desc_lbl.font()).horizontalAdvance(desc_text) + 4)
         row_l.addLayout(text_col, 0 if has_control else 1)
         if has_control:
             row_l.addSpacing(16)

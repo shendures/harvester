@@ -669,6 +669,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             on_drop_columns_check=lambda: bool(self._collected_data),
             on_drop_columns_warn=self._has_collected_data_or_warn,
             drop_columns_initial_summary=initial_drop_summary,
+            fit_desc_one_line=True,   # 탭 폭이 넉넉해 두 행만 줄바꿈되던 문제 해결
         )
         self.fill_null_input = result["fill_null_input"]
         self.drop_columns_summary_lbl = result["drop_columns_summary_lbl"]
