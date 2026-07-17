@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-15 04:03
-- **현황**: 해결 21건 · 미해결 3건 · 보류 2건
+- **최신 갱신**: 2026-07-17 16:57
+- **현황**: 해결 21건 · 미해결 3건 · 보류 1건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -13,7 +13,7 @@
 
 ---
 
-## 1. 해결된 이슈 (20건)
+## 1. 해결된 이슈 (21건)
 
 | # | 이슈 | 위치 | 원인 | 해결 | PR/커밋 |
 |---|---|---|---|---|---|
@@ -33,6 +33,7 @@
 | ⑭ | spirenderer 드라이버 누수(`driver.quit()` finally 미사용) | `spiders/spirenderer.py:64-101` | `driver.quit()`이 try 블록 마지막에 있어 예외 발생 시 Chrome 프로세스 누적 | 드라이버 생성 이후 코드를 try/finally로 감싸 `driver.quit()`을 finally로 이동 | - |
 | ⑮ | POST URL에 `?` 없으면 크래시, 미지원 분기 시 암묵적 None 반환 | `engine.py:36-37, 83-133` | `get_json_form()`의 `None[0]` TypeError + 잘못된 정규식 이스케이프, `get_scrapy_request()`가 미지원 조합에서 암묵적 None 반환 → `yield None` | `?` 부재 시 명시적 ValueError, 정규식 raw string 전환, 미지원 조합도 명시적 ValueError | - |
 | ⑰ | 중지 직후 즉시 재시작 시 이전 워커의 지연된 finished 신호가 새 워커 상태를 덮어씀 | `trigger.py:2554` | 구 워커 정리가 비동기로 최대 ~1.3s 걸리는데, 그 사이 재시작하면 큐잉된 구 워커의 `finished` 신호가 새 워커 시작 후 뒤늦게 도착 — `_on_finished`가 출처 구분 안 해 새 워커를 "중단됨"으로 되돌림 | `_on_finished()` 최상단에 `if self.sender() is not self._worker: return` 가드 추가 | - |
+| ⑱ | 스케줄+정제 자동 저장 조합에서 빈 데이터 시 블로킹 모달 노출 가능 | `layout.py:preprocess()`, `trigger.py:_run_refine()`/`_extract_result_table()` | 세 함수 모두 "무인 실행"을 고려하지 않고 데이터가 비면 항상 `QMessageBox.warning()` 호출 — 재조사 결과 `worker.py`의 `_done`(=summary total)은 URL 매칭 응답 수만 세고 실제 추출된 `data`(items) 존재 여부는 반영하지 않아, `summary.total>0`이라 `_on_finished()`의 `total==0` 조기 return을 통과하면서도 `_collected_data`가 완전히 비는 경우(셀렉터 불일치 등)가 가능함을 확인 — 원래 문서가 지목했던 `_run_refine()` 외에 `preprocess()`(job 종류 무관 매번 호출)·`_extract_result_table()`의 raw 분기(`auto_save_source` 기본값이라 오히려 더 자주 노출)까지 총 3곳 모두 도달 가능했음 | 3곳 모두에 무인 실행 신호(`task.get("job")=="스케줄 실행"`/`skip_ui_update`/`silent`)로 분기 추가 — 모달 대신 `log_manager.append_log("warn", ...)`로 대체. `_extract_result_table("refined", silent=True)`는 호출부가 이미 `SCHEDULED_REFINE_RULES`로 정제를 실행한 뒤이므로 화면 상태 기반 `_run_refine()` 폴백 호출도 차단 | `6ae108f` |
 | ⑲ | "②정제 규칙 설정" 탭 [정제 실행] 클릭 시 TypeError로 프로세스 abort | `layout.py:763`, `trigger.py:1069` | `clicked.connect(self._run_refine)`가 시그널의 `bool checked` 인자를 `rules_override`로 그대로 전달 — `dict(False)` 호출로 `TypeError`, try/except 범위 밖이라 PyQt6가 프로세스 abort | `clicked.connect(lambda: self._run_refine())`으로 감싸 bool 인자 차단 | PR #59 |
 | ⑳ | `custom_rules/render/{seq_no}.py` 서브폴더 미이관 | `custom_rules/render/`(부재), `conf.py` | render/refine 서브폴더 분리 리팩터링 중 000010(맥도날드)·000013(네이버) 원본이 삭제만 되고 재이관 안 됨 | 삭제 커밋의 부모 커밋에서 원본 복원(`git show 53978d0^:...`)해 `custom_rules/render/`로 재이관 | - |
 | ㉑ | `spirenderer.py`의 `conditions["login"]` 직접 접근이 신규 request_info.json과 스키마 불일치 | `spiders/spirenderer.py:73`, `generator_conditions.html:1490` | "로그인 없는 사이트도 `login: null` 명시" 암묵적 스키마 전제인데, 생성기의 delete-if-null 목록에 `login`도 포함돼 로그인 미사용 시 키 자체가 삭제됨 → `KeyError` | 코드(`.get()` 방어) 대신 기존 관례 유지 — 생성기 delete-if-null 목록에서 `login` 제외 | - |
@@ -41,20 +42,13 @@
 
 ---
 
-## 2. 미해결·보류 이슈 (5건)
+## 2. 미해결·보류 이슈 (4건)
 
 ### ⑯ blueprint 2건 이상 시 빈 설정으로 기동, 워커 조용히 사망 — ⏸ 보류 (2026-07-06)
 
 - **위치**: `conf.py:165-183`, `worker.py:92`
 - **상세**: `request_info.json` 루트 리스트에 항목이 2개 이상이면 unwrap 없이 리스트를 `_validate()`에 전달, `"url" in list`는 항상 False라 검증 실패 → 빈 dict 폴백. 이 상태로 시작하면 `worker.run()`의 `self.task["callback_url"]`(try 밖)에서 KeyError → QThread가 조용히 죽고 UI는 "실행 중"에 고착.
 - **보류 사유**: 수집 목록 2개 이상을 다루는 다중 블루프린트 지원으로 프로그램을 업그레이드할 계획이 있어, 단건 전제의 현행 구조를 땜질 수정하지 않고 그 업그레이드에서 함께 재설계하기로 결정. 단건 검증 로직 자체는 여전히 유효하므로 별도 조치 없음.
-
-### ⑱ 스케줄+정제 자동 저장 조합에서 빈 데이터 경고가 무인 실행 중 블로킹 모달로 뜰 가능성 — ⏸ 보류 (2026-07-11)
-
-- **위치**: `trigger.py:1046`(`_run_refine`), `_on_finished()`의 `total==0` 조기 반환 분기
-- **상세**: 스케줄 실행 시 정제 데이터를 자동 저장하도록 고정 규칙을 적용하는 기능(`SCHEDULED_REFINE_RULES`, `_on_finished()`)을 구현하는 과정에서 발견. `_run_refine()`은 `self._collected_data`가 비어 있으면 `QMessageBox.warning()`(`trigger.py:1046`)을 띄우는데, 이 경로가 스케줄+정제저장 조합에서 처음으로 실제 도달 가능해짐(기존에는 스케줄 자동 저장 자체가 항상 스킵되고 있어 도달 자체가 안 됐음). 무인 실행 중 사람이 없는 상태로 모달이 뜨면 확인 버튼을 누를 사람이 없어 앱이 사실상 멈춘 것처럼 보일 수 있음.
-- **현재 상태**: `_on_finished()`가 `summary["total"]==0`이면 정제/자동저장 로직에 도달하기 전에 이미 return하므로 실제로는 도달 불가. 다만 이 조기 반환 조건이 향후 바뀌거나 `_collected_data`가 비정상적으로 비게 되는 다른 경로가 생기면 노출될 수 있어 잠재 리스크로 기록.
-- **필요 조치(도달 가능해질 경우)**: 무인 실행 경로에서는 모달 대신 로그만 남기고 조용히 스킵하는 방식으로 전환 권장.
 
 ### ㉒ `generator_conditions.html`이 실제 스파이더 라우팅 키 `spiders`를 생성/안내하지 않음 — ❌ 미해결 (2026-07-13)
 

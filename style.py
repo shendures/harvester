@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout,
+    QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget,
-    QFrame,
+    QFrame, QCheckBox, QLineEdit,
     QHeaderView
 )
 
@@ -699,3 +699,184 @@ class Parts:
             }}
         """)
         return btn
+
+
+# ══════════════════════════════════════════════════════
+#  CLICKABLE RULE ROW  (정제 규칙 체크박스 행 — 블록 클릭으로 토글)
+# ══════════════════════════════════════════════════════
+class ClickableRuleRow(QWidget):
+    """
+    정제 규칙 행 위젯. 블록 어디를 클릭해도 내부 QCheckBox가 토글됩니다.
+    QCheckBox 자체 클릭은 기본 동작을 그대로 사용하고
+    블록의 나머지 영역 클릭 시 checkbox.toggle()을 호출합니다.
+    """
+    def __init__(self, checkbox: QCheckBox, parent=None):
+        super().__init__(parent)
+        self._cb = checkbox
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        """체크박스 영역이 아닌 곳 클릭 시 체크박스 토글"""
+        cb_rect = self._cb.rect().translated(self._cb.pos())
+        if cb_rect.contains(event.pos()):
+            super().mousePressEvent(event)
+            return
+        self._cb.toggle()
+        event.accept()
+
+
+# ══════════════════════════════════════════════════════
+#  정제 규칙 체크박스 행 빌더 — MonitorPage "② 정제 규칙 설정" 탭과
+#  스케줄 등록 다이얼로그의 정제 규칙 설정이 공유하는 빌더
+# ══════════════════════════════════════════════════════
+# 이 리스트 순서는 화면 표시(위→아래) 순서일 뿐, preprocess.DataRefiner의 실제
+# 처리 순서와는 무관하다(2026-07-17, custom_rule 체크 시 remove_null_row가
+# 자동으로 켜지는 흐름이 "위 항목이 아래 항목 때문에 반응"하는 것처럼 보여
+# UX상 어색하다는 피드백으로 custom_rule을 remove_null_row보다 위로 이동 —
+# 실제 처리 순서는 여전히 remove_null_row가 먼저다, preprocess.py 참고).
+REFINE_RULE_DEFS = [
+    ("custom_rule",      "커스텀 정제 규칙 적용",
+     "사용자 정의 정제 함수를 적용합니다."),
+    ("remove_null_row",  "모든 필드 null 행 제거",
+     "모든 필드가 null·빈 값인 행만 삭제합니다."),
+    ("trim_whitespace",  "문자열 공백 trim",
+     "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
+    ("remove_duplicate", "중복 행 제거",
+     "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
+    ("drop_columns",     "제외 필드 지정",
+     "추출에 불필요한 컬럼을 선택하여 제외합니다."),
+    ("fill_null",        "결측값(N/A) 치환",
+     "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
+    ("cast_numeric",     "숫자 타입 변환",
+     "문자열로 수집된 숫자 필드를 int / float으로 변환합니다."),
+]
+
+
+def build_refine_rule_rows(
+    parts,
+    container_layout,
+    checkboxes: dict,
+    rules: dict,
+    *,
+    include_keys: list | None = None,
+    on_drop_columns_click=None,
+    on_drop_columns_check=None,
+    on_drop_columns_warn=None,
+    drop_columns_initial_summary: str = "",
+) -> dict:
+    """정제 규칙 체크박스 행들을 container_layout에 추가합니다.
+
+    Args:
+        parts: Parts 인스턴스 (색상은 parts.theme에서 참조).
+        container_layout: 행을 addWidget할 레이아웃.
+        checkboxes: {key: QCheckBox}를 채워 넣을 dict (호출부가 준비해 전달).
+        rules: 초기 체크 상태 {key: bool}.
+        include_keys: None이면 REFINE_RULE_DEFS 전체(7개), 리스트면 그 키만
+            REFINE_RULE_DEFS 순서를 유지해 표시합니다(예: drop_columns 제외).
+        on_drop_columns_click: "⚙ 필드 선택" 버튼 클릭 핸들러
+            (drop_columns가 include_keys에 포함될 때만 사용).
+        on_drop_columns_check: drop_columns 체크박스를 켜기 직전 호출되는
+            부작용 없는 predicate — False면 체크를 되돌립니다.
+        on_drop_columns_warn: 체크가 되돌려진 "직후" 호출되는 안내 콜백
+            (체크박스·버튼·라벨이 이미 꺼진 상태로 반영된 뒤 경고가 뜨도록
+            순서를 맞추기 위해 check와 분리되어 있습니다).
+        drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
+
+    Returns:
+        {"fill_null_input": QLineEdit | None,
+         "drop_columns_btn": QPushButton | None,
+         "drop_columns_summary_lbl": QLabel | None}
+    """
+    theme = parts.theme
+    result = {"fill_null_input": None, "drop_columns_btn": None, "drop_columns_summary_lbl": None}
+    rows_with_control = ("drop_columns", "fill_null")
+
+    for key, title, desc_text in REFINE_RULE_DEFS:
+        if include_keys is not None and key not in include_keys:
+            continue
+
+        cb = QCheckBox()
+        cb.setChecked(rules.get(key, False))
+        cb.setFixedSize(18, 18)
+        checkboxes[key] = cb
+
+        row_w = ClickableRuleRow(checkbox=cb)
+        row_w.setStyleSheet(
+            f"background:{theme.BG_PRIMARY}; border-radius:6px; border:1px solid {theme.BORDER};"
+        )
+        row_l = QHBoxLayout(row_w)
+        row_l.setContentsMargins(12, 10, 12, 10)
+        row_l.setSpacing(12)
+        row_l.addWidget(cb)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = parts.make_label(title, theme.TEXT_PRIMARY, 12)
+        title_lbl.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY}; font-size:12px; font-weight:bold;"
+            f" background:transparent; border:none;"
+        )
+        title_lbl.setWordWrap(True)
+        desc_lbl = parts.make_label(desc_text, theme.TEXT_MUTED, 11)
+        desc_lbl.setStyleSheet(
+            f"color:{theme.TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
+        )
+        # 좁은 컨테이너(스케줄 등록의 정제 규칙 패널 등)에서 텍스트가 잘리지
+        # 않도록 줄바꿈 허용 — MonitorPage 탭처럼 폭이 넉넉한 곳에서도 무해함
+        desc_lbl.setWordWrap(True)
+        text_col.addWidget(title_lbl)
+        text_col.addWidget(desc_lbl)
+
+        has_control = key in rows_with_control
+        row_l.addLayout(text_col, 0 if has_control else 1)
+        if has_control:
+            row_l.addSpacing(16)
+
+        if key == "fill_null":
+            fill_input = QLineEdit()
+            fill_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
+            fill_input.setFixedWidth(220)
+            fill_input.setVisible(cb.isChecked())
+            fill_input.setStyleSheet(
+                f"background:{theme.BG_SECONDARY}; color:{theme.TEXT_PRIMARY}; "
+                f"border:1px solid {theme.BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
+            )
+            cb.stateChanged.connect(
+                lambda state, w=fill_input: w.setVisible(state == Qt.CheckState.Checked.value)
+            )
+            row_l.addWidget(fill_input)
+            result["fill_null_input"] = fill_input
+
+        if key == "drop_columns":
+            drop_btn = parts.settings_btn("⚙  필드 선택")
+            drop_btn.setVisible(cb.isChecked())
+            if on_drop_columns_click is not None:
+                drop_btn.clicked.connect(on_drop_columns_click)
+            row_l.addWidget(drop_btn)
+
+            drop_summary_lbl = parts.make_label(drop_columns_initial_summary, theme.TEXT_MUTED, 11)
+            drop_summary_lbl.setVisible(cb.isChecked())
+            row_l.addWidget(drop_summary_lbl)
+
+            def _on_drop_columns_toggled(state, cb=cb, b=drop_btn, l=drop_summary_lbl):
+                checked = state == Qt.CheckState.Checked.value
+                if checked and on_drop_columns_check is not None and not on_drop_columns_check():
+                    # 경고가 뜨기 전에 체크박스를 먼저 되돌림 — setChecked(False)가
+                    # 이 핸들러를 재귀 호출해 버튼/라벨 숨김까지 먼저 끝낸 뒤에 경고 표시
+                    cb.setChecked(False)
+                    if on_drop_columns_warn is not None:
+                        on_drop_columns_warn()
+                    return
+                b.setVisible(checked)
+                l.setVisible(checked)
+
+            cb.stateChanged.connect(_on_drop_columns_toggled)
+            result["drop_columns_btn"] = drop_btn
+            result["drop_columns_summary_lbl"] = drop_summary_lbl
+
+        if has_control:
+            row_l.addStretch()
+
+        container_layout.addWidget(row_w)
+
+    return result

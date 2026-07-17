@@ -11,7 +11,10 @@ from trigger import (
     TrayManagerTriggers, MainWindowTriggers,
     LogViewerDialog,
 )
-from style import THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton
+from style import (
+    THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton,
+    ClickableRuleRow, build_refine_rule_rows,
+)
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -54,32 +57,6 @@ AMBER         = theme.AMBER
 RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
-
-
-# ══════════════════════════════════════════════════════
-#  CLICKABLE RULE ROW  (정제 규칙 탭 — 블록 클릭 체크박스 토글)
-# ══════════════════════════════════════════════════════
-class ClickableRuleRow(QWidget):
-    """
-    정제 규칙 탭의 각 규칙 블록 위젯.
-    블록 어디를 클릭해도 내부 QCheckBox가 토글됩니다.
-    QCheckBox 자체 클릭은 기본 동작을 그대로 사용하고
-    블록의 나머지 영역 클릭 시 checkbox.toggle()을 호출합니다.
-    """
-    def __init__(self, checkbox: QCheckBox, parent=None):
-        super().__init__(parent)
-        self._cb = checkbox
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def mousePressEvent(self, event):
-        """체크박스 영역이 아닌 곳 클릭 시 체크박스 토글"""
-        # 체크박스 자체의 히트 영역이면 기본 이벤트 전파
-        cb_rect = self._cb.rect().translated(self._cb.pos())
-        if cb_rect.contains(event.pos()):
-            super().mousePressEvent(event)
-            return
-        self._cb.toggle()
-        event.accept()
 
 
 # ══════════════════════════════════════════════════════
@@ -669,117 +646,35 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # ── 기본 정제 규칙 카드 ──────────────────────────────────────
         rw, rl = parts.card_widget("정제 규칙")
+        # 화면 표시 순서는 실제 처리 순서와 무관하므로(style.REFINE_RULE_DEFS 참고)
+        # "위에서 아래 순서로 적용됩니다" 같은 안내는 혼란을 줄 수 있어 넣지 않음
         desc = parts.make_label(
-            "활성화된 규칙이 위에서 아래 순서로 적용됩니다. 설정 후 [정제 실행] 버튼을 눌러주세요.",
+            "설정 후 [정제 실행] 버튼을 눌러주세요.",
             TEXT_MUTED, 11
         )
         rl.addWidget(desc)
         rl.addSpacing(8)
 
-        rule_defs = [
-            ("remove_null_row",  "모든 필드 null 행 제거",
-             "모든 필드가 null·빈 값인 행만 삭제합니다."),
-            ("custom_rule",      "커스텀 정제 규칙 적용",
-             "사용자 정의 정제 함수를 적용합니다."),
-            ("trim_whitespace",  "문자열 공백 trim",
-             "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
-            ("remove_duplicate", "중복 행 제거",
-             "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
-            ("drop_columns",     "제외 필드 지정",
-             "추출에 불필요한 컬럼을 선택하여 제외합니다."),
-            ("fill_null",        "결측값(N/A) 치환",
-             "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
-            ("cast_numeric",     "숫자 타입 변환",
-             "문자열로 수집된 숫자 필드를 int / float으로 변환합니다."),
-        ]
-
         self._rule_checkboxes: dict[str, QCheckBox] = {}
+        initial_drop_summary = (
+            f"{len(self._drop_column_names)}개 필드 제외 중" if self._drop_column_names else "제외 필드 없음"
+        )
 
-        # 체크박스 옆에 별도 입력/선택 컨트롤이 붙는 규칙 — 컨트롤을 텍스트 바로
-        # 옆에 붙이고 남는 공간은 그 뒤로 보내, 카드 오른쪽 끝에 붙어 보이지 않게 함
-        rows_with_control = ("drop_columns", "fill_null")
+        # 체크박스 행 생성은 style.build_refine_rule_rows()가 전담(스케줄 등록
+        # 다이얼로그의 정제 규칙 설정과 공유하는 빌더, guidelines/PREPROCESS.md 참고)
+        result = build_refine_rule_rows(
+            parts, rl, self._rule_checkboxes, self._refine_rules,
+            include_keys=None,   # 전체 7개 규칙
+            on_drop_columns_click=self._open_drop_columns_dialog,
+            on_drop_columns_check=lambda: bool(self._collected_data),
+            on_drop_columns_warn=self._has_collected_data_or_warn,
+            drop_columns_initial_summary=initial_drop_summary,
+        )
+        self.fill_null_input = result["fill_null_input"]
+        self.drop_columns_summary_lbl = result["drop_columns_summary_lbl"]
 
-        for key, title, desc_text in rule_defs:
-            cb = QCheckBox()
-            cb.setChecked(self._refine_rules[key])
-            cb.setFixedSize(18, 18)
-            self._rule_checkboxes[key] = cb
-
-            # ── ClickableRuleRow: 블록 어디 클릭해도 체크박스 토글 ──
-            row_w = ClickableRuleRow(checkbox=cb)
-            row_w.setStyleSheet(
-                f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};"
-            )
-            row_l = QHBoxLayout(row_w)
-            row_l.setContentsMargins(12, 10, 12, 10)
-            row_l.setSpacing(12)
-            row_l.addWidget(cb)
-
-            text_col = QVBoxLayout()
-            text_col.setSpacing(2)
-            title_lbl = parts.make_label(title, TEXT_PRIMARY, 12)
-            title_lbl.setStyleSheet(
-                f"color:{TEXT_PRIMARY}; font-size:12px; font-weight:bold;"
-                f" background:transparent; border:none;"
-            )
-            desc_lbl = parts.make_label(desc_text, TEXT_MUTED, 11)
-            desc_lbl.setStyleSheet(
-                f"color:{TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
-            )
-            text_col.addWidget(title_lbl)
-            text_col.addWidget(desc_lbl)
-
-            has_control = key in rows_with_control
-            row_l.addLayout(text_col, 0 if has_control else 1)
-            if has_control:
-                row_l.addSpacing(16)
-
-            if key == "fill_null":
-                self.fill_null_input = QLineEdit()
-                self.fill_null_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
-                self.fill_null_input.setFixedWidth(220)
-                self.fill_null_input.setVisible(cb.isChecked())
-                self.fill_null_input.setStyleSheet(
-                    f"background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; "
-                    f"border:1px solid {BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
-                )
-                cb.stateChanged.connect(
-                    lambda state, w=self.fill_null_input: w.setVisible(
-                        state == Qt.CheckState.Checked.value)
-                )
-                row_l.addWidget(self.fill_null_input)
-
-            if key == "drop_columns":
-                drop_columns_settings_btn = parts.settings_btn("⚙  필드 선택")
-                drop_columns_settings_btn.setVisible(cb.isChecked())
-                drop_columns_settings_btn.clicked.connect(self._open_drop_columns_dialog)
-                row_l.addWidget(drop_columns_settings_btn)
-
-                self.drop_columns_summary_lbl = parts.make_label("", TEXT_MUTED, 11)
-                self._update_drop_columns_summary()
-                self.drop_columns_summary_lbl.setVisible(cb.isChecked())
-                row_l.addWidget(self.drop_columns_summary_lbl)
-
-                def _on_drop_columns_toggled(state, cb=cb, b=drop_columns_settings_btn, l=self.drop_columns_summary_lbl):
-                    checked = state == Qt.CheckState.Checked.value
-                    if checked and not self._collected_data:
-                        # 경고창이 뜨기 전에 체크박스를 먼저 되돌림 — setChecked(False)가
-                        # 이 핸들러를 재귀 호출해 버튼/라벨 숨김까지 먼저 끝낸 뒤에 경고 표시
-                        cb.setChecked(False)
-                        self._has_collected_data_or_warn()
-                        return
-                    b.setVisible(checked)
-                    l.setVisible(checked)
-
-                cb.stateChanged.connect(_on_drop_columns_toggled)
-
-            if has_control:
-                row_l.addStretch()
-
-            rl.addWidget(row_w)
-
-        # 커스텀 정제 규칙 체크 시 규칙 ①③④⑥(remove_null_row/trim_whitespace/
-        # remove_duplicate/fill_null)를 자동으로 켬 (해제 시에는 영향 없음)
+        # 커스텀 정제 규칙 체크 시 규칙 ①③④(remove_null_row/trim_whitespace/
+        # remove_duplicate)를 자동으로 켬 (fill_null 제외, 2026-07-17. 해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
 
         rl.addSpacing(12)
@@ -1000,7 +895,13 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         self._cleaning_warned = False   # 새 수집 결과 — 팝업 안내 여부 초기화
 
         if not self._collected_data:
-            QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            if (task or {}).get("job") == "스케줄 실행":
+                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
+                lm = getattr(self.window(), "log_manager", None)
+                if lm:
+                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 추출/정제를 건너뜁니다.")
+            else:
+                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
 # ══════════════════════════════════════════════════════

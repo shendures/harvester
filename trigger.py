@@ -35,8 +35,8 @@ import db_conn
 import utility
 import customized_settings
 from conf import DataStore
-from style import THEME, TagButton, Divider, Parts
-from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
+from style import THEME, TagButton, Divider, Parts, build_refine_rule_rows
+from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists, DEFAULT_RULES
 
 store    = DataStore()
 theme    = THEME()
@@ -65,9 +65,14 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
-# 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 고정 규칙 —
-# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④⑥)과 동일.
-# 실행 시점의 화면 체크박스 상태에 의존하지 않도록 항상 이 값을 그대로 사용한다.
+# 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 규칙 — 원래는 모든
+# 스케줄에 고정 적용되는 상수였으나(2026-07-17 이전), 이제 "새 스케줄 등록"
+# 다이얼로그의 "⚙ 정제 규칙 설정"에서 스케줄별로 구성 가능해졌다. 이 상수는
+# ①해당 다이얼로그를 아직 한 번도 열지 않은 신규 등록의 기본값, ②"refine_rules"
+# 키가 없는 기존(구버전) 스케줄의 실행 시 폴백값으로만 쓰인다(_on_finished() 참고).
+# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④)과는 별개 설정이다
+# (2026-07-17, fill_null을 자동 연동 대상에서 제외하며 분리 — 이 상수의 fill_null
+# 값은 그대로 유지해 이미 저장된 스케줄의 동작이 조용히 바뀌지 않도록 함).
 SCHEDULED_REFINE_RULES = {
     "remove_null_row":  True,
     "custom_rule":      True,
@@ -76,6 +81,20 @@ SCHEDULED_REFINE_RULES = {
     "drop_columns":     False,
     "fill_null":        True,
     "cast_numeric":     False,
+}
+
+# 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
+# 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPage "②
+# 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
+# "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
+# 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
+# "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다(Raw 수집
+# 결과를 봐야 설정 가능한 규칙이라 무인 실행에는 애초에 노출하지 않음 —
+# preprocess.DataRefiner는 누락된 키를 DEFAULT_RULES 기준으로 취급하므로 문제
+# 없음). SCHEDULED_REFINE_RULES(실행 시 폴백값)와는 이제 별개 값이다 — fill_null이
+# DEFAULT_RULES 기준 False인 반면 SCHEDULED_REFINE_RULES는 True로 유지된다.
+SCHEDULED_REFINE_RULES_DIALOG_DEFAULT = {
+    k: v for k, v in DEFAULT_RULES.items() if k != "drop_columns"
 }
 
 
@@ -947,38 +966,55 @@ class MonitorPageTriggers:
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④⑥(remove_null_row/
-        trim_whitespace/remove_duplicate/fill_null)를 자동으로 켭니다.
+        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④(remove_null_row/
+        trim_whitespace/remove_duplicate)를 자동으로 켭니다. fill_null(⑥, 결측값
+        치환)은 대상에서 제외됩니다(2026-07-17, 사용자 요청 — 커스텀 규칙이
+        정규화한 데이터라도 결측값 치환 여부는 별도로 판단해야 한다는 판단).
         체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ①③④⑥에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        ①③④에 영향을 주지 않습니다(직전 상태 그대로 유지).
         """
         if state != Qt.CheckState.Checked.value:
             return
-        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace", "fill_null"):
+        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
             cb = self._rule_checkboxes.get(key)
             if cb is not None:
                 cb.setChecked(True)
 
     # ── 정제 실행 ─────────────────────────────────────────────────────
-    def _run_refine(self, rules_override: dict[str, bool] | None = None, skip_ui_update: bool = False):
+    def _run_refine(
+        self,
+        rules_override: dict[str, bool] | None = None,
+        skip_ui_update: bool = False,
+        fill_value_override: str | None = None,
+    ):
         """
         규칙 탭의 체크박스 상태를 읽어 DataRefiner를 구성하고 정제를 실행합니다.
         preprocess.DataRefiner가 실제 정제 로직을 전담합니다.
 
         rules_override: 전달되면 체크박스 상태 대신 이 규칙 dict를 그대로 사용합니다
             (스케줄 자동 저장 등 — 실행 시점의 화면 상태에 의존하지 않도록 고정 규칙을
-            적용할 때 사용. 체크박스·제외 컬럼·치환값 등 화면 상태는 전혀 읽지 않음).
+            적용할 때 사용. 체크박스·제외 컬럼 등 화면 상태는 전혀 읽지 않음).
         skip_ui_update: True면 정제 결과 테이블/요약/비교 탭 갱신과 탭 자동 전환을
             건너뜁니다 (무인 실행 중 화면을 건드리지 않기 위함).
+        fill_value_override: rules_override와 함께 전달되는 null 치환값(⑥fill_null).
+            None이면(rules_override 경로에서) 빈 값을 사용합니다. rules_override가
+            None일 때는(수동 실행) 무시되고 화면 입력값(fill_null_input)이 사용됩니다.
         """
+        lm = getattr(self.window(), 'log_manager', None)
+
         if not self._collected_data:
-            QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            if skip_ui_update:
+                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
+                if lm:
+                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 정제를 건너뜁니다.")
+            else:
+                QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
         if rules_override is not None:
             active_rules  = dict(rules_override)
             drop_columns  = []
-            fill_value    = ""
+            fill_value    = fill_value_override if fill_value_override is not None else ""
         else:
             # 체크박스 → _refine_rules 동기화
             for key, cb in self._rule_checkboxes.items():
@@ -995,8 +1031,6 @@ class MonitorPageTriggers:
             active_rules = self._refine_rules
             drop_columns = self._drop_column_names
             fill_value   = self._fill_null_value
-
-        lm = getattr(self.window(), 'log_manager', None)
 
         # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
@@ -1725,22 +1759,37 @@ class MonitorPageTriggers:
         dlg.adjustSize()
         dlg.exec()
 
-    def _extract_result_table(self, source: str):
+    def _extract_result_table(self, source: str, silent: bool = False):
         """
         source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
         호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
         않았다면 먼저 _run_refine()을 실행한 뒤 그 결과를 추출합니다.
+        silent: True면 데이터가 없을 때 모달 대신 로그만 남기고 조용히 스킵합니다
+            (스케줄 자동 저장 등 무인 실행 경로 전용, 이슈 ⑱). 이 경우 "refined"여도
+            _run_refine() 폴백을 호출하지 않습니다 — 호출부가 이미 알맞은 고정
+            규칙으로 _run_refine()을 실행한 뒤이므로, 여기서 화면 상태 기반으로
+            다시 실행하면 무인 실행 취지에 어긋납니다.
         """
+        lm = getattr(self.window(), 'log_manager', None)
+
         if source == "refined":
-            if not self._refined_data:
+            if not self._refined_data and not silent:
                 self._run_refine()
             data = self._refined_data
             if not data:
-                return   # _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
+                # else: _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+                return
         else:
             data = self._collected_data
             if not data:
-                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
+                else:
+                    QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
                 return
         headers = list(data[0].keys())
 
@@ -2148,7 +2197,11 @@ class SchedulerPageTriggers:
             },
         }
 
-        auto_save_source = "refined" if sched_info_dict["auto_src_ref_btn"].isChecked() else "raw"
+        auto_save_source  = "refined" if sched_info_dict["auto_src_ref_btn"].isChecked() else "raw"
+        refine_checkboxes = sched_info_dict["refine_checkboxes"]
+        refine_fill_input = sched_info_dict["refine_fill_input"]
+        refine_rules_values = {key: cb.isChecked() for key, cb in refine_checkboxes.items()}
+        refine_fill_value   = refine_fill_input.text() if refine_fill_input is not None else ""
 
         if sched_task == "등록":
             schedule_info = customized_settings.get_schedule_settings()
@@ -2159,6 +2212,8 @@ class SchedulerPageTriggers:
             # 있고 auto_save 키가 없음)에 덮어써지지 않음
             schedule_info["extract"]["auto_save"] = True
             schedule_info["extract"]["auto_save_source"] = auto_save_source
+            schedule_info["extract"]["refine_rules"] = refine_rules_values
+            schedule_info["extract"]["fill_null_value"] = refine_fill_value
             schedule_info["schedule"].update(common_fields["schedule"])
             store.add_schedule(schedule_info)
             dlg.accept()
@@ -2173,6 +2228,8 @@ class SchedulerPageTriggers:
             target["extract"]["db"].update(common_fields["extract"]["db"])
             target["extract"]["auto_save"] = True
             target["extract"]["auto_save_source"] = auto_save_source
+            target["extract"]["refine_rules"] = refine_rules_values
+            target["extract"]["fill_null_value"] = refine_fill_value
             target["schedule"].update(common_fields["schedule"])
             if idx in self._timers:
                 self._timers[idx].stop()
@@ -2353,13 +2410,35 @@ class SchedulerPageTriggers:
         else:
             output_info = customized_settings.get_output_settings()
 
+        # ── 정제 규칙 설정(스케줄 전용) 초기값 ─────────────
+        # "refine_rules" 키가 없으면(구버전 스케줄 또는 신규 등록) 기본값으로 폴백.
+        # "제외 필드 지정"(drop_columns)은 애초에 키 자체를 두지 않는다(오른쪽 정제
+        # 규칙 패널 참고 — Raw 수집 결과를 봐야 설정 가능한 규칙이라 무인 실행
+        # 특성상 제외).
+        if sched_task == "수정":
+            _saved_refine_rules = existing_extract.get("refine_rules", SCHEDULED_REFINE_RULES_DIALOG_DEFAULT)
+            _saved_fill_value   = existing_extract.get("fill_null_value", "")
+        else:
+            _saved_refine_rules = SCHEDULED_REFINE_RULES_DIALOG_DEFAULT
+            _saved_fill_value   = ""
+
         # ── 다이얼로그 기본 설정 ──────────────────────────
         dlg = QDialog(self)
         dlg.setWindowTitle("새 스케줄 등록" if sched_task == "등록" else "스케줄 수정")
-        dlg.setFixedWidth(560)
+        dlg.setMinimumWidth(560)
         dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
 
-        root = QVBoxLayout(dlg)
+        # 좌(기존 폼)/우(정제 규칙 패널, "정제" 선택 시에만 노출) 2열 구조 —
+        # 정제 규칙 설정을 세로가 아닌 가로 방향으로 확장해 다이얼로그가
+        # 무한정 길어지지 않도록 함(2026-07-17, UI/UX 피드백)
+        outer = QHBoxLayout(dlg)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        left_container = QWidget()
+        outer.addWidget(left_container, 2)
+
+        root = QVBoxLayout(left_container)
         root.setContentsMargins(22, 18, 22, 18)
         root.setSpacing(0)
 
@@ -2526,16 +2605,9 @@ class SchedulerPageTriggers:
         sched_auto_raw_btn.setChecked(sched_auto_save_source != "refined")
         sched_auto_ref_btn.setChecked(sched_auto_save_source == "refined")
         sched_auto_ref_btn.setToolTip(
-            "정제 선택 시 '② 커스텀 정제 규칙 적용' 및 자동 연동 규칙(①③④⑥)이 "
-            "항상 고정 적용됩니다. 현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
+            "정제 선택 시 오른쪽에 이 스케줄에 적용할 정제 규칙 패널이 나타납니다. "
+            "현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
         )
-
-        def _sched_select_auto_src(is_refined):
-            sched_auto_raw_btn.setChecked(not is_refined)
-            sched_auto_ref_btn.setChecked(is_refined)
-
-        sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
-        sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
 
         auto_src_row = QHBoxLayout()
         auto_src_row.setSpacing(8)
@@ -2546,6 +2618,80 @@ class SchedulerPageTriggers:
         auto_src_row.addStretch()
         root.addLayout(auto_src_row)
         root.addSpacing(8)
+
+        # ── 정제 규칙 설정 패널 (오른쪽, "정제" 선택 시에만 노출) ──────
+        # "제외 필드 지정"은 Raw 수집 결과를 봐야 설정 가능한 규칙이라 무인 실행
+        # 특성상 제공하지 않음(나머지 6개 규칙만 구성 가능).
+        sched_refine_divider = Divider(orientation="v")
+        sched_refine_panel = QWidget()
+        # 고정 폭 대신 최소/최대 폭만 지정 — 창을 가로로 늘리면 이 패널도 함께
+        # 넓어져 규칙 설명 텍스트가 더 여유 있게 보이도록 함(2026-07-17, 텍스트
+        # 잘림 피드백. wordWrap도 함께 켰지만 창 폭을 넓혀 더 여유를 줄 수 있게)
+        sched_refine_panel.setMinimumWidth(260)
+        sched_refine_panel.setMaximumWidth(400)
+        refine_panel_layout = QVBoxLayout(sched_refine_panel)
+        refine_panel_layout.setContentsMargins(16, 18, 0, 18)
+        refine_panel_layout.setSpacing(8)
+
+        refine_panel_layout.addWidget(parts.make_label("정제 규칙 설정", TEXT_PRIMARY, 12, bold=True))
+        refine_panel_desc = parts.make_label(
+            "무인(스케줄) 실행 시 적용할 규칙입니다. \"제외 필드 지정\"은 Raw 수집 결과를 "
+            "직접 봐야 설정 가능해 여기서는 제공되지 않습니다.",
+            TEXT_MUTED, 10
+        )
+        refine_panel_desc.setWordWrap(True)
+        refine_panel_layout.addWidget(refine_panel_desc)
+        refine_panel_layout.addSpacing(4)
+
+        sched_refine_checkboxes: dict[str, QCheckBox] = {}
+        _refine_panel_result = build_refine_rule_rows(
+            parts, refine_panel_layout, sched_refine_checkboxes, dict(_saved_refine_rules),
+            include_keys=[
+                "remove_null_row", "custom_rule", "trim_whitespace",
+                "remove_duplicate", "fill_null", "cast_numeric",
+            ],
+        )
+        sched_refine_fill_input = _refine_panel_result["fill_null_input"]
+        if sched_refine_fill_input is not None:
+            sched_refine_fill_input.setText(_saved_fill_value)
+
+        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동 — MonitorPage의
+        # _on_custom_rule_toggled(trigger.py)와 동일 로직(fill_null 제외,
+        # 2026-07-17), 이 패널의 로컬 checkboxes 딕셔너리에 대해서만 적용.
+        _sched_refine_custom_cb = sched_refine_checkboxes.get("custom_rule")
+        if _sched_refine_custom_cb is not None:
+            def _on_sched_refine_custom_rule_toggled(chk_state):
+                if chk_state != Qt.CheckState.Checked.value:
+                    return
+                for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
+                    cb = sched_refine_checkboxes.get(key)
+                    if cb is not None:
+                        cb.setChecked(True)
+            _sched_refine_custom_cb.stateChanged.connect(_on_sched_refine_custom_rule_toggled)
+
+        refine_panel_layout.addStretch()
+
+        sched_refine_divider.setVisible(sched_auto_ref_btn.isChecked())
+        sched_refine_panel.setVisible(sched_auto_ref_btn.isChecked())
+        outer.addWidget(sched_refine_divider)
+        outer.addWidget(sched_refine_panel, 1)
+
+        def _sched_select_auto_src(is_refined):
+            sched_auto_raw_btn.setChecked(not is_refined)
+            sched_auto_ref_btn.setChecked(is_refined)
+            sched_refine_divider.setVisible(is_refined)
+            sched_refine_panel.setVisible(is_refined)
+            dlg.layout().activate()
+            # setVisible() 직후에는 dlg.sizeHint()가 아직 새 크기를 반영하지
+            # 못한 경우가 있어(_update_sched_dialog_size()와 동일 원인), 이벤트
+            # 루프를 한 번 처리시켜 레이아웃을 정착시킨 뒤 resize. adjustSize()는
+            # 이미 show()된 다이얼로그에서는 줄어드는 방향으로 갱신되지 않아 미사용.
+            QApplication.processEvents()
+            dlg.layout().activate()
+            dlg.resize(dlg.sizeHint())
+
+        sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
+        sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
 
         # ── 추출 설정 스택 (FILE / DB) ────────────────────
         sched_extract_stack = QStackedWidget()
@@ -2792,7 +2938,15 @@ class SchedulerPageTriggers:
                 current_page.layout().activate()
                 sched_extract_stack.setFixedHeight(current_page.layout().sizeHint().height())
             dlg.layout().activate()
-            dlg.adjustSize()
+            # setFixedHeight() 직후에는 dlg.sizeHint()가 아직 새 높이를 반영하지
+            # 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측 확인 —
+            # DB→FILE 전환 시 늘어난 세로 길이가 되돌아가지 않던 버그의 원인),
+            # 이벤트 루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint
+            # 기준으로 resize. adjustSize()는 이미 show()된 다이얼로그에서 창을
+            # 줄이는 방향으로는 갱신되지 않아 사용하지 않음.
+            QApplication.processEvents()
+            dlg.layout().activate()
+            dlg.resize(dlg.sizeHint())
 
         def _sched_on_file_clicked():
             self._sched_out_mode = "FILE"
@@ -3067,6 +3221,8 @@ class SchedulerPageTriggers:
             "dat_h": self.dat_h, "dat_m": self.dat_m, "dat_s": self.dat_s,
             "save_type":    sched_save_type,
             "auto_src_ref_btn": sched_auto_ref_btn,
+            "refine_checkboxes": sched_refine_checkboxes,   # {key: QCheckBox}
+            "refine_fill_input": sched_refine_fill_input,   # QLineEdit | None
             "path_edit":    sched_path_edit,
             "file_nm":      sched_file_nm,
             "fmt_combo":    sched_fmt_combo,
@@ -3747,17 +3903,22 @@ class MainWindowTriggers:
         # step(4) — 결과물 추출 단계 표시
         self.dashboard._update_step_ui(4)
 
+        is_unattended = task.get("job") == "스케줄 실행"
         try:
             extract_cfg = task.get("extract", {})
             if extract_cfg.get("auto_save"):
                 auto_save_source = extract_cfg.get("auto_save_source", "raw")
-                if auto_save_source == "refined" and task.get("job") == "스케줄 실행":
-                    # 무인 실행 — 화면 체크박스 상태가 아닌 고정 규칙을 적용,
-                    # 결과 테이블/탭 전환 등 화면 갱신도 건너뜀
+                if auto_save_source == "refined" and is_unattended:
+                    # 무인 실행 — 화면 체크박스 상태가 아닌 스케줄별 설정(없으면
+                    # SCHEDULED_REFINE_RULES 폴백, §"새 스케줄 등록"의 "⚙ 정제
+                    # 규칙 설정" 참고)을 적용, 결과 테이블/탭 전환 등 화면 갱신도 건너뜀
+                    sched_refine_rules = extract_cfg.get("refine_rules", SCHEDULED_REFINE_RULES)
+                    sched_fill_value   = extract_cfg.get("fill_null_value", "")
                     self.monitor_page._run_refine(
-                        rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True
+                        rules_override=sched_refine_rules, skip_ui_update=True,
+                        fill_value_override=sched_fill_value,
                     )
-                self.monitor_page._extract_result_table(source=auto_save_source)
+                self.monitor_page._extract_result_table(source=auto_save_source, silent=is_unattended)
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 

@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-15 01:45
+- **최신 갱신**: 2026-07-17 19:21
 
 ---
 
@@ -23,13 +23,14 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 2,036줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,821줄 |
+| GUI 레이아웃 | `layout.py` | 1,965줄 |
+| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,996줄 |
+| 테마·공용 위젯·정제 규칙 UI 빌더 | `style.py` | 881줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 320줄 |
 | Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
-| 데이터 정제 | `preprocess.py` | 352줄 |
-| 설정·상태 공유 (싱글턴 3종) | `conf.py` | 443줄 |
+| 데이터 정제 | `preprocess.py` | 358줄 |
+| 설정·상태 공유 (싱글턴 3종) | `conf.py` | 437줄 |
 
 ---
 
@@ -108,7 +109,7 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
 | `DashboardPage` | 수집 진행 상태(Step Tracker), 수집 설정(딜레이·스레드), 세션 통계, 실시간 모니터링 테이블 |
 | `MonitorPage` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교(좌우 테이블 스크롤·정렬 동기화) |
 | `StatisticsPage` | KPI 카드, 상태코드 도넛 차트, 응답시간 바 차트, 시간대별 추이 선 그래프, 세션 이력 테이블 |
-| `SchedulerPage` | 스케줄 작업 등록/수정/삭제. 주기: 매일/주간/월간/특정일 |
+| `SchedulerPage` | 스케줄 작업 등록/수정/삭제. 주기: 매일/주간/월간/특정일. "저장 대상"이 "정제"일 때 스케줄별 정제 규칙을 구성하는 가로 인라인 패널 포함(2026-07-17) |
 | `SessionSettingsPage` | 수집 딜레이, 스레드, 타임아웃, 재시도, User-Agent, 쿠키, 프록시 설정 |
 | `AuthManagerPage` | 로그인 정보(ID/PW) 또는 API 라이선스 토큰 관리 |
 | `BarChart` / `LineChart` / `DonutChart` | QPainter 기반 커스텀 차트 위젯 |
@@ -117,7 +118,13 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
 테마 색상, 공통 위젯 팩토리, UI 컴포넌트를 정의합니다.
 - `THEME` 클래스: 모든 색상의 단일 정의 소스 (BG_PRIMARY, ACCENT, GREEN, RED 등)
 - `Parts`: 반복 사용되는 위젯(버튼, 카드, 레이블)을 생성하는 팩토리 메서드 모음
-- `NavItem`, `TagButton`, `StatCard`, `Divider`, `EqualSpacingTable`: 재사용 가능한 커스텀 위젯
+- `NavItem`, `TagButton`, `StatCard`, `Divider`, `EqualSpacingTable`, `ClickableRuleRow`:
+  재사용 가능한 커스텀 위젯(`ClickableRuleRow`는 2026-07-17 `layout.py`에서 이전)
+- `REFINE_RULE_DEFS`/`build_refine_rule_rows()`: 정제 규칙 체크박스 행 정의·빌더
+  (2026-07-17 신설) — MonitorPage "② 정제 규칙 설정" 탭과 "새 스케줄 등록"의
+  정제 규칙 패널이 공유(`layout.py`가 `trigger.py`를 import하는 구조상, 두 곳이
+  공유할 UI 빌더는 순환 import 없이 양쪽이 모두 import 가능한 `style.py`에
+  둠). 상세는 `guidelines/PREPROCESS.md` §2·§2.3 참고.
 
 #### `trigger.py`
 `layout.py`의 각 페이지 클래스에 **Mixin** 형태로 주입되는 이벤트 핸들러 모음.
@@ -129,7 +136,7 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
 | `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 |
 | `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 |
 | `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 |
-| `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행 |
+| `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행, 스케줄별 정제 규칙 패널 구성(`_open_schedule_refine_rules_dialog`는 2026-07-17 인라인 패널 도입으로 제거됨) |
 | `SessionSettingsPageTriggers` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글 |
 | `AuthManagerPageTriggers` | 인증 정보 저장 |
 | `TrayManagerTriggers` | 시스템 트레이 아이콘 관리 |
@@ -210,16 +217,19 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 수집된 raw 데이터를 정제하는 로직 전담 모듈.
 
-- **`DataRefiner`**: 7가지 정제 규칙을 순서대로 적용합니다. `custom_rule`(①)이
-  나머지 6개(②~⑦)보다 항상 먼저 실행됩니다 (PR #41, 이후 `1bfbeef`에서 트리거의
-  별도 전처리 단계 대신 `DataRefiner` 자체의 규칙으로 승격).
-  1. `custom_rule`: seq_no별 커스텀 정제 함수 적용 (있고 활성화된 경우만, §커스텀
-     정제 규칙 참고)
-  2. `remove_duplicate`: 중복 행 제거
-  3. `remove_null_row`: null 포함 행 제거
-  4. `fill_null`: null → 지정값 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일)
-  5. `trim_whitespace`: 문자열 앞뒤 공백 제거
-  6. `drop_columns`: 지정 컬럼 제외
+- **`DataRefiner`**: 7가지 정제 규칙을 순서대로 적용합니다. 순서는 2026-07-16·
+  07-17 두 차례 재배치를 거쳐 현재는 ①remove_null_row→②custom_rule→
+  ③trim_whitespace→④remove_duplicate→⑤drop_columns→⑥fill_null→⑦cast_numeric
+  입니다 — `custom_rule`은 더 이상 "항상 맨 먼저"가 아니라 계산량이 가장 가벼운
+  `remove_null_row` 다음(②)으로 승격 이력은 PR #41(도입) → `1bfbeef`(정식 규칙화)
+  → `6263b55`(현재 순서) 순. 상세 순서 변경 이력과 근거는 `PREPROCESS.md` §1·
+  `HISTORY.md` 참고.
+  1. `remove_null_row`: null 포함 행 제거 — 계산량이 가벼워 가장 먼저 실행
+  2. `custom_rule`: seq_no별 커스텀 정제 함수 적용 (있고 활성화된 경우만, 아래 참고)
+  3. `trim_whitespace`: 문자열 앞뒤 공백 제거
+  4. `remove_duplicate`: 중복 행 제거
+  5. `drop_columns`: 지정 컬럼 제외
+  6. `fill_null`: null → 지정값 치환 (기본 빈 값 — GUI/`DataRefiner` 직접 호출 동일)
   7. `cast_numeric`: 문자열 숫자 → int/float 변환
 
 - **`RefineStats`**: 정제 결과 통계(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수,
@@ -231,9 +241,10 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
   정의하면 `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에
   전달합니다. 경로 해석·시딩·실제 로드는 `conf.CustomModuleStorage`가
   전담(§`conf.py` 참고). 상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
-  GUI "② 정제 규칙 설정" 탭에서 "커스텀 정제 규칙 적용" 체크박스를 켜면
-  ②~⑤(remove_duplicate/remove_null_row/fill_null/trim_whitespace)가 자동으로
-  켜짐(토글마다 매번 강제 적용) — 해제 시에는 ②~⑤에 영향 없음.
+  GUI "② 정제 규칙 설정" 탭(및 "새 스케줄 등록"의 정제 규칙 패널)에서 "커스텀
+  정제 규칙 적용" 체크박스를 켜면 remove_null_row/trim_whitespace/remove_duplicate
+  가 자동으로 켜짐(토글마다 매번 강제 적용) — `fill_null`은 2026-07-17에 자동
+  연동 대상에서 제외됨(사용자 피드백). 해제 시에는 자동 연동 대상 규칙에 영향 없음.
 
 ---
 
