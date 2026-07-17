@@ -4,7 +4,7 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-17 02:38
+- **최신 갱신**: 2026-07-17 16:57
 
 ---
 
@@ -69,9 +69,9 @@ DataRefiner.run()
 - **수동 정제** (GUI "② 정제 규칙 설정" 탭의 [정제 실행] 버튼,
   `layout.py:789-791`): `rules_override=None` — 화면 체크박스(`_refine_rules`)·
   `self._drop_column_names`(§2.2 다이얼로그의 [적용] 시점에 갱신됨)·`fill_null_input`
-  값을 그대로 읽어 `DataRefiner`를 구성합니다(`trigger.py:982-997`). 결과는
+  값을 그대로 읽어 `DataRefiner`를 구성합니다(`trigger.py:989-1003`). 결과는
   Raw/Refined 결과 테이블과 §2.1의 Before/After 비교 탭에 반영되고, 탭이 자동 전환됩니다.
-- **스케줄 자동 저장** (`trigger.py:3732-3744`, `_on_finished()` 내부):
+- **스케줄 자동 저장** (`trigger.py:3770-3783`, `_on_finished()` 내부):
   무인 실행이라 화면 체크박스를 사람이 확인·조정할 수 없으므로,
   `task["extract"]["auto_save_source"] == "refined"`이고
   `task["job"] == "스케줄 실행"`일 때만 화면 상태를 완전히 무시하는 고정
@@ -79,10 +79,16 @@ DataRefiner.run()
   "커스텀 정제 규칙 적용" 체크 시 자동 연동되는 조합과 동일)로
   `rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True`를 호출합니다.
   `skip_ui_update=True`이면 결과 테이블·비교 탭 갱신과 탭 자동 전환을 모두
-  건너뜁니다(`trigger.py:1050-1057`) — 무인 실행 중 화면이 갑자기 바뀌는
+  건너뜁니다(`trigger.py:1054-1061`) — 무인 실행 중 화면이 갑자기 바뀌는
   것을 방지하기 위함입니다.
 
-관련 잠재 리스크는 `ISSUES.md` 이슈 ⑱(보류) 참고.
+**빈 데이터 시 조용한 스킵** (2026-07-17, 이슈 ⑱ 해결): 스케줄(무인) 실행 중
+`self._collected_data`가 비어 있으면(예: URL 응답은 total건 정상 수신됐으나
+items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_refine()`·
+`_extract_result_table()`·`layout.py`의 `preprocess()` 세 곳 모두 블로킹
+모달(`QMessageBox.warning()`) 대신 `log_manager.append_log("warn", ...)`로
+조용히 스킵합니다 — `skip_ui_update`/`silent`/`task.get("job")=="스케줄 실행"`
+신호로 무인 실행 여부를 판별합니다. 상세는 `ISSUES.md` §1 이슈 ⑱ 참고.
 
 ---
 
@@ -117,7 +123,7 @@ DataRefiner.run()
 
 "④ Before/After 비교" 탭(`layout.py:_build_compare_tab()`, 867-939줄)이
 `RefineStats`를 시각화하는 유일한 화면입니다. `_update_compare_tab()`
-(`trigger.py:1208-1298`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
+(`trigger.py:1213-1303`)이 원본(`cmp_raw_table`)과 정제 후(`cmp_ref_table`)
 데이터를 나란히 표시하며:
 
 - `stats.deleted_indices`로 제거된 Raw 행을 강조 표시
@@ -145,13 +151,13 @@ DataRefiner.run()
 현재 구조:
 
 - 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고(`layout.py:752-774`),
-  버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1088`)가 필드 그리드를 담은
+  버튼 클릭 시 `_open_drop_columns_dialog()`(`trigger.py:1093`)가 필드 그리드를 담은
   `QDialog`를 띄웁니다.
 - **`self._collected_data`(Raw 수집 결과)가 비어 있으면 다이얼로그를 열지 않고**
   `QMessageBox.warning()`으로 "수집을 먼저 진행한 후 필드를 선택해 주세요" 안내만
   띄웁니다. 필드 목록 자체는 `_get_result_columns()`(blueprint 기준)라 수집 없이도
   알 수 있지만, 실제 수집 결과를 보기 전에는 제외 설정을 하지 못하도록 의도적으로
-  게이트를 걸었습니다. 이 확인은 `_has_collected_data_or_warn()`(`trigger.py:1073`,
+  게이트를 걸었습니다. 이 확인은 `_has_collected_data_or_warn()`(`trigger.py:1078`,
   `_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일 문구)로 공통화되어 있으며,
   **두 지점에서 공유**합니다(2026-07-17, 코드 중복 방지 목적으로 헬퍼로 추출):
   1. "⚙ 필드 선택" 버튼 클릭 시(`_open_drop_columns_dialog()`)
@@ -164,11 +170,11 @@ DataRefiner.run()
      체크박스가 꺼져 있는 한 버튼 자체가 안 보이므로, 실질적으로 대부분의 경로는
      체크박스 시점에서 먼저 걸러지고 버튼 클릭 경로는 안전망 역할입니다.
 - **source of truth는 `self._drop_column_names`**(`list[str]`)입니다. 다이얼로그를
-  열 때마다 `_get_result_columns()`(`layout.py:942`, blueprint의 `conditions.items`
+  열 때마다 `_get_result_columns()`(`layout.py:945`, blueprint의 `conditions.items`
   키에서 `root`/`detail_root`/`main_root`/`detail` 제외)로 얻은 필드마다 `TagButton`을
   새로 생성해 `self._drop_column_names`에 있는지 여부로 초기 체크 상태를 설정합니다.
   [적용] 클릭 시에만 체크된 필드명을 다시 `self._drop_column_names`에 반영하고
-  요약 라벨을 갱신합니다(`trigger.py:1158-1161` `_apply()`) — [취소]하면 다이얼로그를
+  요약 라벨을 갱신합니다(`trigger.py:1163-1166` `_apply()`) — [취소]하면 다이얼로그를
   닫아도 이전 선택이 그대로 유지됩니다.
 - 필드가 수십 개일 수 있다는 전제로 다이얼로그 내부는 4열 `QGridLayout` + 고정 높이
   (200px) `QScrollArea`로 구성해 스크롤로 대응합니다. 필드가 없으면 안내 레이블을 표시합니다.
@@ -180,7 +186,7 @@ DataRefiner.run()
   정제 결과/비교 탭(§2.1) 등 하위 로직은 변경이 없습니다.
 - **적용 범위는 수동 정제 실행에 한정**됩니다. 스케줄 자동 저장 경로는
   `rules_override`가 전달되면 `drop_columns`를 항상 빈 리스트로 강제하므로
-  (`trigger.py:980`) 이 UI와 무관합니다.
+  (`trigger.py:987`) 이 UI와 무관합니다.
 - 필드 목록은 앱 시작 시점에 1회 읽은 모듈 전역 `request_info`
   (`layout.py:33`)를 기준으로 하므로, 런타임 중 blueprint가 reload돼도
   갱신되지 않습니다 — Raw/정제/비교 탭의 컬럼 헤더가 이미 가진 것과
@@ -252,7 +258,7 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 로드(파일 찾기·`exec`)와 실행(호출·검증)이 서로 다른 계층에서 처리됩니다.
 
-- **로드** (`trigger.py:1001-1020`, `_run_refine()`): 해당 수집(task)의
+- **로드** (`trigger.py:1006-1025`, `_run_refine()`): 해당 수집(task)의
   `needs_cleaning=True` **그리고** `seq_no`가 존재할 때만
   `load_custom_rule(seq_no)`를 호출합니다. `{seq_no}.py`가 없으면 `None`을
   반환 → 경고 로그 후 범용 규칙만 적용. 로드 중 예외(문법 오류 등)는 이
@@ -264,8 +270,8 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
   `RefineStats.custom_rule_error`에 메시지를 담습니다(`preprocess.py:259`).
   성공하면 `RefineStats.custom_rule_applied = True`(`preprocess.py:262`).
 - `trigger.py`는 `refiner.run()` 반환 후 `stats.custom_rule_applied`/
-  `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1038-1048`,
-  실제 로그 반영은 `trigger.py:1059-1066`) — 커스텀 규칙의 버그가 수집
+  `custom_rule_error`를 보고 로그 문구를 결정합니다(`trigger.py:1042-1052`,
+  실제 로그 반영은 `trigger.py:1063-1070`) — 커스텀 규칙의 버그가 수집
   자체를 막지는 않지만, 배포 전 테스트하지 않으면 실패가 로그로만 조용히
   남고 지나갈 수 있습니다.
 - GUI는 "② 정제 규칙 설정" 탭 진입 시 `needs_cleaning=True`인데

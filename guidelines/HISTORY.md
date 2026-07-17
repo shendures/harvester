@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-17 02:38
+- **최신 갱신**: 2026-07-17 16:57
 
 ---
 
@@ -93,6 +93,7 @@
 | 2026-07-17 | `cdbdeff` | "필드 선택 불가" 경고를 공통 헬퍼로 추출하고 체크박스 활성화 시점에도 적용 | 이전 검토(체크박스 활성화 시점으로 경고 이동)에서 버튼 클릭·체크박스 활성화 두 지점 모두에 동일 체크가 필요하다고 결론났는데, 그대로 두면 코드 중복이 우려된다는 요청. 체크박스 활성화 시 경고 후 체크박스를 다시 꺼지게 되돌리는 동작도 함께 요청 | `trigger.py`에 `_has_collected_data_or_warn()` 공통 헬퍼 신설(`self._collected_data` 확인 + "필드 선택 불가" 경고, 없으면 False 반환) — `_open_drop_columns_dialog()`와 `layout.py`의 `_on_drop_columns_toggled`(체크박스 `stateChanged` 핸들러) 양쪽에서 호출. 체크박스가 체크되는 순간 데이터가 없으면 `cb.setChecked(False)`로 되돌림(재귀적으로 같은 핸들러가 다시 호출돼 버튼/라벨 숨김까지 함께 처리됨) | 헤드리스 PyQt6 4개 시나리오 — (1) 데이터 없을 때 체크박스 체크 시 경고 1회 + 자동 체크 해제 + 버튼 숨김, (2) 데이터 없을 때 버튼 클릭(직접 호출)도 동일 헬퍼로 경고, (3) 데이터 있을 때 체크박스 정상 유지 + 버튼 노출, (4) 데이터 있을 때 버튼 클릭 시 다이얼로그 정상 오픈. `PREPROCESS.md` 관련 파일:줄번호 인용 전체 재검증(헬퍼 추가로 trigger.py/layout.py 줄 수가 밀린 지점 다수 정정) |
 
 | 2026-07-17 | `9cee586` | "제외 필드 지정" 체크박스 활성화 시 경고창 표시 순서를 체크박스 되돌림 이후로 변경 | 데이터 없이 체크박스를 체크하면 경고창(모달)이 먼저 뜨고, 사용자가 닫아야 체크박스가 꺼지는 순서라 경고창이 떠 있는 동안 체크박스가 여전히 켜진 채로 보임 — 경고창이 뜨는 시점에 이미 체크박스가 꺼진 상태로 보이게 해달라는 요청 | `layout.py`의 `_on_drop_columns_toggled`에서 `cb.setChecked(False)`를 `_has_collected_data_or_warn()` 호출보다 먼저 실행하도록 순서 변경 — `setChecked(False)`가 `stateChanged`를 재귀적으로 한 번 더 발생시켜 버튼/라벨 숨김까지 먼저 끝낸 뒤에야 경고창이 뜸. 경고 로직 자체는 계속 `_has_collected_data_or_warn()` 헬퍼로 공통화 유지(중복 없음) | 헤드리스 PyQt6 — `QMessageBox.warning`을 몽키패치해 **경고창이 호출되는 바로 그 순간**의 체크박스/버튼 상태를 스냅샷으로 확인, 이미 체크 해제·버튼 숨김 상태임을 검증. 데이터 있을 때/버튼 클릭 경로 회귀 테스트도 재확인 |
+| 2026-07-17 | `6ae108f` | 이슈⑱ 해결 — 무인 실행 중 빈 데이터 블로킹 모달 3곳 조용한 스킵으로 전환 | 이슈 ⑱ 검토 중 원문이 지목한 `_run_refine()` 외에도, `worker.py`의 `_done`(summary total)이 URL 매칭 응답 수만 셀 뿐 실제 추출된 `data`(items) 유무는 반영하지 않아 `summary.total>0`이면서도 `_collected_data`가 완전히 비는 경우(셀렉터 불일치 등)가 가능함을 재확인 — 이 경우 `_on_finished()`의 `total==0` 조기 return을 통과해 `preprocess()`(job 무관 매번 호출)·`_extract_result_table()`의 raw 분기(`auto_save_source` 기본값)까지 총 3곳 모두 모달 노출 가능한 것으로 범위 확장 확인 | `layout.py:preprocess()`·`trigger.py:_run_refine()`·`trigger.py:_extract_result_table()` 3곳 모두에 무인 실행 신호(`task.get("job")=="스케줄 실행"`/`skip_ui_update`/신규 `silent` 파라미터)로 분기 추가 — 데이터가 비어 있을 때 모달 대신 `log_manager.append_log("warn", ...)`로 대체. `_extract_result_table("refined", silent=True)`는 호출부가 이미 `SCHEDULED_REFINE_RULES`로 정제를 실행한 뒤이므로 화면 상태 기반 `_run_refine()` 폴백 호출도 차단. `_run_refine()` 리팩터 중 `log_manager` 조회가 중복 선언돼 있던 것도 함께 정리 | 헤드리스 PyQt6(uv venv 3.12) — 스케줄/수동 각각 빈 데이터 시 모달·로그 유무 대조, `_extract_result_table("refined", silent=True)`에서 `_run_refine()` 폴백 미호출 확인, 정상 데이터 시 회귀 없음 등 15개 시나리오 전건 PASS(검증 후 스크립트 삭제). `py_compile` 통과 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
