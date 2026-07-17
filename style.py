@@ -816,10 +816,14 @@ def build_refine_rule_rows(
             f"color:{theme.TEXT_PRIMARY}; font-size:12px; font-weight:bold;"
             f" background:transparent; border:none;"
         )
+        title_lbl.setWordWrap(True)
         desc_lbl = parts.make_label(desc_text, theme.TEXT_MUTED, 11)
         desc_lbl.setStyleSheet(
             f"color:{theme.TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
         )
+        # 좁은 컨테이너(스케줄 등록의 정제 규칙 패널 등)에서 텍스트가 잘리지
+        # 않도록 줄바꿈 허용 — MonitorPage 탭처럼 폭이 넉넉한 곳에서도 무해함
+        desc_lbl.setWordWrap(True)
         text_col.addWidget(title_lbl)
         text_col.addWidget(desc_lbl)
 

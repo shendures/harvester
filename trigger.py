@@ -2436,7 +2436,7 @@ class SchedulerPageTriggers:
         outer.setSpacing(0)
 
         left_container = QWidget()
-        outer.addWidget(left_container, 1)
+        outer.addWidget(left_container, 2)
 
         root = QVBoxLayout(left_container)
         root.setContentsMargins(22, 18, 22, 18)
@@ -2624,7 +2624,11 @@ class SchedulerPageTriggers:
         # 특성상 제공하지 않음(나머지 6개 규칙만 구성 가능).
         sched_refine_divider = Divider(orientation="v")
         sched_refine_panel = QWidget()
-        sched_refine_panel.setFixedWidth(260)
+        # 고정 폭 대신 최소/최대 폭만 지정 — 창을 가로로 늘리면 이 패널도 함께
+        # 넓어져 규칙 설명 텍스트가 더 여유 있게 보이도록 함(2026-07-17, 텍스트
+        # 잘림 피드백. wordWrap도 함께 켰지만 창 폭을 넓혀 더 여유를 줄 수 있게)
+        sched_refine_panel.setMinimumWidth(260)
+        sched_refine_panel.setMaximumWidth(400)
         refine_panel_layout = QVBoxLayout(sched_refine_panel)
         refine_panel_layout.setContentsMargins(16, 18, 0, 18)
         refine_panel_layout.setSpacing(8)
@@ -2670,7 +2674,7 @@ class SchedulerPageTriggers:
         sched_refine_divider.setVisible(sched_auto_ref_btn.isChecked())
         sched_refine_panel.setVisible(sched_auto_ref_btn.isChecked())
         outer.addWidget(sched_refine_divider)
-        outer.addWidget(sched_refine_panel)
+        outer.addWidget(sched_refine_panel, 1)
 
         def _sched_select_auto_src(is_refined):
             sched_auto_raw_btn.setChecked(not is_refined)
@@ -2678,8 +2682,12 @@ class SchedulerPageTriggers:
             sched_refine_divider.setVisible(is_refined)
             sched_refine_panel.setVisible(is_refined)
             dlg.layout().activate()
-            # adjustSize()는 이미 한 번 show()된 다이얼로그에서는 크기를 갱신하지
-            # 않는 경우가 있어(실측 확인), sizeHint 기준으로 명시적으로 resize
+            # setVisible() 직후에는 dlg.sizeHint()가 아직 새 크기를 반영하지
+            # 못한 경우가 있어(_update_sched_dialog_size()와 동일 원인), 이벤트
+            # 루프를 한 번 처리시켜 레이아웃을 정착시킨 뒤 resize. adjustSize()는
+            # 이미 show()된 다이얼로그에서는 줄어드는 방향으로 갱신되지 않아 미사용.
+            QApplication.processEvents()
+            dlg.layout().activate()
             dlg.resize(dlg.sizeHint())
 
         sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
@@ -2930,7 +2938,15 @@ class SchedulerPageTriggers:
                 current_page.layout().activate()
                 sched_extract_stack.setFixedHeight(current_page.layout().sizeHint().height())
             dlg.layout().activate()
-            dlg.adjustSize()
+            # setFixedHeight() 직후에는 dlg.sizeHint()가 아직 새 높이를 반영하지
+            # 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측 확인 —
+            # DB→FILE 전환 시 늘어난 세로 길이가 되돌아가지 않던 버그의 원인),
+            # 이벤트 루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint
+            # 기준으로 resize. adjustSize()는 이미 show()된 다이얼로그에서 창을
+            # 줄이는 방향으로는 갱신되지 않아 사용하지 않음.
+            QApplication.processEvents()
+            dlg.layout().activate()
+            dlg.resize(dlg.sizeHint())
 
         def _sched_on_file_clicked():
             self._sched_out_mode = "FILE"
