@@ -971,8 +971,15 @@ class MonitorPageTriggers:
         skip_ui_update: True면 정제 결과 테이블/요약/비교 탭 갱신과 탭 자동 전환을
             건너뜁니다 (무인 실행 중 화면을 건드리지 않기 위함).
         """
+        lm = getattr(self.window(), 'log_manager', None)
+
         if not self._collected_data:
-            QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            if skip_ui_update:
+                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
+                if lm:
+                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 정제를 건너뜁니다.")
+            else:
+                QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
         if rules_override is not None:
@@ -995,8 +1002,6 @@ class MonitorPageTriggers:
             active_rules = self._refine_rules
             drop_columns = self._drop_column_names
             fill_value   = self._fill_null_value
-
-        lm = getattr(self.window(), 'log_manager', None)
 
         # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
@@ -1725,22 +1730,37 @@ class MonitorPageTriggers:
         dlg.adjustSize()
         dlg.exec()
 
-    def _extract_result_table(self, source: str):
+    def _extract_result_table(self, source: str, silent: bool = False):
         """
         source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
         호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
         않았다면 먼저 _run_refine()을 실행한 뒤 그 결과를 추출합니다.
+        silent: True면 데이터가 없을 때 모달 대신 로그만 남기고 조용히 스킵합니다
+            (스케줄 자동 저장 등 무인 실행 경로 전용, 이슈 ⑱). 이 경우 "refined"여도
+            _run_refine() 폴백을 호출하지 않습니다 — 호출부가 이미 알맞은 고정
+            규칙으로 _run_refine()을 실행한 뒤이므로, 여기서 화면 상태 기반으로
+            다시 실행하면 무인 실행 취지에 어긋납니다.
         """
+        lm = getattr(self.window(), 'log_manager', None)
+
         if source == "refined":
-            if not self._refined_data:
+            if not self._refined_data and not silent:
                 self._run_refine()
             data = self._refined_data
             if not data:
-                return   # _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
+                # else: _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+                return
         else:
             data = self._collected_data
             if not data:
-                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
+                else:
+                    QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
                 return
         headers = list(data[0].keys())
 
@@ -3747,17 +3767,18 @@ class MainWindowTriggers:
         # step(4) — 결과물 추출 단계 표시
         self.dashboard._update_step_ui(4)
 
+        is_unattended = task.get("job") == "스케줄 실행"
         try:
             extract_cfg = task.get("extract", {})
             if extract_cfg.get("auto_save"):
                 auto_save_source = extract_cfg.get("auto_save_source", "raw")
-                if auto_save_source == "refined" and task.get("job") == "스케줄 실행":
+                if auto_save_source == "refined" and is_unattended:
                     # 무인 실행 — 화면 체크박스 상태가 아닌 고정 규칙을 적용,
                     # 결과 테이블/탭 전환 등 화면 갱신도 건너뜀
                     self.monitor_page._run_refine(
                         rules_override=SCHEDULED_REFINE_RULES, skip_ui_update=True
                     )
-                self.monitor_page._extract_result_table(source=auto_save_source)
+                self.monitor_page._extract_result_table(source=auto_save_source, silent=is_unattended)
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 

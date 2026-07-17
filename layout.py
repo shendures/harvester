@@ -1000,7 +1000,13 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         self._cleaning_warned = False   # 새 수집 결과 — 팝업 안내 여부 초기화
 
         if not self._collected_data:
-            QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            if (task or {}).get("job") == "스케줄 실행":
+                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
+                lm = getattr(self.window(), "log_manager", None)
+                if lm:
+                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 추출/정제를 건너뜁니다.")
+            else:
+                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
 
 # ══════════════════════════════════════════════════════
