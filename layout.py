@@ -673,8 +673,8 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         self.fill_null_input = result["fill_null_input"]
         self.drop_columns_summary_lbl = result["drop_columns_summary_lbl"]
 
-        # 커스텀 정제 규칙 체크 시 규칙 ①③④⑥(remove_null_row/trim_whitespace/
-        # remove_duplicate/fill_null)를 자동으로 켬 (해제 시에는 영향 없음)
+        # 커스텀 정제 규칙 체크 시 규칙 ①③④(remove_null_row/trim_whitespace/
+        # remove_duplicate)를 자동으로 켬 (fill_null 제외, 2026-07-17. 해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
 
         rl.addSpacing(12)
