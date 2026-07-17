@@ -729,11 +729,16 @@ class ClickableRuleRow(QWidget):
 #  정제 규칙 체크박스 행 빌더 — MonitorPage "② 정제 규칙 설정" 탭과
 #  스케줄 등록 다이얼로그의 정제 규칙 설정이 공유하는 빌더
 # ══════════════════════════════════════════════════════
+# 이 리스트 순서는 화면 표시(위→아래) 순서일 뿐, preprocess.DataRefiner의 실제
+# 처리 순서와는 무관하다(2026-07-17, custom_rule 체크 시 remove_null_row가
+# 자동으로 켜지는 흐름이 "위 항목이 아래 항목 때문에 반응"하는 것처럼 보여
+# UX상 어색하다는 피드백으로 custom_rule을 remove_null_row보다 위로 이동 —
+# 실제 처리 순서는 여전히 remove_null_row가 먼저다, preprocess.py 참고).
 REFINE_RULE_DEFS = [
-    ("remove_null_row",  "모든 필드 null 행 제거",
-     "모든 필드가 null·빈 값인 행만 삭제합니다."),
     ("custom_rule",      "커스텀 정제 규칙 적용",
      "사용자 정의 정제 함수를 적용합니다."),
+    ("remove_null_row",  "모든 필드 null 행 제거",
+     "모든 필드가 null·빈 값인 행만 삭제합니다."),
     ("trim_whitespace",  "문자열 공백 trim",
      "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
     ("remove_duplicate", "중복 행 제거",

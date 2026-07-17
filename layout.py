@@ -646,8 +646,10 @@ class MonitorPage(QWidget, MonitorPageTriggers):
 
         # ── 기본 정제 규칙 카드 ──────────────────────────────────────
         rw, rl = parts.card_widget("정제 규칙")
+        # 화면 표시 순서는 실제 처리 순서와 무관하므로(style.REFINE_RULE_DEFS 참고)
+        # "위에서 아래 순서로 적용됩니다" 같은 안내는 혼란을 줄 수 있어 넣지 않음
         desc = parts.make_label(
-            "활성화된 규칙이 위에서 아래 순서로 적용됩니다. 설정 후 [정제 실행] 버튼을 눌러주세요.",
+            "설정 후 [정제 실행] 버튼을 눌러주세요.",
             TEXT_MUTED, 11
         )
         rl.addWidget(desc)
