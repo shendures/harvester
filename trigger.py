@@ -70,7 +70,9 @@ DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 # 다이얼로그의 "⚙ 정제 규칙 설정"에서 스케줄별로 구성 가능해졌다. 이 상수는
 # ①해당 다이얼로그를 아직 한 번도 열지 않은 신규 등록의 기본값, ②"refine_rules"
 # 키가 없는 기존(구버전) 스케줄의 실행 시 폴백값으로만 쓰인다(_on_finished() 참고).
-# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④⑥)과 동일한 값.
+# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④)과는 별개 설정이다
+# (2026-07-17, fill_null을 자동 연동 대상에서 제외하며 분리 — 이 상수의 fill_null
+# 값은 그대로 유지해 이미 저장된 스케줄의 동작이 조용히 바뀌지 않도록 함).
 SCHEDULED_REFINE_RULES = {
     "remove_null_row":  True,
     "custom_rule":      True,
@@ -958,14 +960,16 @@ class MonitorPageTriggers:
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④⑥(remove_null_row/
-        trim_whitespace/remove_duplicate/fill_null)를 자동으로 켭니다.
+        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④(remove_null_row/
+        trim_whitespace/remove_duplicate)를 자동으로 켭니다. fill_null(⑥, 결측값
+        치환)은 대상에서 제외됩니다(2026-07-17, 사용자 요청 — 커스텀 규칙이
+        정규화한 데이터라도 결측값 치환 여부는 별도로 판단해야 한다는 판단).
         체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ①③④⑥에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        ①③④에 영향을 주지 않습니다(직전 상태 그대로 유지).
         """
         if state != Qt.CheckState.Checked.value:
             return
-        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace", "fill_null"):
+        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
             cb = self._rule_checkboxes.get(key)
             if cb is not None:
                 cb.setChecked(True)
@@ -3218,15 +3222,15 @@ class SchedulerPageTriggers:
         if fill_null_input is not None:
             fill_null_input.setText(state.get("fill_value", ""))
 
-        # "커스텀 정제 규칙 적용" 체크 시 ①③④⑥ 자동 연동 — MonitorPage의
-        # _on_custom_rule_toggled(trigger.py)와 동일 로직, 이 다이얼로그의 로컬
-        # checkboxes 딕셔너리에 대해서만 적용되므로 별도 클로저로 둔다.
+        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동(fill_null 제외, 2026-07-17)
+        # — MonitorPage의 _on_custom_rule_toggled(trigger.py)와 동일 로직, 이
+        # 다이얼로그의 로컬 checkboxes 딕셔너리에 대해서만 적용되므로 별도 클로저로 둔다.
         custom_cb = checkboxes.get("custom_rule")
         if custom_cb is not None:
             def _on_custom_rule_toggled(chk_state):
                 if chk_state != Qt.CheckState.Checked.value:
                     return
-                for key in ("remove_null_row", "remove_duplicate", "trim_whitespace", "fill_null"):
+                for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
                     cb = checkboxes.get(key)
                     if cb is not None:
                         cb.setChecked(True)
