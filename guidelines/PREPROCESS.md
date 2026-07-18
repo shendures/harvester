@@ -4,7 +4,7 @@
 > 개발 프로세스 지침을 정리한 문서입니다. 구현 이력은 `HISTORY.md`(PR #41,
 > #42, 스케줄 자동 정제는 `a4c6375`/`e91c676`), 이슈 상태는 `ISSUES.md` 참고.
 
-- **최신 갱신**: 2026-07-17 19:21
+- **최신 갱신**: 2026-07-18 16:58
 
 ---
 
@@ -119,8 +119,14 @@ items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_re
 - 규칙 활성화 여부는 GUI "② 정제 규칙 설정" 탭의 체크박스(`layout.py:495-503`
   `_refine_rules` 기본값)로 수집 단위 개별 제어. 체크박스 행 자체는
   `style.build_refine_rule_rows()`(공유 빌더, §2.3의 스케줄 정제 규칙 패널과
-  공용)가 생성하고, `layout.py:658-674`에서 `include_keys=None`(전체 7개)으로
-  호출합니다. `custom_rule` 토글 연결은 `layout.py:678`.
+  공용)가 생성하고, `layout.py:658-675`에서 `include_keys=None`(전체 7개)으로
+  호출합니다. `custom_rule` 토글 연결은 `layout.py:679`.
+- 이 호출은 `fit_desc_one_line=True`(`layout.py:672`, 2026-07-17)도 함께 넘깁니다 —
+  컨트롤이 붙는 두 행(`drop_columns`/`fill_null`)은 `text_col`의 stretch factor가
+  0이라 `wordWrap` 라벨의 `sizeHint()`가 좁게 잡혀 탭 폭이 넉넉해도 항상 2줄로
+  꺾이던 문제를, 실측 텍스트 폭만큼 최소폭을 지정(`style.py:837-841`)해 한 줄로
+  강제합니다. 폭이 좁게 제한된 §2.3의 스케줄 정제 규칙 패널(260~400px) 호출부는
+  이 옵션을 기본값(`False`)으로 둬 기존처럼 2줄 줄바꿈을 허용합니다.
 - `DataRefiner.run()`은 원본 `raw_data`를 수정하지 않고(shallow copy 후 처리),
   `RefineStats`(원본 행 수, 정제 후 행 수, 제거 행 수, 치환 값 수, 제거된
   행의 원본 인덱스·사유, 셀 단위 변경 내역)를 함께 반환합니다.
@@ -160,13 +166,13 @@ items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_re
 
 > **2026-07-17 갱신**: `⚙ 필드 선택` 버튼·요약 라벨·체크박스 토글 로직 자체는
 > `style.build_refine_rule_rows()`(공유 빌더, §2.3 참고)의 `drop_columns` 분기
-> (`style.py:850-873`)로 이전되었습니다 — MonitorPage의 `_build_refine_rules_tab()`
+> (`style.py:861-884`)로 이전되었습니다 — MonitorPage의 `_build_refine_rules_tab()`
 > (`layout.py:663-671`)이 `include_keys=None`으로 호출할 때만 이 분기가 활성화되고,
 > §2.3의 스케줄 정제 규칙 패널은 `drop_columns`를 `include_keys`에서 아예
 > 제외하므로 이 UI 자체가 나타나지 않습니다.
 
 - 행에는 `⚙ 필드 선택` 버튼(`parts.settings_btn`)과 요약 라벨만 있고
-  (`style.py:850-859`), 버튼 클릭 시 `_open_drop_columns_dialog()`
+  (`style.py:861-870`), 버튼 클릭 시 `_open_drop_columns_dialog()`
   (`trigger.py:1122`)가 필드 그리드를 담은 `QDialog`를 띄웁니다.
 - **`self._collected_data`(Raw 수집 결과)가 비어 있으면 다이얼로그를 열지 않고**
   `QMessageBox.warning()`으로 "수집을 먼저 진행한 후 필드를 선택해 주세요" 안내만
@@ -176,7 +182,7 @@ items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_re
   `_run_refine()`의 "수집된 데이터가 없습니다" 경고와 동일 문구)로 공통화되어 있으며,
   **두 지점에서 공유**합니다(2026-07-17, 코드 중복 방지 목적으로 헬퍼로 추출):
   1. "⚙ 필드 선택" 버튼 클릭 시(`_open_drop_columns_dialog()`)
-  2. "제외 필드 지정" 규칙 체크박스를 체크할 때(`style.py:861` `_on_drop_columns_toggled`,
+  2. "제외 필드 지정" 규칙 체크박스를 체크할 때(`style.py:872` `_on_drop_columns_toggled`,
      `build_refine_rule_rows()`의 `on_drop_columns_check`/`on_drop_columns_warn`
      콜백으로 MonitorPage의 게이트 로직을 그대로 주입받음)
      — 데이터가 없으면 **경고창이 뜨기 전에 먼저 체크박스를 해제**합니다
@@ -187,7 +193,7 @@ items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_re
      체크박스가 꺼져 있는 한 버튼 자체가 안 보이므로, 실질적으로 대부분의 경로는
      체크박스 시점에서 먼저 걸러지고 버튼 클릭 경로는 안전망 역할입니다.
 - **source of truth는 `self._drop_column_names`**(`list[str]`)입니다. 다이얼로그를
-  열 때마다 `_get_result_columns()`(`layout.py:840`, blueprint의 `conditions.items`
+  열 때마다 `_get_result_columns()`(`layout.py:841`, blueprint의 `conditions.items`
   키에서 `root`/`detail_root`/`main_root`/`detail` 제외)로 얻은 필드마다 `TagButton`을
   새로 생성해 `self._drop_column_names`에 있는지 여부로 초기 체크 상태를 설정합니다.
   [적용] 클릭 시에만 체크된 필드명을 다시 `self._drop_column_names`에 반영하고
@@ -196,7 +202,7 @@ items 셀렉터 불일치로 실제 추출 결과가 전부 빈 경우) `_run_re
 - 필드가 수십 개일 수 있다는 전제로 다이얼로그 내부는 4열 `QGridLayout` + 고정 높이
   (200px) `QScrollArea`로 구성해 스크롤로 대응합니다. 필드가 없으면 안내 레이블을 표시합니다.
 - 행의 `⚙ 필드 선택` 버튼과 요약 라벨은 **규칙 체크박스가 켜져 있을 때만 보입니다**
-  (`style.py:861-871`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
+  (`style.py:872-882`의 `setVisible` 연동) — 꺼져 있으면 나머지 5개 단순 행과 완전히
   동일한 모양이 됩니다.
 - `_run_refine()`(`trigger.py:984`)은 `self._drop_column_names`를 그대로 읽어
   `DataRefiner(drop_columns=...)`에 전달합니다 — 인터페이스 자체는 기존과 동일해
@@ -235,7 +241,7 @@ UI/UX 피드백으로 완전히 제거되었습니다.
 결과를 직접 봐야 설정 가능한데, 스케줄 등록 시점에는 아직 수집이 실행된 적이
 없어 애초에 노출하지 않습니다. "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동
 연동도 동일하게 로컬 클로저로 구현되어 있습니다(`trigger.py:2661-2670`).
-규칙 설명 라벨에는 `setWordWrap(True)`가 켜져 있어(`style.py:819,826`) 좁은
+규칙 설명 라벨에는 `setWordWrap(True)`가 켜져 있어(`style.py:825,832`) 좁은
 패널 폭에서도 텍스트가 잘리지 않고 줄바꿈됩니다.
 
 **초기값과 저장**:
