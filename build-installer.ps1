@@ -32,7 +32,10 @@ if ($isccCmd) {
 } else {
     $candidates = @(
         "$Env:ProgramFiles\Inno Setup 6\ISCC.exe",
-        "${Env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+        "${Env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        # winget 등으로 관리자 권한 없이 설치하면 시스템 전체가 아닌
+        # 사용자별 경로에 설치됨(실측 확인, 2026-07-21) — 함께 탐색 대상에 포함
+        "$Env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     )
     $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $iscc) {
