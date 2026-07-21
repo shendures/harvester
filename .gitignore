@@ -220,3 +220,6 @@ uv.lock
 
 # build-exe.ps1 임시 스테이징 폴더 (고객별 custom_rules 선별 패키징용)
 _build_staging/
+
+# 고객별 커스텀 정제/렌더링 규칙 (개발 필수 요소 아님, git 미추적으로 전환 — 2026-07-21)
+custom_rules/
