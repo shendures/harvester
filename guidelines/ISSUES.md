@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-17 16:57
-- **현황**: 해결 21건 · 미해결 3건 · 보류 1건
+- **최신 갱신**: 2026-07-21 18:54
+- **현황**: 해결 22건 · 미해결 3건 · 보류 1건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -39,6 +39,7 @@
 | ㉑ | `spirenderer.py`의 `conditions["login"]` 직접 접근이 신규 request_info.json과 스키마 불일치 | `spiders/spirenderer.py:73`, `generator_conditions.html:1490` | "로그인 없는 사이트도 `login: null` 명시" 암묵적 스키마 전제인데, 생성기의 delete-if-null 목록에 `login`도 포함돼 로그인 미사용 시 키 자체가 삭제됨 → `KeyError` | 코드(`.get()` 방어) 대신 기존 관례 유지 — 생성기 delete-if-null 목록에서 `login` 제외 | - |
 | ㉕ | PyInstaller 배포 파이프라인 부재로 커스텀 규칙 번들 여부 보장 불가 | `guidelines/PREPROCESS.md`, (부재였던) 빌드 스크립트 | `.spec`·빌드 스크립트가 저장소에 전무해 `--add-data` 구성이 수동·비문서화, `PREPROCESS.md` 안내도 구경로 기준이라 실제 조회 경로와 불일치 | `build-exe.ps1` 신설(seq_no 일치 검증, 스테이징 후 번들), `PREPROCESS.md` 경로 안내 갱신 | - |
 | ㉖ | 배포 exe에서 CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성 | `conf.py:294-309` | `CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 만들어, 정제 규칙만 있고 렌더링 규칙은 없는 seq_no도 `%LOCALAPPDATA%\CollectorApp\custom_rules\render\` 빈 폴더가 생성됨(실사용 exe에서 확인) | `__init__()`의 선제적 폴더 생성 루프 제거 — `resolve_path()`가 이미 실제 시딩 대상이 있을 때만 온디맨드로 폴더를 만들고 있어 그 로직에만 의존하도록 정리 | `85463ef` |
+| ㉗ | `build-exe.ps1`이 pyinstaller의 정상 INFO 로그를 오류로 오인해 빌드 첫 줄에서 강제 중단 | `build-exe.ps1:28,109` | 스크립트 최상단 `$ErrorActionPreference = "Stop"` 상태에서 `pyinstaller`(native 명령)가 진행 상황을 stderr에 INFO로 기록 — PowerShell 5.1이 stderr 첫 줄을 즉시 종료 오류로 승격시켜 실제로는 정상 진행 중인 빌드를 매번 시작 직후 중단시킴(Windows 실 빌드로 재현 — PR #64 도입 이후 이 스크립트로 완주된 적이 실제로 없었음, 기존 dist 산출물은 스크립트를 거치지 않은 수동 pyinstaller 실행 결과였음) | `pyinstaller` 호출 앞뒤로만 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고, 실패 여부는 `$LASTEXITCODE`로 직접 판별해 0이 아니면 명시적으로 중단 | Windows 실 빌드로 수정 전(첫 INFO 줄에서 `NativeCommandError`로 즉시 중단, exe 미생성) → 수정 후(정상 완주, `dist\DataCrawler.exe` 생성, `EXITCODE=0`) 확인. 이어서 `build-installer.ps1`도 검토 — Inno Setup(ISCC.exe) 자체가 이 머신에 미설치라 실행 검증은 보류 |
 
 ---
 

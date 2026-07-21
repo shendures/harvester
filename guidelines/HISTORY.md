@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-21 18:26
+- **최신 갱신**: 2026-07-21 18:54
 
 ---
 
@@ -111,6 +111,7 @@
 | 2026-07-18 | PR #86 | 14차 릴리스 (문서 전용) | - | `develop→main` 머지(`gh pr merge --admin`, main=`0c43305`) — `HISTORY.md`(PR#77 이후 기록 누락됐던 릴리스 3건·개별 문서 커밋 2건 소급 기록) + `PREPROCESS.md`(`fit_desc_one_line` 옵션 추가로 밀린 file:line 인용 7곳 재검증·정정, §1 옵션 설명 신설) 반영, 코드 변경 없음 | 문서 전용 변경 — 인용 line 번호를 코드와 직접 대조해 검증 완료 |
 | 2026-07-21 | `a3c298f`, `edfdb85` | custom_rules/ 폴더 git 추적 해제 | 프로그램 개발 자체에 반드시 필요한 항목은 아니라는 사용자 판단 — 기존 정책(`b5721db`, "정제·수집 규칙은 설정값이 아니라 코드이므로 이력 관리")에서 전환 | `custom_rules/`(`__init__.py`, `refine/000000.py`, `render/000010.py`, `render/000013.py`)를 `git rm --cached`로 추적 해제, `.gitignore`에 등록(로컬 파일은 유지). `PREPROCESS.md` §3.1a/§4/§5의 "git 이력 관리" 서술을 미추적 방침으로 갱신 | `git status`로 로컬 파일 보존 확인, `build-exe.ps1`은 로컬 디스크 파일을 그대로 참조하므로 배포 동작 영향 없음(로직 무변경) |
 | 2026-07-21 | `fb4b17d` | Inno Setup 기반 설치 프로그램 패키징 기능 추가 | 지금까지는 `build-exe.ps1`이 만든 exe 파일 자체를 그대로 전달하는 방식뿐이었음 — 설치/제거·바로가기 생성을 지원하는 설치 프로그램(Setup.exe) 배포 요청 | `installer.iss`(Inno Setup 스크립트, `AppName`/`AppVersion`/`AppPublisher`를 `/D` 정의로 받음, `dist\{AppName}.exe`를 감싸 `dist\{AppName}-Setup.exe` 생성 — 시작메뉴/선택적 바탕화면 바로가기, 표준 제거 지원)와 `build-installer.ps1`(ISCC.exe 탐색 후 컴파일 실행, `build-exe.ps1`과 동일한 `-AppName` 관례) 신설. 기존 `build-exe.ps1`은 변경하지 않음(exe 빌드와 설치 프로그램 패키징을 별개 단계로 분리) | Windows 전용 도구(Inno Setup ISCC.exe, PowerShell)라 WSL 환경에서 실행 검증 불가 — 코드 리뷰 기반 작성, Windows 개발 환경에서 `build-exe.ps1`→`build-installer.ps1` 순차 실행 및 실제 설치/제거 확인 필요 |
+| 2026-07-21 | 이슈㉗ | `build-exe.ps1` Windows 실 빌드 검증 중 발견 — pyinstaller 정상 로그를 오류로 오인해 매번 즉시 중단 | WSL의 PowerShell interop(`powershell.exe`)으로 처음 실 빌드를 실행해본 결과 `pyinstaller`가 첫 INFO 로그를 stderr에 쓰는 순간 `$ErrorActionPreference = "Stop"`에 걸려 `NativeCommandError`로 즉시 중단됨을 확인(PR #64 도입 이후 이 스크립트가 실제로 완주된 적이 없었음 — 기존 `dist\DataCrawler.exe`는 스크립트 밖에서 수동으로 pyinstaller를 실행한 산출물이었음). 별도로, 같은 실 빌드 환경(별도 Windows 클론, `/mnt/d/Career/python_uv/Harvest`)이 `a3c298f`(custom_rules 추적 해제) 이후 커밋을 pull하면서 `custom_rules/refine/000000.py`·`render/000010.py`·`render/000013.py`(실제 고객 규칙 코드)가 물리적으로 삭제된 것도 함께 발견 — git 추적에서 빼는 커밋은 다른 클론이 pull할 때 "파일 삭제"로 적용된다는, 이전 턴에서 고지하지 못한 부작용 | `pyinstaller` 호출 앞뒤로 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고 `$LASTEXITCODE`로 직접 실패 판정(§1 이슈㉗ 참고). 삭제된 3개 파일은 `git show a3c298f^:<path>`로 복구해 해당 Windows 클론에 로컬(미추적) 파일로 재배치 | Windows 실 빌드(WSL PowerShell interop) — 수정 전 매번 즉시 중단·`dist` 미갱신, 수정 후 `EXITCODE=0`·`dist\DataCrawler.exe` 재생성(72MB, 로그에 "Build complete!") 확인. 복구한 3개 파일 내용을 git 이력 원본과 대조 확인. `build-installer.ps1`은 이 머신에 Inno Setup(ISCC.exe) 자체가 설치돼 있지 않아 실행 검증 보류 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
