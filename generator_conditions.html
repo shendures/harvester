@@ -1379,16 +1379,19 @@
             let loginDataForCopy = null;
 
             if (loginChecked) {
-                const loginId = document.getElementById('login_id').value.trim();
-                const loginPassword = document.getElementById('login_password').value;
+                const loginIdRaw = document.getElementById('login_id').value.trim();
+                const loginPasswordRaw = document.getElementById('login_password').value;
+                // 값이 비어 있으면 빈 문자열 대신 결측값(null)으로 반환
+                const loginId = loginIdRaw === '' ? null : loginIdRaw;
+                const loginPassword = loginPasswordRaw === '' ? null : loginPasswordRaw;
 
                 // Copy용 원본 데이터
                 loginDataForCopy = { id: loginId, password: loginPassword };
-                
+
                 // Display용 마스킹 데이터
-                const maskedPassword = loginPassword.replace(/./g, '*') + (loginPassword.length > 0 ? ' (Masked for Display)' : '');
+                const maskedPassword = loginPassword === null ? null : (loginPassword.replace(/./g, '*') + ' (Masked for Display)');
                 loginDataForDisplay = { id: loginId, password: maskedPassword };
-            } 
+            }
             // else: loginDataForDisplay와 loginDataForCopy는 모두 null (초기값)
 
 
