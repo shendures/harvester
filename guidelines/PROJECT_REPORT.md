@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-21 19:14
+- **최신 갱신**: 2026-07-22 10:00
 
 ---
 
@@ -407,7 +407,6 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
   "title": "작업명",
   "url": "원본 URL",
   "callback_url": "https://example.com/list?page=${page:1:1:10}",
-  "auth": false,
   "conditions": {
     "method": "GET",
     "dataFormat": "html",

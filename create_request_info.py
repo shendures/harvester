@@ -42,7 +42,7 @@ def create_request_info_setting_file(blueprint_list, save_file_nm):
         settings["conditions"] = utility.transform_to_json(request_info.get("conditions"))
 
         settings["spiders"] = request_info.get("spiders")
-        settings["auth"] = request_info.get("auth")
+        # settings["auth"] = request_info.get("auth")
         settings["needs_cleaning"] = request_info.get("needs_cleaning")
         request_info_setting_list.append(settings)
 
@@ -53,7 +53,7 @@ def create_request_info_setting_file(blueprint_list, save_file_nm):
 if __name__ == "__main__":
 
     db_env = db_conn.get_params("PostgreSQL")
-    sql = "select seq_no, titles, spiders, urls, callback_urls, conditions, auth, needs_cleaning from tb_blueprint where active = True"
+    sql = "select seq_no, titles, spiders, urls, callback_urls, conditions, needs_cleaning from tb_blueprint where active = True"
     blueprint_list = db_conn.read_db_data(db_env, sql)
     # 데이터가 리스트 형태인지 확인 후 진행
     if isinstance(blueprint_list, list):
