@@ -1487,11 +1487,11 @@
             let finalObjectForDisplay = {
                 accessType: accessTypeOutput,
                 method: method,
-                redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력
-                login: loginDataForDisplay, // Display/Null Output
-                authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
+                redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력 (지정된 순서 목록에는 없어 method 다음에 유지)
                 dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
                 payload: payload,
+                authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
+                login: loginDataForDisplay, // Display/Null Output
                 rendering: rendering,
             };
 
