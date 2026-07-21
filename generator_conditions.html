@@ -350,9 +350,9 @@
             opacity: 1; 
         }
         
-        /* 🔥 로그인 입력 필드 정렬 */
-        #login_input_area {
-            display: flex; 
+        /* 🔥 인증(로그인/API) 입력 필드 정렬 */
+        #auth_login_fields, #auth_api_fields {
+            display: flex;
             flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
             gap: 15px; /* 필드 간 간격 */
             align-items: center;
@@ -493,25 +493,51 @@
                     </div>
                 </div>
                 
-                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 로그인 옵션</h3>
-                <div class="checkbox-group" id="login_option_group" style="margin-bottom: 15px;">
-                    <input type="checkbox" id="option_login" name="login_option" value="true">
-                    <label for="option_login" style="font-weight: 500; color: #333;">🔑 로그인 허용 (login: True/False)</label>
+                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 인증 옵션</h3>
+                <div class="checkbox-group" id="auth_option_group" style="margin-bottom: 15px;">
+                    <input type="checkbox" id="option_auth" name="auth_option" value="true">
+                    <label for="option_auth" style="font-weight: 500; color: #333;">🔑 인증 필요 (로그인 또는 API 인증)</label>
                 </div>
-                
-                <div id="login_input_area" style="display: none; padding-left: 20px; padding-top: 10px; border-top: 1px dotted #999;">
-                    <h4 style="font-size: 0.9em; color: #555; margin: 0 0 10px 0;">로그인 정보 입력</h4>
-                    
-                    <div class="login-field-group">
-                        <label for="login_id">ID:</label>
-                        <input type="text" id="login_id" placeholder="사용자 ID">
+
+                <div id="auth_input_area" style="display: none; padding-left: 20px; padding-top: 10px; border-top: 1px dotted #999;">
+                    <div class="radio-group" id="auth_method_radios" style="margin-bottom: 15px;">
+                        <input type="radio" id="auth_method_login" name="auth_method" value="login" checked>
+                        <label for="auth_method_login">로그인 (ID/PW)</label>
+                        <input type="radio" id="auth_method_apikey" name="auth_method" value="api_key">
+                        <label for="auth_method_apikey">API 인증 (Key / Token)</label>
                     </div>
-                    <div class="login-field-group">
-                        <label for="login_password">PW:</label>
-                        <input type="password" id="login_password" placeholder="비밀번호">
+
+                    <div id="auth_login_fields">
+                        <div class="login-field-group">
+                            <label for="login_id">ID:</label>
+                            <input type="text" id="login_id" placeholder="사용자 ID">
+                        </div>
+                        <div class="login-field-group">
+                            <label for="login_password">PW:</label>
+                            <input type="password" id="login_password" placeholder="비밀번호">
+                        </div>
+                    </div>
+
+                    <div id="auth_api_fields" style="display: none;">
+                        <div class="login-field-group">
+                            <label for="api_auth_type" style="width: 55px;">방식:</label>
+                            <select id="api_auth_type" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow: 1;">
+                                <option value="bearer">Bearer Token</option>
+                                <option value="apikey">API Key (Custom Header)</option>
+                            </select>
+                        </div>
+                        <div class="login-field-group" id="api_auth_header_name_group" style="display: none;">
+                            <label for="api_auth_header_name" style="width: 55px;">Header:</label>
+                            <input type="text" id="api_auth_header_name" placeholder="예: X-API-Key" value="X-API-Key">
+                        </div>
+                        <div class="login-field-group">
+                            <label for="api_auth_value" style="width: 55px;">값:</label>
+                            <input type="text" id="api_auth_value" placeholder="토큰 또는 키 값">
+                        </div>
+                        <p style="font-size: 0.8em; color: #888; margin: 8px 0 0 0; width: 100%;">조건 생성 시 HTTP Header에 자동 삽입됩니다.</p>
                     </div>
                 </div>
-                
+
                 <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 페이지 유형</h3>
                 <div class="section-box" id="page_type_section" style="padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9; margin-bottom: 20px; border: none; padding: 0;">
                     
@@ -749,10 +775,16 @@
             clearListItems(listId);
         }
         
-        function toggleLoginInput() {
-            const isChecked = document.getElementById('option_login').checked;
-            const loginArea = document.getElementById('login_input_area');
-            loginArea.style.display = isChecked ? 'flex' : 'none';
+        function toggleAuthInput() {
+            const isChecked = document.getElementById('option_auth').checked;
+            document.getElementById('auth_input_area').style.display = isChecked ? 'block' : 'none';
+        }
+
+        // 인증 방식(로그인/API 인증) 선택에 따라 각 입력 영역 표시 전환
+        function toggleAuthMethodFields() {
+            const method = document.querySelector('input[name="auth_method"]:checked').value;
+            document.getElementById('auth_login_fields').style.display = (method === 'login') ? 'flex' : 'none';
+            document.getElementById('auth_api_fields').style.display = (method === 'api_key') ? 'flex' : 'none';
         }
 
         // 🔥 [수정] 페이지 유형 변경에 따른 UI 업데이트 및 Step 값 조정 (상세 페이지 선택 시 2부터 시작)
@@ -798,12 +830,18 @@
             
             document.getElementById('option_redirect').checked = true;
             
-            // ✨ [수정] login 옵션 초기화 및 ID/PW 필드 초기화
-            document.getElementById('option_login').checked = false;
+            // ✨ 인증 옵션(로그인/API 인증) 초기화
+            document.getElementById('option_auth').checked = false;
+            document.getElementById('auth_method_login').checked = true;
             document.getElementById('login_id').value = '';
             document.getElementById('login_password').value = '';
-            toggleLoginInput(); // 입력 필드 숨김
-            
+            document.getElementById('api_auth_type').value = 'bearer';
+            document.getElementById('api_auth_value').value = '';
+            document.getElementById('api_auth_header_name').value = 'X-API-Key';
+            toggleAuthMethodFields();
+            toggleApiAuthHeaderNameField();
+            toggleAuthInput(); // 입력 영역 숨김
+
             document.getElementById('option_header').checked = false;
             toggleHeaderInput();
 
@@ -917,18 +955,23 @@
             headerArea.style.display = isChecked ? 'block' : 'none';
         }
 
-        // 헤더 존재 여부를 확인하는 헬퍼 함수
-        function headerExists(key) {
+        // key와 이름이 일치하는 헤더 항목(DOM)을 찾는 헬퍼 함수
+        function findHeaderItem(key) {
             const headerList = document.getElementById('header_data_list');
             const items = headerList.querySelectorAll('.meta-item:not(.template)');
             const normalizedKey = key.trim().toLowerCase();
             for (const item of items) {
                 const itemKey = item.querySelector('.meta-name').value.trim().toLowerCase();
                 if (itemKey === normalizedKey) {
-                    return true;
+                    return item;
                 }
             }
-            return false;
+            return null;
+        }
+
+        // 헤더 존재 여부를 확인하는 헬퍼 함수
+        function headerExists(key) {
+            return findHeaderItem(key) !== null;
         }
 
         // 헤더가 없으면 추가하는 헬퍼 함수
@@ -938,6 +981,11 @@
             }
         }
 
+        // API 인증 방식(Bearer Token / API Key)에 따라 커스텀 Header 이름 입력란 표시 여부 전환
+        function toggleApiAuthHeaderNameField() {
+            const type = document.getElementById('api_auth_type').value;
+            document.getElementById('api_auth_header_name_group').style.display = (type === 'apikey') ? 'flex' : 'none';
+        }
 
         // Payload 체크박스 상태를 기반으로 data_format을 설정하고, 헤더를 자동 추가하며, HTML 옵션 유지
         function handlePayloadOptionChange(event) {
@@ -1099,6 +1147,11 @@
                 // config.login은 로드된 데이터 그대로 저장 (null, false, {id, pw})
                 let loadedLogin = (patternData.login !== undefined) ? patternData.login : null;
 
+                // 인증 방식 로드: authMethod 필드가 있으면 그대로, 없으면(구버전 JSON) login 객체 존재 여부로 추정
+                let loadedAuthMethod = (patternData.authMethod === 'login' || patternData.authMethod === 'api_key')
+                    ? patternData.authMethod
+                    : (loadedLogin && typeof loadedLogin === 'object' ? 'login' : null);
+
                 // 🔥 [수정] pageType 및 step/detailUrl 키를 로딩할 때 새로운 키 이름 ('steps', 'mainUrl')도 지원하도록 수정
                 let loadedPageType = (patternData.pageType || 'SINGLE').toUpperCase(); // 'single' -> 'SINGLE', 'detail' -> 'DETAIL'
                 if (loadedPageType !== 'SINGLE' && loadedPageType !== 'DETAIL') {
@@ -1115,7 +1168,8 @@
                     sourceType: uiSourceType,
                     method: patternData.method || 'GET',
                     redirect: patternData.redirect !== undefined ? patternData.redirect : true,
-                    login: loadedLogin, 
+                    login: loadedLogin,
+                    authMethod: loadedAuthMethod,
                     // 🔥 [수정] 페이지 유형 로드
                     pageType: loadedPageType, 
                     step: parseInt(patternData.steps || patternData.step) || 1, // 'steps' 또는 'step' 로드
@@ -1251,13 +1305,16 @@
                 document.getElementById('main_format_html').checked = true;
             }
             
-            const loginCheckbox = document.getElementById('option_login');
-            loginCheckbox.checked = config.login !== null;
+            // 인증 옵션(로그인/API 인증) 업데이트
+            document.getElementById('option_auth').checked = config.authMethod !== null;
+            document.getElementById('auth_method_login').checked = (config.authMethod !== 'api_key');
+            document.getElementById('auth_method_apikey').checked = (config.authMethod === 'api_key');
+            toggleAuthMethodFields();
+            toggleAuthInput();
+
             const loginIdInput = document.getElementById('login_id');
             const loginPasswordInput = document.getElementById('login_password');
-            toggleLoginInput();
-            
-            if (config.login && typeof config.login === 'object') {
+            if (config.authMethod === 'login' && config.login && typeof config.login === 'object') {
                 loginIdInput.value = config.login.id || '';
                 const pw = config.login.password || '';
                 // 마스킹된 문자열이 포함되어 있으면 비밀번호는 복원하지 않습니다.
@@ -1271,6 +1328,21 @@
                 loginIdInput.value = '';
                 loginPasswordInput.value = '';
             }
+
+            // API 인증 필드 업데이트: Authorization 헤더가 있으면 값만 역추정, 커스텀 Header는 목록에서 직접 확인
+            document.getElementById('api_auth_type').value = 'bearer';
+            document.getElementById('api_auth_value').value = '';
+            document.getElementById('api_auth_header_name').value = 'X-API-Key';
+            if (config.authMethod === 'api_key' && patternData.headers) {
+                const headersObj = Array.isArray(patternData.headers)
+                    ? Object.fromEntries(patternData.headers.map(h => [h.name, h.value]))
+                    : patternData.headers;
+                const authHeaderValue = headersObj['Authorization'] || headersObj['authorization'];
+                if (authHeaderValue) {
+                    document.getElementById('api_auth_value').value = String(authHeaderValue).replace(/^bearer\s+/i, '');
+                }
+            }
+            toggleApiAuthHeaderNameField();
 
             document.getElementById('option_header').checked = finalHeaders.length > 0 || config.payload;
             toggleHeaderInput();
@@ -1348,18 +1420,18 @@
             const method = document.querySelector('input[name="request_method"]:checked').value;
             const redirect = document.getElementById('option_redirect').checked;
             const payload = document.getElementById('option_payload').checked;
-            
+
             const format = document.querySelector('input[name="data_format"]:checked').value;
             const rendering = document.getElementById('option_rendering').checked;
-            
+
             const headerItems = collectListItems('header_data_list');
             const conditionItems = collectListItems('meta_data_list');
-            
+
             const accessTypeOutput = selectedSourceValue.toLowerCase(); // 'CRAWL' -> 'crawl' : 'API' -> 'api'
-            
+
             // 🔥 [수정] 페이지 유형 관련 설정 값 수집
             const pageTypeRaw = document.querySelector('input[name="page_type"]:checked').value;
-            const pageTypeValue = pageTypeRaw.toLowerCase(); // 'SINGLE' -> 'single', 'DETAIL' -> 'detail'로 변환
+            const pageTypeValue = pageTypeRaw.toLowerCase(); // 'SINGLE'/'DETAIL' -> 'single'/'detail'
             const isDetail = pageTypeRaw === 'DETAIL';
             const stepValue = parseInt(document.getElementById('step_input').value.trim());
             // [수정] main_format 라디오 버튼에서 값 가져오기
@@ -1373,43 +1445,56 @@
                 return;
             }
             
-            // ✨ [수정] 로그인 데이터 처리 로직
-            const loginChecked = document.getElementById('option_login').checked;
+            // ✨ 인증 옵션(로그인/API 인증) 처리 로직 — 두 방식은 상호 배타적으로 선택됨
+            const authChecked = document.getElementById('option_auth').checked;
+            const authMethod = authChecked
+                ? document.querySelector('input[name="auth_method"]:checked').value // 'login' | 'api_key'
+                : null;
+
             let loginDataForDisplay = null;
             let loginDataForCopy = null;
+            let apiAuthHeaderName = null;
+            let apiAuthHeaderValue = null;
 
-            if (loginChecked) {
-                const loginId = document.getElementById('login_id').value.trim();
-                const loginPassword = document.getElementById('login_password').value;
-                
-                // 유효성 검사 (ID 또는 PW가 비어있을 경우)
-                if (loginId === '' || loginPassword === '') {
-                    showToast("🚨 로그인 옵션이 체크되었습니다. ID와 PW는 필수 항목입니다.");
-                    if(loginId === '') document.getElementById('login_id').focus();
-                    else document.getElementById('login_password').focus();
-                    return;
-                }
+            if (authMethod === 'login') {
+                const loginIdRaw = document.getElementById('login_id').value.trim();
+                const loginPasswordRaw = document.getElementById('login_password').value;
+                // 값이 비어 있으면 빈 문자열 대신 결측값(null)으로 반환
+                const loginId = loginIdRaw === '' ? null : loginIdRaw;
+                const loginPassword = loginPasswordRaw === '' ? null : loginPasswordRaw;
 
                 // Copy용 원본 데이터
                 loginDataForCopy = { id: loginId, password: loginPassword };
-                
+
                 // Display용 마스킹 데이터
-                const maskedPassword = loginPassword.replace(/./g, '*') + (loginPassword.length > 0 ? ' (Masked for Display)' : '');
+                const maskedPassword = loginPassword === null ? null : (loginPassword.replace(/./g, '*') + ' (Masked for Display)');
                 loginDataForDisplay = { id: loginId, password: maskedPassword };
-            } 
-            // else: loginDataForDisplay와 loginDataForCopy는 모두 null (초기값)
+            } else if (authMethod === 'api_key') {
+                const rawValue = document.getElementById('api_auth_value').value.trim();
+                if (rawValue !== '') {
+                    const apiAuthType = document.getElementById('api_auth_type').value;
+                    if (apiAuthType === 'bearer') {
+                        apiAuthHeaderName = 'Authorization';
+                        apiAuthHeaderValue = /^bearer\s/i.test(rawValue) ? rawValue : `Bearer ${rawValue}`;
+                    } else {
+                        apiAuthHeaderName = document.getElementById('api_auth_header_name').value.trim() || 'X-API-Key';
+                        apiAuthHeaderValue = rawValue;
+                    }
+                }
+            }
+            // else: authMethod가 null이면 login/apiAuthHeader 관련 값은 모두 null (초기값)
 
 
             let finalObjectForDisplay = {
                 accessType: accessTypeOutput,
                 method: method,
-                redirect: redirect,
-                login: loginDataForDisplay, // Display/Null Output
-                // 🔥 [수정] 페이지 유형 관련 필드
-                pageType: pageTypeValue, // 'SINGLE'/'DETAIL' -> 'single'/'detail'
-                steps: stepValue, // 'step' -> 'steps'로 변경
-                dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
+                redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력
                 payload: payload,
+                dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
+                pageType: pageTypeValue, // 'SINGLE'/'DETAIL' -> 'single'/'detail'
+                steps: stepValue,
+                authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
+                login: loginDataForDisplay, // Display/Null Output
                 rendering: rendering,
             };
 
@@ -1420,7 +1505,7 @@
             };
 
 
-            // 상세 페이지 URL 및 이전 포맷 추가
+            // 상세 페이지 URL 및 이전 포맷 추가 (페이지 유형이 상세 페이지일 때만)
             if (isDetail) {
                 finalObjectForDisplay.mainUrl = detailUrl;
                 finalObjectForCopy.mainUrl = detailUrl;
@@ -1430,7 +1515,7 @@
 
 
             // Header items 추가
-            if (headerItems.length > 0 || payload) {
+            if (headerItems.length > 0 || payload || apiAuthHeaderValue !== null) {
                 let headerOutput = {};
                 headerItems.forEach(item => {
                     headerOutput[item.name] = item.value;
@@ -1445,7 +1530,12 @@
                         headerOutput["Accept"] = "application/json";
                     }
                 }
-                
+
+                if (apiAuthHeaderValue !== null) {
+                    // API 인증(Bearer Token / API Key)은 지정 Header로 덮어써 항상 반영
+                    headerOutput[apiAuthHeaderName] = apiAuthHeaderValue;
+                }
+
                 finalObjectForDisplay.headers = headerOutput;
                 finalObjectForCopy.headers = headerOutput;
             }
@@ -1570,8 +1660,12 @@
             });
             
             document.getElementById('option_header').addEventListener('change', toggleHeaderInput);
-            document.getElementById('option_login').addEventListener('change', toggleLoginInput);
-            
+            document.getElementById('option_auth').addEventListener('change', toggleAuthInput);
+            document.querySelectorAll('input[name="auth_method"]').forEach(radio => {
+                radio.addEventListener('change', toggleAuthMethodFields);
+            });
+            document.getElementById('api_auth_type').addEventListener('change', toggleApiAuthHeaderNameField);
+
             // 🔥 [수정] 페이지 유형 변경 이벤트 리스너 추가
             document.querySelectorAll('input[name="page_type"]').forEach(radio => {
                 radio.addEventListener('change', handlePageTypeChange);
@@ -1609,8 +1703,10 @@
             // 초기 설정 적용
             updatePlaceholder({ target: { value: 'html' } });
             toggleHeaderInput();
-            toggleLoginInput(); 
-            
+            toggleAuthInput();
+            toggleAuthMethodFields();
+            toggleApiAuthHeaderNameField();
+
             // 🔥 [수정] 초기 페이지 유형 상태 적용: handlePageTypeChange 호출
             handlePageTypeChange({ target: { value: document.querySelector('input[name="page_type"]:checked').value } }); 
 

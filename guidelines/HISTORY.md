@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-07-18 16:55
+- **최신 갱신**: 2026-07-21 19:14
 
 ---
 
@@ -108,6 +108,12 @@
 | 2026-07-17 | PR #84 | 12차 릴리스 | - | `develop→main` 머지(main=`1f717bf`) — 이슈⑱ 해결(무인 실행 중 빈 데이터 블로킹 모달 3곳 조용한 스킵), "새 스케줄 등록"에 정제 규칙 설정 기능 신설(공유 UI 빌더 `style.build_refine_rule_rows()`), 후속 UI/UX 개선 6건(버튼 크기 정렬, fill_null 자동연동 제외, 신규 등록 기본값 소스 정렬, 화면 표시 순서 조정, 중첩 다이얼로그→가로 인라인 패널 리팩터, 텍스트 잘림·다이얼로그 크기 미복귀 수정) 포함. PR 자체 제목은 "11차"로 표기됐으나 앞선 PR#83과 번호가 겹쳐 이 문서 순번상 12차로 기록 | 헤드리스 PyQt6 시나리오별 검증(각 커밋 행 참고), 매 커밋 `py_compile` 통과. Windows 실 환경 최종 GUI 확인 필요(WSL 한계로 미실시) |
 | 2026-07-17 | `7f715c3` | MonitorPage 정제 규칙 탭 제외 필드/결측값 치환 설명 줄바꿈 수정 | 컨트롤이 붙는 두 행(drop_columns/fill_null)은 `text_col` stretch factor가 0이라 `wordWrap` 라벨의 `sizeHint()`가 좁게 잡혀 탭 폭이 넉넉해도 항상 2줄로 꺾임 | `build_refine_rule_rows()`에 `fit_desc_one_line` 옵션 추가 — 실측 텍스트 폭만큼 최소폭을 지정하도록 하고 넓은 MonitorPage 탭 호출부에서만 활성화. 폭이 좁게 제한된 스케줄 등록 패널(260~400px) 호출부는 기본값(`False`)이라 기존 동작 그대로 유지 | - |
 | 2026-07-18 | PR #85 | 13차 릴리스 | - | `develop→main` 머지(main=`4396f52`) — PR#84(12차) 이후 develop에 쌓인 마지막 커밋(`7f715c3`, MonitorPage 정제 규칙 탭 제외 필드/결측값 치환 설명 줄바꿈 수정) 반영. PR 자체 제목은 "5차"로 오기재됐으나 이 문서 순번상 13차로 기록 | - |
+| 2026-07-18 | PR #86 | 14차 릴리스 (문서 전용) | - | `develop→main` 머지(`gh pr merge --admin`, main=`0c43305`) — `HISTORY.md`(PR#77 이후 기록 누락됐던 릴리스 3건·개별 문서 커밋 2건 소급 기록) + `PREPROCESS.md`(`fit_desc_one_line` 옵션 추가로 밀린 file:line 인용 7곳 재검증·정정, §1 옵션 설명 신설) 반영, 코드 변경 없음 | 문서 전용 변경 — 인용 line 번호를 코드와 직접 대조해 검증 완료 |
+| 2026-07-21 | `a3c298f`, `edfdb85` | custom_rules/ 폴더 git 추적 해제 | 프로그램 개발 자체에 반드시 필요한 항목은 아니라는 사용자 판단 — 기존 정책(`b5721db`, "정제·수집 규칙은 설정값이 아니라 코드이므로 이력 관리")에서 전환 | `custom_rules/`(`__init__.py`, `refine/000000.py`, `render/000010.py`, `render/000013.py`)를 `git rm --cached`로 추적 해제, `.gitignore`에 등록(로컬 파일은 유지). `PREPROCESS.md` §3.1a/§4/§5의 "git 이력 관리" 서술을 미추적 방침으로 갱신 | `git status`로 로컬 파일 보존 확인, `build-exe.ps1`은 로컬 디스크 파일을 그대로 참조하므로 배포 동작 영향 없음(로직 무변경) |
+| 2026-07-21 | `fb4b17d` | Inno Setup 기반 설치 프로그램 패키징 기능 추가 | 지금까지는 `build-exe.ps1`이 만든 exe 파일 자체를 그대로 전달하는 방식뿐이었음 — 설치/제거·바로가기 생성을 지원하는 설치 프로그램(Setup.exe) 배포 요청 | `installer.iss`(Inno Setup 스크립트, `AppName`/`AppVersion`/`AppPublisher`를 `/D` 정의로 받음, `dist\{AppName}.exe`를 감싸 `dist\{AppName}-Setup.exe` 생성 — 시작메뉴/선택적 바탕화면 바로가기, 표준 제거 지원)와 `build-installer.ps1`(ISCC.exe 탐색 후 컴파일 실행, `build-exe.ps1`과 동일한 `-AppName` 관례) 신설. 기존 `build-exe.ps1`은 변경하지 않음(exe 빌드와 설치 프로그램 패키징을 별개 단계로 분리) | Windows 전용 도구(Inno Setup ISCC.exe, PowerShell)라 WSL 환경에서 실행 검증 불가 — 코드 리뷰 기반 작성, Windows 개발 환경에서 `build-exe.ps1`→`build-installer.ps1` 순차 실행 및 실제 설치/제거 확인 필요 |
+| 2026-07-21 | 이슈㉗ | `build-exe.ps1` Windows 실 빌드 검증 중 발견 — pyinstaller 정상 로그를 오류로 오인해 매번 즉시 중단 | WSL의 PowerShell interop(`powershell.exe`)으로 처음 실 빌드를 실행해본 결과 `pyinstaller`가 첫 INFO 로그를 stderr에 쓰는 순간 `$ErrorActionPreference = "Stop"`에 걸려 `NativeCommandError`로 즉시 중단됨을 확인(PR #64 도입 이후 이 스크립트가 실제로 완주된 적이 없었음 — 기존 `dist\DataCrawler.exe`는 스크립트 밖에서 수동으로 pyinstaller를 실행한 산출물이었음). 별도로, 같은 실 빌드 환경(별도 Windows 클론, `/mnt/d/Career/python_uv/Harvest`)이 `a3c298f`(custom_rules 추적 해제) 이후 커밋을 pull하면서 `custom_rules/refine/000000.py`·`render/000010.py`·`render/000013.py`(실제 고객 규칙 코드)가 물리적으로 삭제된 것도 함께 발견 — git 추적에서 빼는 커밋은 다른 클론이 pull할 때 "파일 삭제"로 적용된다는, 이전 턴에서 고지하지 못한 부작용 | `pyinstaller` 호출 앞뒤로 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고 `$LASTEXITCODE`로 직접 실패 판정(§1 이슈㉗ 참고). 삭제된 3개 파일은 `git show a3c298f^:<path>`로 복구해 해당 Windows 클론에 로컬(미추적) 파일로 재배치 | Windows 실 빌드(WSL PowerShell interop) — 수정 전 매번 즉시 중단·`dist` 미갱신, 수정 후 `EXITCODE=0`·`dist\DataCrawler.exe` 재생성(72MB, 로그에 "Build complete!") 확인. 복구한 3개 파일 내용을 git 이력 원본과 대조 확인. `build-installer.ps1`은 이 머신에 Inno Setup(ISCC.exe) 자체가 설치돼 있지 않아 실행 검증 보류 |
+| 2026-07-21 | 이슈㉘ | `build-installer.ps1` 실 빌드 검증 — winget 설치 경로 탐색 누락 발견·수정, 전체 파이프라인 최초 완주 확인 | 사용자 승인으로 winget(`JRSoftware.InnoSetup`, 관리자 권한 없이 실행 → 사용자별 설치)으로 Inno Setup 6.7.3을 실제로 설치해보니 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`에 설치됨 — `build-installer.ps1`의 탐색 후보가 시스템 전체 설치 경로만 확인해 항상 "찾을 수 없음"으로 실패 | 탐색 후보에 사용자별 설치 경로 추가(§1 이슈㉘ 참고) | Windows 실 빌드 — 수정 전 탐색 실패 재현 → 수정 후 `installer.iss` 정상 컴파일, `dist\DataCrawler-Setup.exe`(PE32 GUI, 약 73MB) 생성 확인. `build-exe.ps1`(이슈㉗ 수정 반영)→`build-installer.ps1` 전체 배포 파이프라인이 실제 Windows 환경에서 처음으로 끝까지 완주됨 |
+| 2026-07-21 | `<커밋 예정>` | 실행 중 작업 표시줄 아이콘에 실제 아이콘 이미지 미표시 수정 | `main.py`는 `SetCurrentProcessExplicitAppUserModelID`로 작업 표시줄 그룹 식별자만 설정할 뿐 `setWindowIcon()` 호출이 전혀 없어, PyInstaller `--icon`으로 exe 파일 자체엔 아이콘이 박혀도 실행 중인 창/작업 표시줄 버튼은 기본 아이콘으로 표시됨(트레이 아이콘은 `TrayManager`가 이미 별도로 `combine-harvester.ico`를 설정 중이라 트레이만 정상이었음) | `main.py`의 `QApplication` 생성 직후 `app.setWindowIcon(QIcon(utility.resource_path() + "\\" + "combine-harvester.ico"))` 추가 — 자식 창이 개별 지정하지 않는 한 이 아이콘을 기본 상속하므로 `MainWindow`를 포함한 모든 창에 적용됨 | Windows 실 환경(WSL PowerShell interop)에서 `python main.py`로 앱을 실제 구동 후, Win32 API(`WM_GETICON`/`GetClassLongPtr`)로 실행 중인 창의 아이콘 핸들을 직접 조회 — 수정 전 미확인(기존 코드에 호출 자체가 없었음) → 수정 후 `ICON_BIG`/`ICON_SMALL`/`CLASS_ICON` 모두 유효한 핸들 반환, 핸들에서 비트맵을 추출해 `combine-harvester.ico`와 동일한 그림(녹색 콤바인)임을 시각적으로 확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
@@ -117,17 +123,18 @@
 
 | 브랜치 | 커밋 | WSL | Windows |
 |---|---|---|---|
-| `main` | `4396f52` (PR #85, 13차 릴리스) | ✅ | 미확인 |
-| `develop` | `7f715c3`(내용상 main과 동일) | ✅ | 미확인 |
+| `main` | `0c43305` (PR #86, 14차 릴리스·문서 전용) | ✅ | 미확인 |
+| `develop` | `0c43305`(내용상 동일) | ✅ | 미확인 |
 
-`main`/`develop`이 PR #85(13차 릴리스)로 동기화됨. PR #77(10차) 이후 릴리스 3건
-(PR #83=11차/`e480b0a`, PR #84=12차/`1f717bf`, PR #85=13차/`4396f52`)이 이번에
-소급 정리되어 처음으로 `HISTORY.md`에 기록됨 — PR #84·#85는 각 PR 자체 제목이
-번호를 잘못 붙였으나(둘 다 "11차"/"5차" 자칭) 이 문서의 실제 순번(직전 릴리스
-다음 번호)을 기준으로 12차/13차로 정정 기록. 미실시 release PR 없음.
+`main`/`develop`이 PR #86(14차 릴리스, 문서 전용)로 동기화됨. PR #77(10차) 이후
+릴리스 4건(PR #83=11차/`e480b0a`, PR #84=12차/`1f717bf`, PR #85=13차/`4396f52`,
+PR #86=14차/`0c43305`)이 이번 세션에 소급 정리되어 처음으로 `HISTORY.md`에
+기록됨 — PR #84·#85는 각 PR 자체 제목이 번호를 잘못 붙였으나(둘 다 "11차"/"5차"
+자칭) 이 문서의 실제 순번(직전 릴리스 다음 번호)을 기준으로 12차/13차로 정정
+기록. 미실시 release PR 없음.
 `gh pr merge --admin --delete-branch`가 원격 `develop`을 실제로는 지우지
-않아(룰셋 보호로 추정) 로컬만 재생성함. 정제 규칙 UI 전 계열 작업은 이번
-릴리스로 main 반영 완료 — Windows 실 빌드로 최종 확인 필요(WSL 환경 한계로
-미실시, 각 PR 본문 참고).
+않아(룰셋 보호로 추정) 매번 로컬만 재생성함. 정제 규칙 UI 전 계열 작업은
+main 반영 완료 — Windows 실 빌드로 최종 확인 필요(WSL 환경 한계로 미실시,
+각 PR 본문 참고).
 
 미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.

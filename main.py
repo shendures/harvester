@@ -8,7 +8,9 @@ import ctypes
 import multiprocessing
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 from layout import MainWindow, theme
+import utility
 
 # Windows 작업 표시줄 아이콘 해결을 위한 코드
 myappid = 'my.scrapy.collector.v0_8'
@@ -19,6 +21,9 @@ def main():
 
     app = QApplication(sys.argv)
     theme.set_pallete(app)
+    # 창/작업 표시줄 아이콘 — 미지정 시 PyInstaller --icon(exe 파일 아이콘)과 무관하게
+    # 실행 중에는 기본 아이콘으로 표시됨(트레이 아이콘은 TrayManager가 별도로 설정 중)
+    app.setWindowIcon(QIcon(utility.resource_path() + "\\" + "combine-harvester.ico"))
 
     socket = QLocalSocket()
     socket.connectToServer(myappid)

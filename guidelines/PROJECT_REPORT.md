@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-17 19:21
+- **최신 갱신**: 2026-07-22 10:00
 
 ---
 
@@ -93,6 +93,9 @@ GUI 시작 버튼
 애플리케이션 진입점. PyQt6 앱을 초기화하고 `MainWindow`를 시작합니다.
 - `QLocalServer` / `QLocalSocket`으로 중복 실행을 방지합니다.
 - Windows 작업 표시줄 아이콘 등록(`SetCurrentProcessExplicitAppUserModelID`)을 처리합니다.
+  실제 아이콘 이미지는 `app.setWindowIcon(QIcon(...))`(`combine-harvester.ico`)로 별도 지정합니다 —
+  `SetCurrentProcessExplicitAppUserModelID`만으로는 작업 표시줄 그룹 식별자만 정해질 뿐
+  아이콘 이미지 자체는 바뀌지 않습니다(트레이 아이콘은 `TrayManager`가 동일 파일로 별도 설정).
 
 ---
 
@@ -404,7 +407,6 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
   "title": "작업명",
   "url": "원본 URL",
   "callback_url": "https://example.com/list?page=${page:1:1:10}",
-  "auth": false,
   "conditions": {
     "method": "GET",
     "dataFormat": "html",
@@ -455,4 +457,5 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `furl` | URL 파싱/조작 |
 | `python-dotenv` | 환경 변수 로드 |
 | `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `custom_rules/`·`request_info.json`을 선별 번들 |
+| Inno Setup | (Python 패키지 아님, Windows 전용 외부 도구) `build-installer.ps1`이 `build-exe.ps1`로 만든 `dist\{AppName}.exe`를 `installer.iss`로 감싸 설치 프로그램(`dist\{AppName}-Setup.exe`)으로 패키징 — 파일 배포 대신 설치/제거·바로가기 생성을 지원 |
 

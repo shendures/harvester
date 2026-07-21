@@ -25,7 +25,6 @@ def get_request_settings():
                 'callback_url': None,
                 'conditions': None,
                 'spiders': None,
-                'auth': False,
             }
 
 def get_task_settings():

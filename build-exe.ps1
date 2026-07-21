@@ -106,6 +106,13 @@ foreach ($pkg in @(
 # ModuleNotFoundError가 날 수 있습니다. 발생하는 모듈을 --hidden-import 또는
 # --collect-all로 추가하면서 반복 확인하세요 (requirements.txt의
 # pyinstaller-hooks-contrib가 일부는 자동으로 처리해줍니다).
+# PyInstaller는 정상 진행 상황도 INFO 레벨로 stderr에 씁니다. 이 스크립트
+# 최상단의 $ErrorActionPreference = "Stop" 상태에서 native 명령이 stderr에
+# 한 줄이라도 쓰면 PowerShell이 이를 즉시 종료 오류로 취급해 실제로는
+# 정상 진행 중인 pyinstaller를 첫 로그 줄에서 강제 중단시킵니다(Windows
+# PowerShell 5.1 실 빌드로 재현·확인) — 그래서 이 호출 주변에서만 일시적으로
+# "Continue"로 낮추고, 진짜 실패 여부는 $LASTEXITCODE로 직접 판별합니다.
+$ErrorActionPreference = "Continue"
 pyinstaller `
     --name $AppName `
     --onefile `
@@ -114,6 +121,11 @@ pyinstaller `
     @copyMetadataArgs `
     @addDataArgs `
     (Join-Path $repoRoot "main.py")
+$ErrorActionPreference = "Stop"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "pyinstaller가 실패했습니다 (종료 코드 $LASTEXITCODE). 위 로그를 확인하세요."
+    exit 1
+}
 
 # ── 4. 스테이징 정리 ────────────────────────────────────────────────
 Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue

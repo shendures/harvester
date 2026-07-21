@@ -34,6 +34,18 @@ from PyQt6.QtGui import (
 store = DataStore()
 blueprint = BlueprintStorage()  # 수집 정보 클래스
 request_info = blueprint.read()  # 수집 정보
+
+
+def _blueprint_requires_auth(info: dict) -> bool:
+    """
+    이 블루프린트가 인증 관리 화면을 필요로 하는지 판단합니다.
+    conditions.authMethod(신규, generator_conditions.html이 생성)를 우선 확인하고,
+    없으면(구버전 request_info.json) conditions.login 객체 존재 여부로 폴백합니다.
+    """
+    conditions = info.get("conditions") or {}
+    return bool(conditions.get("authMethod")) or bool(conditions.get("login"))
+
+
 theme = THEME()
 parts = Parts()
 
@@ -149,7 +161,7 @@ class Sidebar(QWidget):
         PAGES = [("⬡", "대시보드"), ("≡", "모니터링"), ("◷", "스케줄러"), ("▲", "통계 분석")]
 
         # 첫번째 수집 정보 기준으로 SETTINGS 빌드
-        SETTINGS = [("◎", "세션 설정"), ("⬡", "인증 관리")] if request_info["auth"] else [("◎", "세션 설정")]
+        SETTINGS = [("◎", "세션 설정"), ("⬡", "인증 관리")] if _blueprint_requires_auth(request_info) else [("◎", "세션 설정")]
 
         self._btns = []
         for i, (icon, label) in enumerate(PAGES):
@@ -1915,7 +1927,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.stack.addWidget(self.stats_page)  # 3
         self.stack.addWidget(self.session_page)  # 4
 
-        if request_info["auth"]:
+        if _blueprint_requires_auth(request_info):
             self.auth_page = AuthManagerPage()
             self.stack.addWidget(self.auth_page)  # 5
 
