@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-21 18:26
+- **최신 갱신**: 2026-07-21 19:14
 
 ---
 
@@ -93,6 +93,9 @@ GUI 시작 버튼
 애플리케이션 진입점. PyQt6 앱을 초기화하고 `MainWindow`를 시작합니다.
 - `QLocalServer` / `QLocalSocket`으로 중복 실행을 방지합니다.
 - Windows 작업 표시줄 아이콘 등록(`SetCurrentProcessExplicitAppUserModelID`)을 처리합니다.
+  실제 아이콘 이미지는 `app.setWindowIcon(QIcon(...))`(`combine-harvester.ico`)로 별도 지정합니다 —
+  `SetCurrentProcessExplicitAppUserModelID`만으로는 작업 표시줄 그룹 식별자만 정해질 뿐
+  아이콘 이미지 자체는 바뀌지 않습니다(트레이 아이콘은 `TrayManager`가 동일 파일로 별도 설정).
 
 ---
 
