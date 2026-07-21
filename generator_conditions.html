@@ -1381,14 +1381,6 @@
             if (loginChecked) {
                 const loginId = document.getElementById('login_id').value.trim();
                 const loginPassword = document.getElementById('login_password').value;
-                
-                // 유효성 검사 (ID 또는 PW가 비어있을 경우)
-                if (loginId === '' || loginPassword === '') {
-                    showToast("🚨 로그인 옵션이 체크되었습니다. ID와 PW는 필수 항목입니다.");
-                    if(loginId === '') document.getElementById('login_id').focus();
-                    else document.getElementById('login_password').focus();
-                    return;
-                }
 
                 // Copy용 원본 데이터
                 loginDataForCopy = { id: loginId, password: loginPassword };
