@@ -511,7 +511,30 @@
                         <input type="password" id="login_password" placeholder="비밀번호">
                     </div>
                 </div>
-                
+
+                <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ API 인증 (API Key / Token)</h3>
+                <div id="api_auth_input_area" style="padding-left: 20px; padding-top: 5px; margin-bottom: 15px;">
+                    <div class="login-field-group">
+                        <label for="api_auth_type" style="width: 55px;">방식:</label>
+                        <select id="api_auth_type" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; flex-grow: 1;">
+                            <option value="bearer">Bearer Token</option>
+                            <option value="apikey">API Key (Custom Header)</option>
+                        </select>
+                    </div>
+                    <div class="login-field-group" id="api_auth_header_name_group" style="display: none;">
+                        <label for="api_auth_header_name" style="width: 55px;">Header:</label>
+                        <input type="text" id="api_auth_header_name" placeholder="예: X-API-Key" value="X-API-Key">
+                    </div>
+                    <div class="login-field-group">
+                        <label for="api_auth_value" style="width: 55px;">값:</label>
+                        <input type="text" id="api_auth_value" placeholder="토큰 또는 키 값">
+                    </div>
+                    <button type="button" id="add_api_auth_btn" class="add-button" style="margin-top: 5px;">
+                        <span class="icon">+</span> 인증 Header 추가
+                    </button>
+                    <p style="font-size: 0.8em; color: #888; margin: 8px 0 0 0;">추가 시 아래 'HTTP Header' 목록에 자동 삽입/갱신되며, Header 옵션이 자동으로 켜집니다.</p>
+                </div>
+
                 <h3 style="font-size: 1em; color: #777; margin-top: 5px; margin-bottom: 10px; border-top: 2px solid #ccc; padding-top: 10px;">⚙️ 페이지 유형</h3>
                 <div class="section-box" id="page_type_section" style="padding: 10px; border: 1px dashed #ccc; background-color: #f9f9f9; margin-bottom: 20px; border: none; padding: 0;">
                     
@@ -807,6 +830,12 @@
             document.getElementById('option_header').checked = false;
             toggleHeaderInput();
 
+            // API 인증(API Key / Bearer Token) 입력 초기화
+            document.getElementById('api_auth_type').value = 'bearer';
+            document.getElementById('api_auth_value').value = '';
+            document.getElementById('api_auth_header_name').value = 'X-API-Key';
+            toggleApiAuthHeaderNameField();
+
             // 🔥 [추가] 페이지 유형 초기화
             document.getElementById('page_single').checked = true;
             document.getElementById('step_input').value = 1;
@@ -917,18 +946,23 @@
             headerArea.style.display = isChecked ? 'block' : 'none';
         }
 
-        // 헤더 존재 여부를 확인하는 헬퍼 함수
-        function headerExists(key) {
+        // key와 이름이 일치하는 헤더 항목(DOM)을 찾는 헬퍼 함수
+        function findHeaderItem(key) {
             const headerList = document.getElementById('header_data_list');
             const items = headerList.querySelectorAll('.meta-item:not(.template)');
             const normalizedKey = key.trim().toLowerCase();
             for (const item of items) {
                 const itemKey = item.querySelector('.meta-name').value.trim().toLowerCase();
                 if (itemKey === normalizedKey) {
-                    return true;
+                    return item;
                 }
             }
-            return false;
+            return null;
+        }
+
+        // 헤더 존재 여부를 확인하는 헬퍼 함수
+        function headerExists(key) {
+            return findHeaderItem(key) !== null;
         }
 
         // 헤더가 없으면 추가하는 헬퍼 함수
@@ -938,6 +972,45 @@
             }
         }
 
+        // API 인증 방식(Bearer Token / API Key)에 따라 커스텀 Header 이름 입력란 표시 여부 전환
+        function toggleApiAuthHeaderNameField() {
+            const type = document.getElementById('api_auth_type').value;
+            document.getElementById('api_auth_header_name_group').style.display = (type === 'apikey') ? 'flex' : 'none';
+        }
+
+        // API Key / Bearer Token 입력을 HTTP Header 목록에 추가(동일 이름 있으면 값만 갱신)하고 Header 옵션을 자동 활성화
+        function addApiAuthHeader() {
+            const type = document.getElementById('api_auth_type').value;
+            const rawValue = document.getElementById('api_auth_value').value.trim();
+
+            if (rawValue === '') {
+                showToast('🚨 인증 값(토큰/키)을 입력해주세요.');
+                document.getElementById('api_auth_value').focus();
+                return;
+            }
+
+            let headerName, headerValue;
+            if (type === 'bearer') {
+                headerName = 'Authorization';
+                headerValue = /^bearer\s/i.test(rawValue) ? rawValue : `Bearer ${rawValue}`;
+            } else {
+                headerName = document.getElementById('api_auth_header_name').value.trim() || 'X-API-Key';
+                headerValue = rawValue;
+            }
+
+            document.getElementById('option_header').checked = true;
+            toggleHeaderInput();
+
+            const existingItem = findHeaderItem(headerName);
+            if (existingItem) {
+                existingItem.querySelector('.meta-value').value = headerValue;
+            } else {
+                addHeaderItem(headerName, headerValue);
+            }
+
+            document.getElementById('api_auth_value').value = '';
+            showToast(`✅ '${headerName}' 인증 Header가 추가(갱신)되었습니다.`);
+        }
 
         // Payload 체크박스 상태를 기반으로 data_format을 설정하고, 헤더를 자동 추가하며, HTML 옵션 유지
         function handlePayloadOptionChange(event) {
@@ -1566,7 +1639,10 @@
             
             document.getElementById('option_header').addEventListener('change', toggleHeaderInput);
             document.getElementById('option_login').addEventListener('change', toggleLoginInput);
-            
+
+            document.getElementById('api_auth_type').addEventListener('change', toggleApiAuthHeaderNameField);
+            document.getElementById('add_api_auth_btn').addEventListener('click', addApiAuthHeader);
+
             // 🔥 [수정] 페이지 유형 변경 이벤트 리스너 추가
             document.querySelectorAll('input[name="page_type"]').forEach(radio => {
                 radio.addEventListener('change', handlePageTypeChange);
@@ -1604,8 +1680,9 @@
             // 초기 설정 적용
             updatePlaceholder({ target: { value: 'html' } });
             toggleHeaderInput();
-            toggleLoginInput(); 
-            
+            toggleLoginInput();
+            toggleApiAuthHeaderNameField();
+
             // 🔥 [수정] 초기 페이지 유형 상태 적용: handlePageTypeChange 호출
             handlePageTypeChange({ target: { value: document.querySelector('input[name="page_type"]:checked').value } }); 
 
