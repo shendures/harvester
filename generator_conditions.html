@@ -1431,6 +1431,7 @@
 
             // 🔥 [수정] 페이지 유형 관련 설정 값 수집
             const pageTypeRaw = document.querySelector('input[name="page_type"]:checked').value;
+            const pageTypeValue = pageTypeRaw.toLowerCase(); // 'SINGLE'/'DETAIL' -> 'single'/'detail'
             const isDetail = pageTypeRaw === 'DETAIL';
             const stepValue = parseInt(document.getElementById('step_input').value.trim());
             // [수정] main_format 라디오 버튼에서 값 가져오기
@@ -1490,6 +1491,8 @@
                 redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력
                 payload: payload,
                 dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
+                pageType: pageTypeValue, // 'SINGLE'/'DETAIL' -> 'single'/'detail'
+                steps: stepValue,
                 authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
                 login: loginDataForDisplay, // Display/Null Output
                 rendering: rendering,
@@ -1502,14 +1505,12 @@
             };
 
 
-            // 상세 페이지 URL, 이전 포맷, Step 수 추가 (페이지 유형이 상세 페이지일 때만)
+            // 상세 페이지 URL 및 이전 포맷 추가 (페이지 유형이 상세 페이지일 때만)
             if (isDetail) {
                 finalObjectForDisplay.mainUrl = detailUrl;
                 finalObjectForCopy.mainUrl = detailUrl;
                 finalObjectForDisplay.mainFormat = mainFormat;
                 finalObjectForCopy.mainFormat = mainFormat;
-                finalObjectForDisplay.steps = stepValue;
-                finalObjectForCopy.steps = stepValue;
             }
 
 
