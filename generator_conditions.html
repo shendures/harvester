@@ -1418,6 +1418,7 @@
             
 
             const method = document.querySelector('input[name="request_method"]:checked').value;
+            const redirect = document.getElementById('option_redirect').checked;
             const payload = document.getElementById('option_payload').checked;
 
             const format = document.querySelector('input[name="data_format"]:checked').value;
@@ -1431,6 +1432,7 @@
             // 🔥 [수정] 페이지 유형 관련 설정 값 수집
             const pageTypeRaw = document.querySelector('input[name="page_type"]:checked').value;
             const isDetail = pageTypeRaw === 'DETAIL';
+            const stepValue = parseInt(document.getElementById('step_input').value.trim());
             // [수정] main_format 라디오 버튼에서 값 가져오기
             const mainFormat = isDetail ? document.querySelector('input[name="main_format"]:checked').value : null;
             const detailUrl = isDetail ? document.getElementById('detail_url_input').value.trim() : null;
@@ -1485,6 +1487,7 @@
             let finalObjectForDisplay = {
                 accessType: accessTypeOutput,
                 method: method,
+                redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력
                 login: loginDataForDisplay, // Display/Null Output
                 authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
                 dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
@@ -1499,12 +1502,14 @@
             };
 
 
-            // 상세 페이지 URL 및 이전 포맷 추가
+            // 상세 페이지 URL, 이전 포맷, Step 수 추가 (페이지 유형이 상세 페이지일 때만)
             if (isDetail) {
                 finalObjectForDisplay.mainUrl = detailUrl;
                 finalObjectForCopy.mainUrl = detailUrl;
                 finalObjectForDisplay.mainFormat = mainFormat;
                 finalObjectForCopy.mainFormat = mainFormat;
+                finalObjectForDisplay.steps = stepValue;
+                finalObjectForCopy.steps = stepValue;
             }
 
 
