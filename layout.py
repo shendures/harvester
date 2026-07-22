@@ -36,14 +36,19 @@ blueprint = BlueprintStorage()  # 수집 정보 클래스
 request_info = blueprint.read()  # 수집 정보
 
 
-def _blueprint_requires_auth(info: dict) -> bool:
+def _blueprint_auth_method(info: dict):
     """
-    이 블루프린트가 인증 관리 화면을 필요로 하는지 판단합니다.
+    이 블루프린트의 인증 방식("login"/"api_key")을 판단합니다.
     conditions.authMethod(신규, generator_conditions.html이 생성)를 우선 확인하고,
-    없으면(구버전 request_info.json) conditions.login 객체 존재 여부로 폴백합니다.
+    없으면(구버전 request_info.json) conditions.login 객체 존재 여부로 "login"을 추정합니다.
     """
     conditions = info.get("conditions") or {}
-    return bool(conditions.get("authMethod")) or bool(conditions.get("login"))
+    return conditions.get("authMethod") or ("login" if conditions.get("login") else None)
+
+
+def _blueprint_requires_auth(info: dict) -> bool:
+    """이 블루프린트가 인증 관리 화면을 필요로 하는지 판단합니다."""
+    return _blueprint_auth_method(info) is not None
 
 
 theme = THEME()
@@ -1559,8 +1564,9 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 #  AUTH MANAGER PAGE
 # ══════════════════════════════════════════════════════
 class AuthManagerPage(QWidget, AuthManagerPageTriggers):
-    def __init__(self):
+    def __init__(self, auth_method=None):
         super().__init__()
+        self._auth_method = auth_method
         self._auth_rows = []
         self._build()
 
@@ -1614,145 +1620,104 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         global_l.addLayout(row0)
         bl.addWidget(global_w)
 
-        # ── 인증 자격증명 목록 ──────────────────────────
-        cw, cl = parts.card_widget("자격증명 목록")
-        hdr_row = QHBoxLayout()
-        hdr_row.addStretch()
-        self._add_cred_btn = parts.action_btn("+ 자격증명 추가", ACCENT, ACCENT_HOVER)
-        self._add_cred_btn.clicked.connect(self._add_cred_dialog)
-        self._export_btn = parts.outline_btn("내보내기 (암호화)")
-        self._export_btn.clicked.connect(self._export_creds)
-        hdr_row.addWidget(self._export_btn)
-        hdr_row.addWidget(self._add_cred_btn)
-        cl.addLayout(hdr_row)
+        if self._auth_method == "api_key":
+            # ── 인증 자격증명 목록 ──────────────────────────
+            cw, cl = parts.card_widget("자격증명 목록")
+            hdr_row = QHBoxLayout()
+            hdr_row.addStretch()
+            self._add_cred_btn = parts.action_btn("+ 자격증명 추가", ACCENT, ACCENT_HOVER)
+            self._add_cred_btn.clicked.connect(self._add_cred_dialog)
+            self._export_btn = parts.outline_btn("내보내기 (암호화)")
+            self._export_btn.clicked.connect(self._export_creds)
+            hdr_row.addWidget(self._export_btn)
+            hdr_row.addWidget(self._add_cred_btn)
+            cl.addLayout(hdr_row)
 
-        self._cred_table = self._make_cred_table()
-        cl.addWidget(self._cred_table)
-        bl.addWidget(cw)
+            self._cred_table = self._make_cred_table()
+            cl.addWidget(self._cred_table)
+            bl.addWidget(cw)
 
-        self._seed()
+            self._seed()
 
-        # ── 로그인 대상 설정 카드 ────────────────────────
-        lc_w, lc_l = parts.card_widget("로그인 대상 설정")
+        if self._auth_method == "login":
+            # ── 로그인 대상 설정 카드 ────────────────────────
+            lc_w, lc_l = parts.card_widget("로그인 대상 설정")
 
-        def _field(label, widget, layout):
-            row = QHBoxLayout()
-            row.setSpacing(10)
-            lbl = parts.make_label(label, TEXT_SECONDARY, 12)
-            lbl.setFixedWidth(90)
-            row.addWidget(lbl)
-            row.addWidget(widget, 1)
-            layout.addLayout(row)
+            def _field(label, widget, layout):
+                row = QHBoxLayout()
+                row.setSpacing(10)
+                lbl = parts.make_label(label, TEXT_SECONDARY, 12)
+                lbl.setFixedWidth(90)
+                row.addWidget(lbl)
+                row.addWidget(widget, 1)
+                layout.addLayout(row)
 
-        self._login_url = QLineEdit()
-        self._login_url.setPlaceholderText("https://example.com/login")
-        self._login_url.setToolTip("로그인 폼이 있는 페이지 URL")
+            self._login_url = QLineEdit()
+            self._login_url.setPlaceholderText("https://example.com/login")
+            self._login_url.setToolTip("로그인 폼이 있는 페이지 URL")
 
-        self._login_id = QLineEdit()
-        self._login_id.setPlaceholderText("아이디 / 이메일")
+            self._login_id = QLineEdit()
+            self._login_id.setPlaceholderText("아이디 / 이메일")
 
-        self._login_pw = QLineEdit()
-        self._login_pw.setPlaceholderText("비밀번호")
-        self._login_pw.setEchoMode(QLineEdit.EchoMode.Password)
+            self._login_pw = QLineEdit()
+            self._login_pw.setPlaceholderText("비밀번호")
+            self._login_pw.setEchoMode(QLineEdit.EchoMode.Password)
 
-        # 비밀번호 표시/숨기기 토글
-        pw_row = QHBoxLayout()
-        pw_row.setSpacing(6)
-        pw_row.addWidget(self._login_pw, 1)
-        self._pw_toggle = QPushButton("👁")
-        self._pw_toggle.setFixedSize(28, 28)
-        self._pw_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._pw_toggle.setCheckable(True)
-        self._pw_toggle.setStyleSheet(f"""
-                    QPushButton {{
-                        background:{BG_PRIMARY}; color:{TEXT_MUTED};
-                        border:1px solid {BORDER_LIGHT}; border-radius:4px; font-size:14px;
-                    }}
-                    QPushButton:checked {{ color:{ACCENT_LIGHT}; border-color:{ACCENT}; }}
-                    QPushButton:hover {{ background:{BG_HOVER}; }}
-                """)
-        self._pw_toggle.toggled.connect(
-            lambda on: self._login_pw.setEchoMode(
-                QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
+            # 비밀번호 표시/숨기기 토글
+            pw_row = QHBoxLayout()
+            pw_row.setSpacing(6)
+            pw_row.addWidget(self._login_pw, 1)
+            self._pw_toggle = QPushButton("👁")
+            self._pw_toggle.setFixedSize(28, 28)
+            self._pw_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._pw_toggle.setCheckable(True)
+            self._pw_toggle.setStyleSheet(f"""
+                        QPushButton {{
+                            background:{BG_PRIMARY}; color:{TEXT_MUTED};
+                            border:1px solid {BORDER_LIGHT}; border-radius:4px; font-size:14px;
+                        }}
+                        QPushButton:checked {{ color:{ACCENT_LIGHT}; border-color:{ACCENT}; }}
+                        QPushButton:hover {{ background:{BG_HOVER}; }}
+                    """)
+            self._pw_toggle.toggled.connect(
+                lambda on: self._login_pw.setEchoMode(
+                    QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
+                )
             )
-        )
-        pw_row.addWidget(self._pw_toggle)
-        pw_widget = QWidget()
-        pw_widget.setLayout(pw_row)
-        pw_widget.setStyleSheet("background:transparent;")
+            pw_row.addWidget(self._pw_toggle)
+            pw_widget = QWidget()
+            pw_widget.setLayout(pw_row)
+            pw_widget.setStyleSheet("background:transparent;")
 
-        self._login_method = QComboBox()
-        self._login_method.addItems(["Form POST", "JavaScript Click", "OAuth2 Redirect", "Basic Auth Header"])
-        self._login_method.setToolTip("로그인 처리 방식 선택")
+            self._login_method = QComboBox()
+            self._login_method.addItems(["Form POST", "JavaScript Click", "OAuth2 Redirect", "Basic Auth Header"])
+            self._login_method.setToolTip("로그인 처리 방식 선택")
 
-        self._login_selector = QLineEdit()
-        self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
-        self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (Form POST 외 방식에서 사용)")
+            self._login_selector = QLineEdit()
+            self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
+            self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (Form POST 외 방식에서 사용)")
 
-        self._login_success_kw = QLineEdit()
-        self._login_success_kw.setPlaceholderText("예: 마이페이지, dashboard  (로그인 성공 판별 키워드)")
-        self._login_success_kw.setToolTip("로그인 후 응답 페이지에서 찾을 성공 판별 키워드")
+            self._login_success_kw = QLineEdit()
+            self._login_success_kw.setPlaceholderText("예: 마이페이지, dashboard  (로그인 성공 판별 키워드)")
+            self._login_success_kw.setToolTip("로그인 후 응답 페이지에서 찾을 성공 판별 키워드")
 
-        _field("사이트 URL", self._login_url, lc_l)
-        _field("아이디", self._login_id, lc_l)
+            _field("사이트 URL", self._login_url, lc_l)
+            _field("아이디", self._login_id, lc_l)
 
-        # 비밀번호 행은 toggle 버튼 포함이므로 직접 추가
-        pw_outer = QHBoxLayout()
-        pw_outer.setSpacing(10)
-        pw_lbl = parts.make_label("비밀번호", TEXT_SECONDARY, 12)
-        pw_lbl.setFixedWidth(90)
-        pw_outer.addWidget(pw_lbl)
-        pw_outer.addWidget(pw_widget, 1)
-        lc_l.addLayout(pw_outer)
+            # 비밀번호 행은 toggle 버튼 포함이므로 직접 추가
+            pw_outer = QHBoxLayout()
+            pw_outer.setSpacing(10)
+            pw_lbl = parts.make_label("비밀번호", TEXT_SECONDARY, 12)
+            pw_lbl.setFixedWidth(90)
+            pw_outer.addWidget(pw_lbl)
+            pw_outer.addWidget(pw_widget, 1)
+            lc_l.addLayout(pw_outer)
 
-        _field("로그인 방식", self._login_method, lc_l)
-        lc_l.addWidget(Divider())
-        _field("로그인 셀렉터", self._login_selector, lc_l)
-        _field("성공 판별 키워드", self._login_success_kw, lc_l)
-        bl.addWidget(lc_w)
-
-        # ── 연결 상태 & 액션 카드 ────────────────────────
-        ac_w, ac_l = parts.card_widget("연결 상태")
-        status_row = QHBoxLayout()
-        status_row.setSpacing(12)
-
-        self._login_status_dot = parts.make_label("●", TEXT_MUTED, 14)
-        self._login_status_lbl = parts.make_label("미연결", TEXT_MUTED, 12)
-        status_row.addWidget(self._login_status_dot)
-        status_row.addWidget(self._login_status_lbl)
-        status_row.addStretch()
-
-        test_btn = parts.outline_btn("연결 테스트")
-        test_btn.clicked.connect(self._test_login)
-        save_btn = parts.action_btn("저장 & Credentials 등록")
-        save_btn.clicked.connect(self._save_login)
-
-        status_row.addWidget(test_btn)
-        status_row.addWidget(save_btn)
-        ac_l.addLayout(status_row)
-        bl.addWidget(ac_w)
-
-        # ── 저장된 Login Profile 목록 ────────────────────
-        lp_w, lp_l = parts.card_widget("저장된 Login Profile")
-        lp_hdr = QHBoxLayout()
-        lp_hdr.addStretch()
-        clear_all_btn = parts.outline_btn("전체 삭제")
-        clear_all_btn.clicked.connect(self._clear_login_profiles)
-        lp_hdr.addWidget(clear_all_btn)
-        lp_l.addLayout(lp_hdr)
-
-        self._profile_table = EqualSpacingTable(
-            parent=self,
-            row_height=32,
-            col_padding=10,
-            hscroll_handle=50,
-        )
-        self._profile_table.setColumnCount(5)
-        self._profile_table.setHorizontalHeaderLabels(
-            ["사이트 URL", "아이디", "방식", "상태", "액션"])
-        self._profile_table.setFixedHeight(160)
-        lp_l.addWidget(self._profile_table)
-        bl.addWidget(lp_w)
+            _field("로그인 방식", self._login_method, lc_l)
+            lc_l.addWidget(Divider())
+            _field("로그인 셀렉터", self._login_selector, lc_l)
+            _field("성공 판별 키워드", self._login_success_kw, lc_l)
+            bl.addWidget(lc_w)
 
     # ══════════════════════════════════════════════
     #  Login Info — 액션 메서드
@@ -1928,7 +1893,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.stack.addWidget(self.session_page)  # 4
 
         if _blueprint_requires_auth(request_info):
-            self.auth_page = AuthManagerPage()
+            self.auth_page = AuthManagerPage(_blueprint_auth_method(request_info))
             self.stack.addWidget(self.auth_page)  # 5
 
         # GlobalToolbar에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
