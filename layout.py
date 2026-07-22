@@ -18,7 +18,7 @@ from style import (
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QLineEdit, QComboBox,
+    QLabel, QPushButton, QLineEdit,
     QTableWidgetItem, QFrame, QProgressBar,
     QScrollArea, QStackedWidget,
     QSpinBox, QDoubleSpinBox, QMessageBox,
@@ -1675,13 +1675,9 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             pw_widget.setLayout(pw_row)
             pw_widget.setStyleSheet("background:transparent;")
 
-            self._login_method = QComboBox()
-            self._login_method.addItems(["Form POST", "JavaScript Click", "OAuth2 Redirect", "Basic Auth Header"])
-            self._login_method.setToolTip("로그인 처리 방식 선택")
-
             self._login_selector = QLineEdit()
             self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
-            self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (Form POST 외 방식에서 사용)")
+            self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (선택사항)")
 
             self._login_success_kw = QLineEdit()
             self._login_success_kw.setPlaceholderText("예: 마이페이지, dashboard  (로그인 성공 판별 키워드)")
@@ -1699,7 +1695,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             pw_outer.addWidget(pw_widget, 1)
             lc_l.addLayout(pw_outer)
 
-            _field("로그인 방식", self._login_method, lc_l)
             lc_l.addWidget(Divider())
             _field("로그인 셀렉터", self._login_selector, lc_l)
             _field("성공 판별 키워드", self._login_success_kw, lc_l)

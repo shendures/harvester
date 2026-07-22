@@ -509,17 +509,18 @@
                     </div>
 
                     <div id="auth_login_fields">
-                        <div class="login-field-group">
+                        <div class="login-field-group" style="flex: 0 1 220px; min-width: 160px;">
                             <label for="login_id">ID:</label>
                             <input type="text" id="login_id" placeholder="사용자 ID">
                         </div>
-                        <div class="login-field-group">
+                        <div class="login-field-group" style="flex: 0 1 220px; min-width: 160px;">
                             <label for="login_password">PW:</label>
                             <input type="password" id="login_password" placeholder="비밀번호">
                         </div>
                         <div class="login-field-group">
                             <label for="login_method">방식:</label>
                             <select id="login_method">
+                                <option value="">선택하세요</option>
                                 <option value="form_post">Form POST</option>
                                 <option value="js_click">JavaScript Click</option>
                                 <option value="oauth2_redirect">OAuth2 Redirect</option>
@@ -845,7 +846,7 @@
             document.getElementById('auth_method_login').checked = true;
             document.getElementById('login_id').value = '';
             document.getElementById('login_password').value = '';
-            document.getElementById('login_method').value = 'form_post';
+            document.getElementById('login_method').value = '';
             document.getElementById('api_auth_type').value = 'bearer';
             document.getElementById('api_auth_value').value = '';
             document.getElementById('api_auth_header_name').value = 'X-API-Key';
@@ -1336,11 +1337,11 @@
                 } else {
                     loginPasswordInput.value = pw;
                 }
-                loginMethodSelect.value = config.login.method || 'form_post';
+                loginMethodSelect.value = config.login.login_method || '';
             } else {
                 loginIdInput.value = '';
                 loginPasswordInput.value = '';
-                loginMethodSelect.value = 'form_post';
+                loginMethodSelect.value = '';
             }
 
             // API 인증 필드 업데이트: Authorization 헤더가 있으면 값만 역추정, 커스텀 Header는 목록에서 직접 확인
@@ -1476,14 +1477,16 @@
                 // 값이 비어 있으면 빈 문자열 대신 결측값(null)으로 반환
                 const loginId = loginIdRaw === '' ? null : loginIdRaw;
                 const loginPassword = loginPasswordRaw === '' ? null : loginPasswordRaw;
-                const loginMethod = document.getElementById('login_method').value;
+                // "선택하세요"(기본값, value="")가 그대로면 결측값(null)으로 반환
+                const loginMethodRaw = document.getElementById('login_method').value;
+                const loginMethod = loginMethodRaw === '' ? null : loginMethodRaw;
 
                 // Copy용 원본 데이터
-                loginDataForCopy = { id: loginId, password: loginPassword, method: loginMethod };
+                loginDataForCopy = { id: loginId, password: loginPassword, login_method: loginMethod };
 
                 // Display용 마스킹 데이터
                 const maskedPassword = loginPassword === null ? null : (loginPassword.replace(/./g, '*') + ' (Masked for Display)');
-                loginDataForDisplay = { id: loginId, password: maskedPassword, method: loginMethod };
+                loginDataForDisplay = { id: loginId, password: maskedPassword, login_method: loginMethod };
             } else if (authMethod === 'api_key') {
                 const rawValue = document.getElementById('api_auth_value').value.trim();
                 if (rawValue !== '') {
