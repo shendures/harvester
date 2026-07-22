@@ -13,6 +13,14 @@ from scrapy.selector import Selector
 
 PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
 
+# 로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)
+LOGIN_FAILURE_PHRASES = [
+    "비밀번호가 일치하지", "아이디 또는 비밀번호가 올바르지",
+    "아이디/비밀번호를 확인", "로그인에 실패", "계정 정보가 일치하지",
+    "invalid password", "incorrect username or password", "login failed",
+    "invalid credentials",
+]
+
 
 class HtmlSeleniumSpider(scrapy.Spider):
 
@@ -35,6 +43,30 @@ class HtmlSeleniumSpider(scrapy.Spider):
             self.logger.error("❌ 수집 목록 리스트가 main.py로부터 전달되지 않았습니다.")
         else:
             self.request_info = request_info
+
+    def _login_succeeded(self, driver, login_info, pre_login_url, pre_login_cookie_names) -> bool:
+        """
+        로그인 시도 후 성공 여부를 판단합니다.
+        1) conditions.login.successKeywords(수동 지정)가 있으면 그 키워드 존재 여부로만 판단
+        2) 없으면 공통 실패 문구 → 쿠키/비밀번호 입력창/URL 변화 순으로 자동 판별
+        """
+        page_source = driver.page_source
+
+        manual_keywords = login_info.get("successKeywords")
+        if manual_keywords:
+            return any(kw in page_source for kw in manual_keywords)
+
+        page_source_lower = page_source.lower()
+        if any(phrase.lower() in page_source_lower for phrase in LOGIN_FAILURE_PHRASES):
+            return False
+
+        new_cookie_appeared = bool(
+            {c["name"] for c in driver.get_cookies()} - pre_login_cookie_names
+        )
+        password_field_gone = len(driver.find_elements(By.CSS_SELECTOR, "input[type='password']")) == 0
+        url_changed = driver.current_url != pre_login_url
+
+        return new_cookie_appeared or password_field_gone or url_changed
 
     # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
@@ -78,9 +110,16 @@ class HtmlSeleniumSpider(scrapy.Spider):
                     if login_fn is None:
                         self.logger.error(f'❌ 로그인 설정(conditions.login)은 있으나 custom_rules/render/{seq_no}.py에 login()이 정의되어 있지 않습니다.')
                         return
+                    pre_login_url = driver.current_url
+                    pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
                     login_fn(driver, login_info)
 
                 time.sleep(PAGE_LOAD_WAIT_SECONDS)
+
+                if login_info is not None and not self._login_succeeded(
+                        driver, login_info, pre_login_url, pre_login_cookie_names):
+                    self.logger.error(f'❌ 로그인 실패로 판단되어 수집을 중단합니다 (seq_no={seq_no}, url={response.url})')
+                    return
 
                 # 렌더링 결과 추출
                 # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
