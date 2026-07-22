@@ -23,13 +23,14 @@ from spiders.spijson import JsonExtractorSpider
 from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
 
-# 로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)
-LOGIN_FAILURE_PHRASES = [
-    "비밀번호가 일치하지", "아이디 또는 비밀번호가 올바르지",
-    "아이디/비밀번호를 확인", "로그인에 실패", "계정 정보가 일치하지",
-    "invalid password", "incorrect username or password", "login failed",
-    "invalid credentials",
-]
+def get_login_failure_phrases():
+    """로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)"""
+    return [
+        "비밀번호가 일치하지", "아이디 또는 비밀번호가 올바르지",
+        "아이디/비밀번호를 확인", "로그인에 실패", "계정 정보가 일치하지",
+        "invalid password", "incorrect username or password", "login failed",
+        "invalid credentials",
+    ]
 
 def get_json_form(url, payload_yn):
 
@@ -146,7 +147,7 @@ def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_name
         return any(kw in page_source for kw in manual_keywords)
 
     page_source_lower = page_source.lower()
-    if any(phrase.lower() in page_source_lower for phrase in LOGIN_FAILURE_PHRASES):
+    if any(phrase.lower() in page_source_lower for phrase in get_login_failure_phrases()):
         return False
 
     new_cookie_appeared = bool(
