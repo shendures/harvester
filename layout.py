@@ -1649,32 +1649,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             self._login_pw.setPlaceholderText("비밀번호")
             self._login_pw.setEchoMode(QLineEdit.EchoMode.Password)
 
-            # 비밀번호 표시/숨기기 토글
-            pw_row = QHBoxLayout()
-            pw_row.setSpacing(6)
-            pw_row.addWidget(self._login_pw, 1)
-            self._pw_toggle = QPushButton("👁")
-            self._pw_toggle.setFixedSize(28, 28)
-            self._pw_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._pw_toggle.setCheckable(True)
-            self._pw_toggle.setStyleSheet(f"""
-                        QPushButton {{
-                            background:{BG_PRIMARY}; color:{TEXT_MUTED};
-                            border:1px solid {BORDER_LIGHT}; border-radius:4px; font-size:14px;
-                        }}
-                        QPushButton:checked {{ color:{ACCENT_LIGHT}; border-color:{ACCENT}; }}
-                        QPushButton:hover {{ background:{BG_HOVER}; }}
-                    """)
-            self._pw_toggle.toggled.connect(
-                lambda on: self._login_pw.setEchoMode(
-                    QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
-                )
-            )
-            pw_row.addWidget(self._pw_toggle)
-            pw_widget = QWidget()
-            pw_widget.setLayout(pw_row)
-            pw_widget.setStyleSheet("background:transparent;")
-
             self._login_selector = QLineEdit()
             self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
             self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (선택사항)")
@@ -1685,15 +1659,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
             _field("사이트 URL", self._login_url, lc_l)
             _field("아이디", self._login_id, lc_l)
-
-            # 비밀번호 행은 toggle 버튼 포함이므로 직접 추가
-            pw_outer = QHBoxLayout()
-            pw_outer.setSpacing(10)
-            pw_lbl = parts.make_label("비밀번호", TEXT_SECONDARY, 12)
-            pw_lbl.setFixedWidth(90)
-            pw_outer.addWidget(pw_lbl)
-            pw_outer.addWidget(pw_widget, 1)
-            lc_l.addLayout(pw_outer)
+            _field("비밀번호", self._login_pw, lc_l)
 
             lc_l.addWidget(Divider())
             _field("로그인 셀렉터", self._login_selector, lc_l)
