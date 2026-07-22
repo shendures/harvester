@@ -96,7 +96,7 @@ gh pr create --base main --head develop --title "..." --body "..."
 
 **Multi-environment check:** before pushing, if unsure whether the other environment (WSL/Windows) pushed since your last pull, run `git fetch` and check `git log HEAD..origin/<branch>` first.
 
-**Hard rule:** never push new/WIP work directly to `main` or `develop` without explicit user confirmation. Even verified, merged work should reach `develop`/`main` through a PR — the GitHub ruleset enforces this, and a direct push silently relies on owner bypass.
+**Hard rule:** never push new/WIP work directly to `main` or `develop` without explicit user confirmation. Explicit confirmation means waiting for the user's actual reply in a separate turn before running the push — stating intent and executing in the same turn does not satisfy this, even if a saved policy/memory says direct push is the current default; that default only waives the PR requirement, not this confirmation step. Even verified, merged work should reach `develop`/`main` through a PR — the GitHub ruleset enforces this, and a direct push silently relies on owner bypass.
 
 ## 6. Common Fixes
 | Situation | Command |
