@@ -13,6 +13,7 @@ from scrapy.selector import Selector
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -21,6 +22,14 @@ from spiders.spirenderer import HtmlSeleniumSpider
 from spiders.spijson import JsonExtractorSpider
 from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
+
+# 로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)
+LOGIN_FAILURE_PHRASES = [
+    "비밀번호가 일치하지", "아이디 또는 비밀번호가 올바르지",
+    "아이디/비밀번호를 확인", "로그인에 실패", "계정 정보가 일치하지",
+    "invalid password", "incorrect username or password", "login failed",
+    "invalid credentials",
+]
 
 def get_json_form(url, payload_yn):
 
@@ -122,6 +131,32 @@ def set_chrome_webdriver(headless=False):
     driver = webdriver.Chrome(service=service, options=options)
 
     return driver
+
+
+def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names) -> bool:
+    """
+    로그인 시도 후 성공 여부를 판단합니다.
+    1) conditions.login.successKeywords(수동 지정)가 있으면 그 키워드 존재 여부로만 판단
+    2) 없으면 공통 실패 문구 → 쿠키/비밀번호 입력창/URL 변화 순으로 자동 판별
+    """
+    page_source = driver.page_source
+
+    manual_keywords = login_info.get("successKeywords")
+    if manual_keywords:
+        return any(kw in page_source for kw in manual_keywords)
+
+    page_source_lower = page_source.lower()
+    if any(phrase.lower() in page_source_lower for phrase in LOGIN_FAILURE_PHRASES):
+        return False
+
+    new_cookie_appeared = bool(
+        {c["name"] for c in driver.get_cookies()} - pre_login_cookie_names
+    )
+    password_field_gone = len(driver.find_elements(By.CSS_SELECTOR, "input[type='password']")) == 0
+    url_changed = driver.current_url != pre_login_url
+
+    return new_cookie_appeared or password_field_gone or url_changed
+
 
 def get_response_status(response):
     # 리다이렉트 발생 시 response.url은 최종 URL이므로,
