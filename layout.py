@@ -1719,6 +1719,8 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             _field("성공 판별 키워드", self._login_success_kw, lc_l)
             bl.addWidget(lc_w)
 
+        bl.addStretch(1)
+
     # ══════════════════════════════════════════════
     #  Login Info — 액션 메서드
     # ══════════════════════════════════════════════
