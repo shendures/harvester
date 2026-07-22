@@ -1570,18 +1570,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         self._auth_rows = []
         self._build()
 
-    def _seed(self):
-        samples = [
-            {"name": "Naver API", "type": "API Key", "key": "nav_****_xxxx", "expires": "2025-12-31", "status": "유효"},
-            {"name": "Coupang Scraper", "type": "Cookie", "key": "sess=abc****", "expires": "2025-06-01",
-             "status": "만료임박"},
-            {"name": "AWS S3 Export", "type": "OAuth2", "key": "arn:aws:****", "expires": "상시", "status": "유효"},
-            {"name": "Internal DB", "type": "Basic Auth", "key": "admin:****", "expires": "상시", "status": "유효"},
-        ]
-        for s in samples:
-            self._auth_rows.append(s)
-            self._insert_table_row(s)
-
     def _build(self):
 
         root = QVBoxLayout(self)
@@ -1636,8 +1624,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             self._cred_table = self._make_cred_table()
             cl.addWidget(self._cred_table)
             bl.addWidget(cw)
-
-            self._seed()
 
         if self._auth_method == "login":
             # ── 로그인 대상 설정 카드 ────────────────────────
