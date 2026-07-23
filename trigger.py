@@ -608,6 +608,20 @@ class GlobalToolbarTriggers:
             request_info = BlueprintStorage().read()
 
             self.task.update(deepcopy(request_info))
+
+            # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
+            # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
+            auth_conditions = self.task.get("conditions") or {}
+            if (auth_conditions.get("authMethod") == "login"
+                    and self.auth_page is not None
+                    and getattr(self.auth_page, "_auth_method", None) == "login"):
+                auth_conditions["login"] = {
+                    "loginUrl": self.auth_page._login_url.text().strip() or None,
+                    "id": self.auth_page._login_id.text().strip() or None,
+                    "password": self.auth_page._login_pw.text() or None,
+                    "login_method": (auth_conditions.get("login") or {}).get("login_method"),
+                }
+
             self.task["job"]        = "수동 실행"
             self.task["delay"]      = dashboard_page.delay_spin.value()
             self.task["threads"]    = dashboard_page.thread_spin.value()
