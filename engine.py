@@ -168,46 +168,29 @@ def requires_login(conditions: dict) -> bool:
     return (conditions or {}).get("login") is not None
 
 
-def perform_login(driver, login_info: dict, seq_no: str, cached_cookies: list = None):
+def perform_login(driver, login_info: dict, seq_no: str) -> bool:
     """
-    로그인 인증을 수행하고, 이후 재사용할 쿠키 목록을 반환합니다.
+    로그인 인증을 수행합니다.
 
-    - cached_cookies가 주어지면(이전에 이미 이 수집 세션에서 로그인에 성공한 경우):
-      custom_rules/render/{seq_no}.py의 login()을 다시 실행하지 않고, 그 쿠키를
-      현재 페이지에 주입해 재사용합니다 (같은 수집 실행 안에서 매 요청마다
-      아이디/비밀번호를 반복 제출하지 않기 위함). 이 경로는 driver가 호출 전에
-      이미 쿠키의 대상 도메인 페이지로 이동해 있어야 합니다 — Selenium의
-      add_cookie()는 쿠키의 도메인과 현재 페이지 도메인이 일치해야 동작합니다.
-    - cached_cookies가 없으면 custom_rules/render/{seq_no}.py의 login()으로
-      새로 로그인합니다. 이 경로는 login() 자신이 로그인 페이지로 이동하므로
-      driver의 현재 페이지 위치와 무관하게 호출할 수 있습니다(타겟 URL 요청
-      전, 스파이더 시작 시점에 호출하는 것을 전제로 함).
+    이 driver로 이후 모든 타겟 URL을 계속 탐색하는 것을 전제로 합니다 —
+    스파이더 실행(수집 세션) 전체에서 재사용되는 단일 브라우저 세션이므로,
+    로그인에 성공하면 같은 세션이 쿠키를 그대로 유지해 별도로 쿠키를
+    추출·재주입할 필요가 없습니다.
 
     Returns:
-        list[dict] | None — 로그인(또는 쿠키 재사용) 성공 후 쿠키 목록.
-        커스텀 로그인 함수 부재 또는 로그인 실패 시 None.
+        bool — 로그인 성공 여부. custom_rules/render/{seq_no}.py에 login()이
+        정의돼 있지 않거나 로그인에 실패하면 False.
     """
-    if cached_cookies:
-        for cookie in cached_cookies:
-            try:
-                driver.add_cookie(cookie)
-            except Exception as e:
-                logger.warning("[perform_login] 캐시된 쿠키 주입 실패 (name=%s): %s", cookie.get("name"), e)
-        return cached_cookies
-
     login_fn = conf.CustomModuleStorage().load_login(seq_no)
     if login_fn is None:
         logger.error("[perform_login] custom_rules/render/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
-        return None
+        return False
 
     pre_login_url = driver.current_url
     pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
     login_fn(driver, login_info)
 
-    if not check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names):
-        return None
-
-    return driver.get_cookies()
+    return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
 
 
 def perform_logout(seq_no: str) -> None:
