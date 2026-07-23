@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-22 19:12
-- **현황**: 해결 24건 · 미해결 3건 · 보류 1건
+- **최신 갱신**: 2026-07-23 18:18
+- **현황**: 해결 24건 · 미해결 3건 · 보류 2건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -69,6 +69,26 @@
 - **위치**: `generator_conditions.html:558-585`, `spiders/spidetail.py:41-59,80-88`, `spiders/spihtml.py`, `spiders/spirenderer.py:69`
 - **상세**: 백엔드는 `items.root`(HTML/렌더링 스파이더 필수, `spihtml.py`/`spirenderer.py:69`), DETAIL 페이지의 `items.detail`(+ mainFormat=json이면 `items.detail_root`/`items.main_root`, `spidetail.py:41-59,80-88`)처럼 정해진 이름의 키를 기대하는데, 생성기는 이를 일반 Name/Value 목록으로만 받아 어떤 이름을 써야 하는지 안내가 전혀 없음. 오타·누락 시 `parse()`의 넓은 `except Exception`에 조용히 걸려 에러 로그만 남고 수집 결과 0건으로 종료됨(크래시 아님, ㉑과 동일한 실패 양상).
 - **필요 조치**: pageType=DETAIL 선택 시 "root"/"detail"/"detail_root"/"main_root" 전용 입력 필드를 별도로 노출해 예약어를 강제하는 개선 필요.
+
+### ㉙ 로그인 인증 수집의 스케줄러 연동 미구현 — ⏸ 보류 (2026-07-23)
+
+- **위치**: `trigger.py`의 `GlobalToolbarTriggers._actual_start()`(반영됨, `a0be22f`) vs
+  `SchedulerPageTriggers._apply_schedule()`/`_run_now()`(미반영)
+- **상세**: 매뉴얼 "시작" 흐름은 인증 관리 페이지(`AuthManagerPage`)에 입력된 로그인 정보
+  (`loginUrl`/`id`/`password`)를 `_actual_start()`가 `task["conditions"]["login"]`에 실시간
+  반영하도록 구현됨(`request_info.json` 파일에는 쓰지 않고 이번 실행 task에만 반영). 반면
+  스케줄 실행(`_run_now()`)은 `self.sched_task.update(deepcopy(BlueprintStorage().read())); self.sched_task.update(s)`로
+  별도 구성되는데, `s`(등록 시점에 저장된 스케줄 dict)에는 로그인 정보가 전혀 없어 결국
+  `BlueprintStorage().read()`의 `conditions.login`(대개 `id`/`password`가 `null`)만 그대로
+  쓰임 — 로그인 인증이 필요한 수집을 스케줄로 등록해도 실제 자격증명 없이 실행되어 로그인
+  실패로 수집이 중단될 수 있음.
+- **보류 사유·필요 조치**: 스케줄은 무인 실행(이슈 ⑱ 참고)이라 매뉴얼 흐름처럼 "실행 시점의
+  위젯 값"을 읽는 방식은 부적합 — 이미 같은 이유로 정제 규칙(`refine_rules`)이 스케줄 등록
+  시점(`_apply_schedule()`)에 체크박스 상태를 스냅샷해 스케줄 dict에 저장하는 방식을 쓰고
+  있으므로, 로그인 정보도 동일 패턴(등록 시점 스냅샷 → `_save_schedules_to_json()`으로 영속화
+  → `_run_now()`에서 `sched_task["conditions"]["login"]`에 명시적 병합)을 적용하는 방향으로
+  검토됨. DB 저장 자격증명(`db_pw`)도 이미 평문으로 스케줄 JSON에 저장되고 있어 새로운 보안
+  리스크는 아님. 사용자와 우선순위 논의 후 착수 예정이라 별도 조치 없이 보류.
 
 ---
 
