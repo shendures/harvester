@@ -43,9 +43,29 @@ class HtmlSeleniumSpider(scrapy.Spider):
     # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
         try:
+            conditions = self.request_info["conditions"]
+            seq_no = self.request_info["seq_no"]
+
+            # 로그인 인증이 필요하면 타겟 URL을 요청하기 전에 먼저 로그인을 완료합니다.
+            # (로그인 전에 인증이 필요한 URL을 요청하면 서버가 로그인 페이지로
+            # 리다이렉트시켜 실제 타겟 URL을 잃어버리는 문제를 방지하기 위함)
+            if engine.requires_login(conditions):
+                login_info = conditions["login"]
+                driver = engine.set_chrome_webdriver()
+                try:
+                    self._auth_cookies = engine.perform_login(driver, login_info, seq_no)
+                finally:
+                    driver.quit()
+
+                if self._auth_cookies is None:
+                    self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
+                    return
+
+                self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+
             url_list = glean.get_grains(self.request_info)
             for url in url_list:
-                yield engine.get_scrapy_request(url, self.request_info["conditions"], callback=self.parse)
+                yield engine.get_scrapy_request(url, conditions, callback=self.parse)
                 self.logger.info(f'➡️ 요청 예약 완료: URL {url}')
 
         except Exception as e:
@@ -65,9 +85,13 @@ class HtmlSeleniumSpider(scrapy.Spider):
             driver = engine.set_chrome_webdriver()
 
             try:
+                # 인증이 필요한 URL은 리다이렉트를 거쳐 response.url이 로그인 페이지 등으로
+                # 바뀌어 있을 수 있으므로, 리다이렉트 전 원래 요청했던 URL로 이동합니다.
+                target_url = response.meta.get("redirect_urls", [response.url])[0]
+
                 # 웹 페이지 실행
                 time.sleep(PAGE_LOAD_WAIT_SECONDS)
-                driver.get(response.url)
+                driver.get(target_url)
                 time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 conditions = self.request_info["conditions"]
@@ -75,19 +99,21 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 root = conditions["items"]["root"]
                 _items = {key: value for key, value in conditions["items"].items() if key != 'root'}
 
-                # 로그인 인증 여부 체크 → 필요하면 로그인 인증 실행(engine.py에 위임)
+                # 로그인 인증이 필요한 수집은 start_requests()에서 이미 로그인을 완료해
+                # self._auth_cookies에 쿠키가 캐시돼 있습니다 — 여기서는 그 쿠키를
+                # 이번 응답의 driver에 주입만 하면 됩니다(재로그인 없음).
                 if engine.requires_login(conditions):
                     login_info = conditions["login"]
                     auth_cookies = engine.perform_login(
                         driver, login_info, seq_no, cached_cookies=self._auth_cookies
                     )
                     if auth_cookies is None:
-                        self.logger.error(f'❌ 로그인 인증 실패로 수집을 중단합니다 (seq_no={seq_no}, url={response.url})')
+                        self.logger.error(f'❌ 로그인 인증 실패로 수집을 중단합니다 (seq_no={seq_no}, url={target_url})')
                         return
                     self._auth_cookies = auth_cookies
 
-                    # 로그인(또는 쿠키 주입)으로 벗어난 원래 타겟 페이지로 복귀
-                    driver.get(response.url)
+                    # 쿠키 주입으로 페이지 상태가 바뀌었으므로 타겟 페이지를 다시 로드
+                    driver.get(target_url)
                     time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 # 렌더링 결과 추출

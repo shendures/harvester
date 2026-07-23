@@ -172,16 +172,16 @@ def perform_login(driver, login_info: dict, seq_no: str, cached_cookies: list = 
     """
     로그인 인증을 수행하고, 이후 재사용할 쿠키 목록을 반환합니다.
 
-    driver는 호출 전에 이미 대상 도메인의 페이지로 이동해 있어야 합니다 —
-    Selenium의 add_cookie()는 쿠키의 도메인과 현재 페이지 도메인이 일치해야
-    동작하기 때문입니다.
-
     - cached_cookies가 주어지면(이전에 이미 이 수집 세션에서 로그인에 성공한 경우):
       custom_rules/render/{seq_no}.py의 login()을 다시 실행하지 않고, 그 쿠키를
       현재 페이지에 주입해 재사용합니다 (같은 수집 실행 안에서 매 요청마다
-      아이디/비밀번호를 반복 제출하지 않기 위함).
+      아이디/비밀번호를 반복 제출하지 않기 위함). 이 경로는 driver가 호출 전에
+      이미 쿠키의 대상 도메인 페이지로 이동해 있어야 합니다 — Selenium의
+      add_cookie()는 쿠키의 도메인과 현재 페이지 도메인이 일치해야 동작합니다.
     - cached_cookies가 없으면 custom_rules/render/{seq_no}.py의 login()으로
-      새로 로그인합니다.
+      새로 로그인합니다. 이 경로는 login() 자신이 로그인 페이지로 이동하므로
+      driver의 현재 페이지 위치와 무관하게 호출할 수 있습니다(타겟 URL 요청
+      전, 스파이더 시작 시점에 호출하는 것을 전제로 함).
 
     Returns:
         list[dict] | None — 로그인(또는 쿠키 재사용) 성공 후 쿠키 목록.
