@@ -1564,9 +1564,10 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 #  AUTH MANAGER PAGE
 # ══════════════════════════════════════════════════════
 class AuthManagerPage(QWidget, AuthManagerPageTriggers):
-    def __init__(self, auth_method=None):
+    def __init__(self, auth_method=None, login_info=None):
         super().__init__()
         self._auth_method = auth_method
+        self._login_info = login_info or {}
         self._auth_rows = []
         self._build()
 
@@ -1641,13 +1642,16 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             self._login_url = QLineEdit()
             self._login_url.setPlaceholderText("https://example.com/login")
             self._login_url.setToolTip("로그인 폼이 있는 페이지 URL")
+            self._login_url.setText(self._login_info.get("loginUrl") or "")
 
             self._login_id = QLineEdit()
             self._login_id.setPlaceholderText("아이디 / 이메일")
+            self._login_id.setText(self._login_info.get("id") or "")
 
             self._login_pw = QLineEdit()
             self._login_pw.setPlaceholderText("비밀번호")
             self._login_pw.setEchoMode(QLineEdit.EchoMode.Password)
+            self._login_pw.setText(self._login_info.get("password") or "")
 
             self._login_selector = QLineEdit()
             self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
@@ -1842,7 +1846,10 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         self.stack.addWidget(self.session_page)  # 4
 
         if _blueprint_requires_auth(request_info):
-            self.auth_page = AuthManagerPage(_blueprint_auth_method(request_info))
+            self.auth_page = AuthManagerPage(
+                _blueprint_auth_method(request_info),
+                (request_info.get("conditions") or {}).get("login"),
+            )
             self.stack.addWidget(self.auth_page)  # 5
 
         # GlobalToolbar에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
