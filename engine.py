@@ -1,10 +1,12 @@
 import re
 import json
+import logging
 import scrapy
 from scrapy.http import JsonRequest
 from furl import furl
 from typing import List, Dict, Any
 import utility
+import conf
 from http import HTTPStatus
 import glean
 
@@ -22,6 +24,8 @@ from spiders.spirenderer import HtmlSeleniumSpider
 from spiders.spijson import JsonExtractorSpider
 from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
+
+logger = logging.getLogger(__name__)
 
 def get_login_failure_phrases():
     """로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)"""
@@ -157,6 +161,65 @@ def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_name
     url_changed = driver.current_url != pre_login_url
 
     return new_cookie_appeared or password_field_gone or url_changed
+
+
+def requires_login(conditions: dict) -> bool:
+    """이 수집 조건이 로그인 인증을 필요로 하는지 판단합니다 (conditions.login 존재 여부)."""
+    return (conditions or {}).get("login") is not None
+
+
+def perform_login(driver, login_info: dict, seq_no: str, cached_cookies: list = None):
+    """
+    로그인 인증을 수행하고, 이후 재사용할 쿠키 목록을 반환합니다.
+
+    driver는 호출 전에 이미 대상 도메인의 페이지로 이동해 있어야 합니다 —
+    Selenium의 add_cookie()는 쿠키의 도메인과 현재 페이지 도메인이 일치해야
+    동작하기 때문입니다.
+
+    - cached_cookies가 주어지면(이전에 이미 이 수집 세션에서 로그인에 성공한 경우):
+      custom_rules/render/{seq_no}.py의 login()을 다시 실행하지 않고, 그 쿠키를
+      현재 페이지에 주입해 재사용합니다 (같은 수집 실행 안에서 매 요청마다
+      아이디/비밀번호를 반복 제출하지 않기 위함).
+    - cached_cookies가 없으면 custom_rules/render/{seq_no}.py의 login()으로
+      새로 로그인합니다.
+
+    Returns:
+        list[dict] | None — 로그인(또는 쿠키 재사용) 성공 후 쿠키 목록.
+        커스텀 로그인 함수 부재 또는 로그인 실패 시 None.
+    """
+    if cached_cookies:
+        for cookie in cached_cookies:
+            try:
+                driver.add_cookie(cookie)
+            except Exception as e:
+                logger.warning("[perform_login] 캐시된 쿠키 주입 실패 (name=%s): %s", cookie.get("name"), e)
+        return cached_cookies
+
+    login_fn = conf.CustomModuleStorage().load_login(seq_no)
+    if login_fn is None:
+        logger.error("[perform_login] custom_rules/render/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
+        return None
+
+    pre_login_url = driver.current_url
+    pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
+    login_fn(driver, login_info)
+
+    if not check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names):
+        return None
+
+    return driver.get_cookies()
+
+
+def perform_logout(seq_no: str) -> None:
+    """
+    수집 종료 후 로그인 인증 상태를 정리합니다.
+
+    현재는 로컬 정리(로그 기록)만 수행합니다 — 사이트에 실제 로그아웃 요청을
+    보내는 것은 범위 밖입니다(추후 필요 시 custom_rules/render/{seq_no}.py에
+    logout(driver) 훅을 추가하는 방향으로 확장 가능). 캐시된 쿠키 자체를
+    비우는 것은 호출 측(스파이더)의 책임입니다.
+    """
+    logger.info("[perform_logout] seq_no=%s 로그인 세션 로컬 정리", seq_no)
 
 
 def get_response_status(response):

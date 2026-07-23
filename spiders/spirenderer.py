@@ -36,6 +36,10 @@ class HtmlSeleniumSpider(scrapy.Spider):
         else:
             self.request_info = request_info
 
+        # 로그인 성공 후 재사용할 쿠키 캐시 — 이 스파이더 실행(수집 세션) 전체에서
+        # 최초 1회만 실제 로그인하고, 이후 요청들은 이 쿠키를 주입해 재사용합니다.
+        self._auth_cookies = None
+
     # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
         try:
@@ -71,23 +75,20 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 root = conditions["items"]["root"]
                 _items = {key: value for key, value in conditions["items"].items() if key != 'root'}
 
-                # 로그인 기능이 있는 사이트 시 로그인 실행 (custom_rules/render/{seq_no}.py의 login())
-                login_info = conditions["login"]
-                if login_info is not None:
-                    login_fn = conf.CustomModuleStorage().load_login(seq_no)
-                    if login_fn is None:
-                        self.logger.error(f'❌ 로그인 설정(conditions.login)은 있으나 custom_rules/render/{seq_no}.py에 login()이 정의되어 있지 않습니다.')
+                # 로그인 인증 여부 체크 → 필요하면 로그인 인증 실행(engine.py에 위임)
+                if engine.requires_login(conditions):
+                    login_info = conditions["login"]
+                    auth_cookies = engine.perform_login(
+                        driver, login_info, seq_no, cached_cookies=self._auth_cookies
+                    )
+                    if auth_cookies is None:
+                        self.logger.error(f'❌ 로그인 인증 실패로 수집을 중단합니다 (seq_no={seq_no}, url={response.url})')
                         return
-                    pre_login_url = driver.current_url
-                    pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
-                    login_fn(driver, login_info)
+                    self._auth_cookies = auth_cookies
 
-                time.sleep(PAGE_LOAD_WAIT_SECONDS)
-
-                if login_info is not None and not engine.check_login_success(
-                        driver, login_info, pre_login_url, pre_login_cookie_names):
-                    self.logger.error(f'❌ 로그인 실패로 판단되어 수집을 중단합니다 (seq_no={seq_no}, url={response.url})')
-                    return
+                    # 로그인(또는 쿠키 주입)으로 벗어난 원래 타겟 페이지로 복귀
+                    driver.get(response.url)
+                    time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
                 # 렌더링 결과 추출
                 # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
@@ -113,3 +114,9 @@ class HtmlSeleniumSpider(scrapy.Spider):
             self.logger.error('IndexError : %s at %s', e, response.url)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+
+    def closed(self, reason):
+        """스파이더 종료 시 Scrapy가 자동 호출 — 로그인 인증 상태를 로컬 정리(로그아웃)합니다."""
+        if self._auth_cookies is not None:
+            engine.perform_logout(self.request_info.get("seq_no", ""))
+            self._auth_cookies = None
