@@ -4,7 +4,7 @@
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
 
-- **최신 갱신**: 2026-07-22 10:00
+- **최신 갱신**: 2026-07-25 17:40
 
 ---
 
@@ -258,7 +258,7 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **`DataStore`**: 수집된 행(`_rows`), URL 맵(`_url_map_list`), 세션 이력(`_sessions`), 스케줄(`_schedules`)을 메모리에 보관합니다. 메인 프로세스에서만 유효합니다.
 
-- **`BlueprintStorage`**: `request_info.json`을 로드하여 수집 청사진을 관리합니다. 최초 1회 초기화 후 `reload()`로 갱신할 수 있습니다.
+- **`BlueprintStorage`**: `request_info.json`을 로드하여 수집 청사진을 관리합니다. 최초 1회 초기화 후 `reload()`로 갱신할 수 있습니다. 파일 위치(`app_dir`)는 `utility.data_dir()`가 결정합니다 — 운영(exe)은 `%LOCALAPPDATA%`, 개발(`.py`)은 저장소 in-place라 `file_path == default_source`가 되어 seed 복사 없이 저장소 파일을 그대로 읽습니다.
 
 - **`CustomModuleStorage`**: seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을
   로드합니다 (`53978d0`, render/refine 분리 리팩터링으로 옛 `CustomRuleStorage`를
@@ -270,8 +270,11 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
   - `kind="refine"` → `custom_rules/refine/{seq_no}.py`: `refine(data)` 또는
     `refine_row(row)`
 
-  `BlueprintStorage`와 동일한 seed-on-first-run 정책(앱 데이터 폴더에 없으면
-  번들 리소스에서 최초 1회 복사)을 쓰지만, seq_no마다 파일이 다르므로 단일
+  `BlueprintStorage`와 동일한 경로 정책을 씁니다 — 데이터 폴더(`app_dir`)는
+  `utility.data_dir()`가 결정(운영 exe: `%LOCALAPPDATA%`, 개발 `.py`: 저장소
+  in-place)하고, seed-on-first-run은 `file_path != default_source`(=운영)일 때만
+  번들 리소스에서 최초 1회 복사합니다(개발에선 저장소 파일을 직접 실행 → 편집·
+  디버깅 즉시 반영, 같은 경로 self-copy 방지). seq_no마다 파일이 다르므로 단일
   값을 캐싱하지 않고 매 호출마다 새로 읽고 실행합니다. 존재 여부만 확인하는
   `has_refine()`/`has_render()`/`has_login()`은 AST 파싱만으로(exec 없이)
   판단하고, 실제 로드는 `load_refine()`/`load_render()`/`load_login()`이
@@ -326,7 +329,9 @@ Scrapy 다운로더/스파이더 미들웨어 모음.
 
 | 함수 | 역할 |
 |---|---|
-| `resource_path()` | `.py` / `.exe` 환경 모두에서 프로젝트 루트 경로 반환 |
+| `resource_path()` | **배포 기본값(read-only) 루트** 반환 — `.py`는 프로젝트 루트, `.exe`는 번들(`_MEIPASS`). 번들에 포함된 기본 리소스의 위치 |
+| `data_dir(app_name)` | **앱이 실제로 읽고 쓰는 활성 데이터 폴더** 반환 — `.exe`(`sys._MEIPASS` 존재)면 `%LOCALAPPDATA%\<app>`(비-win32는 `~/.config/<app>`), `.py`면 `resource_path()`(저장소 in-place). 개발 시 편집 파일이 곧 실행 파일이 되어 디버깅(브레이크포인트·Step Into) 정상화. `resource_path()`와는 **운영에서만 갈라짐** |
+| `get_app_name(default)` | 앱 데이터 폴더명 결정 — 빌드된 exe는 실행 파일명(`sys.frozen`), `.py`는 기본값 `CollectorApp` |
 | `generate_combined_urls(url_template)` | URL 템플릿의 `${page:1:1:10}` (페이지네이션)과 `${keywords:서울,인천}` (목록 확장) 패턴을 파싱하여 URL 리스트 생성 |
 | `get_target(data, target)` | 중첩 dict/list에서 점(`.`) 경로 또는 재귀 탐색으로 값 추출 |
 | `_calculate_next_run(schedule_info)` | 일간/주간/월간/특정일 스케줄의 다음 실행 시각 계산 |
