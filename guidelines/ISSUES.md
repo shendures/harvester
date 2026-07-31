@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-07-23 18:18
-- **현황**: 해결 24건 · 미해결 3건 · 보류 2건
+- **최신 갱신**: 2026-07-31 14:25
+- **현황**: 해결 25건 · 미해결 3건 · 보류 2건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -13,7 +13,7 @@
 
 ---
 
-## 1. 해결된 이슈 (21건)
+## 1. 해결된 이슈 (25건)
 
 | # | 이슈 | 위치 | 원인 | 해결 | PR/커밋 |
 |---|---|---|---|---|---|
@@ -41,6 +41,7 @@
 | ㉖ | 배포 exe에서 CustomModuleStorage가 seq_no와 무관하게 render/refine 폴더를 항상 생성 | `conf.py:294-309` | `CustomModuleStorage.__init__()`이 인스턴스화 시점에 `render`/`refine` 두 서브폴더를 조건 없이 만들어, 정제 규칙만 있고 렌더링 규칙은 없는 seq_no도 `%LOCALAPPDATA%\CollectorApp\custom_rules\render\` 빈 폴더가 생성됨(실사용 exe에서 확인) | `__init__()`의 선제적 폴더 생성 루프 제거 — `resolve_path()`가 이미 실제 시딩 대상이 있을 때만 온디맨드로 폴더를 만들고 있어 그 로직에만 의존하도록 정리 | `85463ef` |
 | ㉗ | `build-exe.ps1`이 pyinstaller의 정상 INFO 로그를 오류로 오인해 빌드 첫 줄에서 강제 중단 | `build-exe.ps1:28,109` | 스크립트 최상단 `$ErrorActionPreference = "Stop"` 상태에서 `pyinstaller`(native 명령)가 진행 상황을 stderr에 INFO로 기록 — PowerShell 5.1이 stderr 첫 줄을 즉시 종료 오류로 승격시켜 실제로는 정상 진행 중인 빌드를 매번 시작 직후 중단시킴(Windows 실 빌드로 재현 — PR #64 도입 이후 이 스크립트로 완주된 적이 실제로 없었음, 기존 dist 산출물은 스크립트를 거치지 않은 수동 pyinstaller 실행 결과였음) | `pyinstaller` 호출 앞뒤로만 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고, 실패 여부는 `$LASTEXITCODE`로 직접 판별해 0이 아니면 명시적으로 중단 | Windows 실 빌드로 수정 전(첫 INFO 줄에서 `NativeCommandError`로 즉시 중단, exe 미생성) → 수정 후(정상 완주, `dist\DataCrawler.exe` 생성, `EXITCODE=0`) 확인. 이어서 `build-installer.ps1`도 검토 — Inno Setup(ISCC.exe) 자체가 이 머신에 미설치라 실행 검증은 보류 |
 | ㉘ | `build-installer.ps1`의 ISCC.exe 탐색 경로에 사용자별 설치 위치 누락 | `build-installer.ps1:33-36` | winget으로 Inno Setup을 설치(관리자 권한 없이 실행하면 기본이 사용자별 설치)하니 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`에 설치됐는데, 탐색 후보 목록은 시스템 전체 설치 경로(`Program Files`/`Program Files (x86)`)만 확인 — 사용자별 설치 시 항상 "찾을 수 없음"으로 실패 | 탐색 후보 목록에 `$Env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe`를 추가 | Windows 실 빌드 — winget으로 실제 Inno Setup 6.7.3 설치(사용자별 경로 확인) → 수정 전 탐색 실패 재현 → 수정 후 정상 탐색+컴파일, `dist\DataCrawler-Setup.exe`(PE32 GUI, 약 73MB) 생성 확인. `build-exe.ps1`(이슈㉗)→`build-installer.ps1` 전 과정이 실제 Windows 환경에서 처음부터 끝까지 완주됨을 최초로 확인 |
+| ㉚ | 무인(스케줄) 실행에서 0건 수집 시 모달이 프로세스를 막고, 스케줄 재무장(`mark_done`)도 스킵되어 해당 스케줄이 영구 정지 | `trigger.py:_on_finished()`(3793-3841), `trigger.py:mark_done()`(2323) | `total==0` 분기가 `is_unattended` 판별보다 앞에 있어 무인 실행에도 `QMessageBox.exec()`가 떠서 아무도 없는 자리에서 프로세스가 블로킹됨. 게다가 이 분기가 `mark_done()` 호출 전에 `return`해, 다음 회차 `run_at` 재계산·`_register_timer()` 재등록이 아예 일어나지 않아 스케줄이 조용히 죽음(HISTORY 재현: 0건 1회 발생 후 해당 스케줄은 GUI에 "대기"로 보여도 실제로는 다시 실행되지 않음) | ①무인 실행이면 모달 대신 `TrayManager.show_message(..., icon=Warning)`로 대체, ②0건이어도 `mark_done(job_name, total=0)`을 호출해 재무장 보장, ③`mark_done()`이 `total`을 받아 스케줄 dict에 `last_result`(건수·시각)를 기록·영속화, ④`SchedulerPage` 테이블에 "Last Result" 컬럼 추가해 0건 실행을 붉은색으로 표시 — `.agents/product-marketing.md`의 "GUI로 운영 가능" 문구 정정(2026-07-31) 과정에서 코드 검증 중 발견 | - |
 
 ---
 
