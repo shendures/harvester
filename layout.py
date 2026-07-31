@@ -1261,9 +1261,9 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         # ══ Schedule Table ════════════════════════════
         tw, tl = parts.card_widget("등록된 작업")
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
-        self.sched_table.setColumnCount(7)
+        self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(
-            ["NO", "Task Name", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
+            ["NO", "Task Name", "URL", "Execution Time", "Next Runtime", "Status", "Last Result", "Action"])
         tl.addWidget(self.sched_table)
         bl.addWidget(tw, 1)
 
@@ -1347,6 +1347,23 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             si.setForeground(QColor(STATUS_COLOR.get(status, TEXT_MUTED)))
             self.sched_table.setItem(r, 5, si)
 
+            # Last Result — 마지막 실행 수집 건수 (0건이면 경고색으로 강조)
+            last_result = s.get("last_result")
+            if last_result:
+                total    = last_result.get("total", 0)
+                at       = last_result.get("finished_at", "")
+                at_short = at[5:16].replace("T", " ") if len(at) >= 16 else ""
+                if total == 0:
+                    lr_text, lr_color = (f"⚠ 0건 ({at_short})" if at_short else "⚠ 0건"), RED
+                else:
+                    lr_text  = f"{total:,}건 ({at_short})" if at_short else f"{total:,}건"
+                    lr_color = TEXT_MUTED
+            else:
+                lr_text, lr_color = "—", TEXT_MUTED
+            lr_item = QTableWidgetItem(lr_text)
+            lr_item.setForeground(QColor(lr_color))
+            self.sched_table.setItem(r, 6, lr_item)
+
             # Action (수정 / 삭제)
             action_w = QWidget()
             action_w.setStyleSheet("background:transparent;")
@@ -1363,7 +1380,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             del_btn.clicked.connect(lambda _, i=idx: self._delete_schedule(i))
             al.addWidget(edit_btn)
             al.addWidget(del_btn)
-            self.sched_table.setCellWidget(r, 6, action_w)
+            self.sched_table.setCellWidget(r, 7, action_w)
 
 
 # ══════════════════════════════════════════════════════
@@ -1780,9 +1797,9 @@ class TrayManager(QObject, TrayManagerTriggers):
         self.tray_icon.show()
 
 
-    def show_message(self, title, message):
+    def show_message(self, title, message, icon=QSystemTrayIcon.MessageIcon.Information):
         """트레이 알림 메시지 표시"""
-        self.tray_icon.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 3000)
+        self.tray_icon.showMessage(title, message, icon, 3000)
 
 # ══════════════════════════════════════════════════════
 #  MAIN WINDOW

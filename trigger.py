@@ -2320,12 +2320,14 @@ class SchedulerPageTriggers:
             f"color:{ACCENT_LIGHT}; font-size:13px; font-weight:bold; "
             f"background:transparent; border:none;")
 
-    def mark_done(self, job_name: str):
+    def mark_done(self, job_name: str, total: int | None = None):
         """작업 완료 후 interval에 따라 next run_at 자동 계산하여 재스케줄링"""
         now = datetime.now()
         for i, s in enumerate(store.get_schedules()):
             if s["task_nm"] != job_name:
                 continue
+            if total is not None:
+                s["last_result"] = {"total": total, "finished_at": now.isoformat()}
             iv_key = s["schedule"]["interval"]
             run_at = s["schedule"].get("run_at", now)
             if iv_key == "daily":
@@ -3792,33 +3794,49 @@ class MainWindowTriggers:
             url_count = summary.get("url_count", 0)
             skipped   = summary.get("skipped", 0)
             elapsed   = summary.get("elapsed", 0)
+            is_unattended = task.get("job") == "스케줄 실행"
             self.log_manager.append_log(
                 "err",
                 f"크롤링 완료 — 수집된 데이터가 없습니다 "
                 f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
             )
             self.dashboard._update_step_ui(0)
-            msg = QMessageBox(self)
-            msg.setWindowTitle("수집 결과 없음")
-            msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
-                        f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
-                        "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
-            msg.setIcon(QMessageBox.Icon.Warning)
-            msg.setStyleSheet(f"""
-                QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
-                QPushButton {{
-                    background:{ACCENT}; color:white; border:none;
-                    border-radius:5px; padding:5px 14px; font-size:12px;
-                }}
-                QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-            """)
-            msg.exec()
-            if task.get("job") == "수동 실행":
-                self.stack.setCurrentIndex(1)
-                for i, btn in enumerate(self.sidebar._btns):
-                    btn.setChecked(i == 1)
-                self.monitor_page.tab_widget.setCurrentIndex(0)
+            if is_unattended:
+                # 무인(스케줄) 실행 — 모달은 아무도 없는 자리에서 프로세스를
+                # 막아버리므로 띄우지 않고, 트레이 알림으로만 경고한다.
+                self.tray_manager.show_message(
+                    "⚠ 수집 결과 없음",
+                    f"'{task.get('task_nm', '')}' 스케줄 실행이 완료됐지만 수집된 데이터가 0건입니다.\n"
+                    "사이트 구조 변경 여부를 확인해 주세요.",
+                    icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+            else:
+                msg = QMessageBox(self)
+                msg.setWindowTitle("수집 결과 없음")
+                msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                            f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+                            "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setStyleSheet(f"""
+                    QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
+                    QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
+                    QPushButton {{
+                        background:{ACCENT}; color:white; border:none;
+                        border-radius:5px; padding:5px 14px; font-size:12px;
+                    }}
+                    QPushButton:hover {{ background:{ACCENT_HOVER}; }}
+                """)
+                msg.exec()
+                if task.get("job") == "수동 실행":
+                    self.stack.setCurrentIndex(1)
+                    for i, btn in enumerate(self.sidebar._btns):
+                        btn.setChecked(i == 1)
+                    self.monitor_page.tab_widget.setCurrentIndex(0)
+            # 0건이어도 스케줄은 재무장해야 함 — 그렇지 않으면 다음 회차가
+            # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
+            job_name = task.get("task_nm")
+            if job_name:
+                self.schedule_page.mark_done(job_name, total=0)
             # 결과 없어도 대기 큐 소비는 계속 진행
             self._consume_pending_queue()
             return
@@ -3858,7 +3876,7 @@ class MainWindowTriggers:
 
         job_name = task.get("task_nm")
         if job_name:
-            self.schedule_page.mark_done(job_name)
+            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
 
         if task.get("job") == "수동 실행":
             self.stack.setCurrentIndex(1)
