@@ -50,6 +50,7 @@ distinction first tells you which rules apply.
 | `HISTORY.md` | Chronicle of completed work (table format) |
 | `ISSUES.md` | Resolved / unresolved / deferred status of discovered issues |
 | `PREPROCESS.md` | Deep dive dedicated to the refine-rules subsystem — similar documents may appear for other subsystems in the future (see §6) |
+| `BUILD_GUIDE.md` | Deep dive dedicated to the Windows exe/installer build pipeline (`build-exe.ps1`/`build-installer.ps1`) |
 
 - All of them carry a **`최신 갱신` ("Last Updated") field** (see §8).
 - They **cross-reference each other** — e.g. `PREPROCESS.md`'s `관련 문서` ("Related Documents")

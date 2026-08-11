@@ -3,8 +3,9 @@
 > 프로젝트 구조·아키텍처 설명 문서입니다. 함께 관리되는 문서:
 > - **이슈·백로그**: `ISSUES.md`
 > - **진행 이력**: `HISTORY.md`
+> - **exe/설치 프로그램 빌드 절차**: `BUILD_GUIDE.md`
 
-- **최신 갱신**: 2026-07-25 17:40
+- **최신 갱신**: 2026-07-30 16:15
 
 ---
 
@@ -463,4 +464,6 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `python-dotenv` | 환경 변수 로드 |
 | `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `custom_rules/`·`request_info.json`을 선별 번들 |
 | Inno Setup | (Python 패키지 아님, Windows 전용 외부 도구) `build-installer.ps1`이 `build-exe.ps1`로 만든 `dist\{AppName}.exe`를 `installer.iss`로 감싸 설치 프로그램(`dist\{AppName}-Setup.exe`)으로 패키징 — 파일 배포 대신 설치/제거·바로가기 생성을 지원 |
+
+> exe/설치 프로그램 빌드 절차 전체(사전 준비물, 단계별 명령, 트러블슈팅)는 `BUILD_GUIDE.md` 참고.
 
