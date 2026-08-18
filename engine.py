@@ -1,10 +1,12 @@
 import re
 import json
+import logging
 import scrapy
 from scrapy.http import JsonRequest
 from furl import furl
 from typing import List, Dict, Any
 import utility
+import conf
 from http import HTTPStatus
 import glean
 
@@ -13,6 +15,7 @@ from scrapy.selector import Selector
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -21,6 +24,17 @@ from spiders.spirenderer import HtmlSeleniumSpider
 from spiders.spijson import JsonExtractorSpider
 from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
+
+logger = logging.getLogger(__name__)
+
+def get_login_failure_phrases():
+    """로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)"""
+    return [
+        "비밀번호가 일치하지", "아이디 또는 비밀번호가 올바르지",
+        "아이디/비밀번호를 확인", "로그인에 실패", "계정 정보가 일치하지",
+        "invalid password", "incorrect username or password", "login failed",
+        "invalid credentials",
+    ]
 
 def get_json_form(url, payload_yn):
 
@@ -122,6 +136,74 @@ def set_chrome_webdriver(headless=False):
     driver = webdriver.Chrome(service=service, options=options)
 
     return driver
+
+
+def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names) -> bool:
+    """
+    로그인 시도 후 성공 여부를 판단합니다.
+    1) conditions.login.successKeywords(수동 지정)가 있으면 그 키워드 존재 여부로만 판단
+    2) 없으면 공통 실패 문구 → 쿠키/비밀번호 입력창/URL 변화 순으로 자동 판별
+    """
+    page_source = driver.page_source
+
+    manual_keywords = login_info.get("successKeywords")
+    if manual_keywords:
+        return any(kw in page_source for kw in manual_keywords)
+
+    page_source_lower = page_source.lower()
+    if any(phrase.lower() in page_source_lower for phrase in get_login_failure_phrases()):
+        return False
+
+    new_cookie_appeared = bool(
+        {c["name"] for c in driver.get_cookies()} - pre_login_cookie_names
+    )
+    password_field_gone = len(driver.find_elements(By.CSS_SELECTOR, "input[type='password']")) == 0
+    url_changed = driver.current_url != pre_login_url
+
+    return new_cookie_appeared or password_field_gone or url_changed
+
+
+def requires_login(conditions: dict) -> bool:
+    """이 수집 조건이 로그인 인증을 필요로 하는지 판단합니다 (conditions.login 존재 여부)."""
+    return (conditions or {}).get("login") is not None
+
+
+def perform_login(driver, login_info: dict, seq_no: str) -> bool:
+    """
+    로그인 인증을 수행합니다.
+
+    이 driver로 이후 모든 타겟 URL을 계속 탐색하는 것을 전제로 합니다 —
+    스파이더 실행(수집 세션) 전체에서 재사용되는 단일 브라우저 세션이므로,
+    로그인에 성공하면 같은 세션이 쿠키를 그대로 유지해 별도로 쿠키를
+    추출·재주입할 필요가 없습니다.
+
+    Returns:
+        bool — 로그인 성공 여부. custom_rules/render/{seq_no}.py에 login()이
+        정의돼 있지 않거나 로그인에 실패하면 False.
+    """
+    login_fn = conf.CustomModuleStorage().load_login(seq_no)
+    if login_fn is None:
+        logger.error("[perform_login] custom_rules/render/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
+        return False
+
+    pre_login_url = driver.current_url
+    pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
+    login_fn(driver, login_info)
+
+    return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
+
+
+def perform_logout(seq_no: str) -> None:
+    """
+    수집 종료 후 로그인 인증 상태를 정리합니다.
+
+    현재는 로컬 정리(로그 기록)만 수행합니다 — 사이트에 실제 로그아웃 요청을
+    보내는 것은 범위 밖입니다(추후 필요 시 custom_rules/render/{seq_no}.py에
+    logout(driver) 훅을 추가하는 방향으로 확장 가능). 캐시된 쿠키 자체를
+    비우는 것은 호출 측(스파이더)의 책임입니다.
+    """
+    logger.info("[perform_logout] seq_no=%s 로그인 세션 로컬 정리", seq_no)
+
 
 def get_response_status(response):
     # 리다이렉트 발생 시 response.url은 최종 URL이므로,

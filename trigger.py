@@ -83,6 +83,17 @@ SCHEDULED_REFINE_RULES = {
     "cast_numeric":     False,
 }
 
+# "새 스케줄 등록"의 "저장 방식" 콤보 표시 문자열 → 내부 canonical 값 매핑.
+# 구버전 schedules.json(필드 도입 이전)이나 "선택하세요" 잔존값 등 알 수 없는
+# 값은 모두 "new"로 폴백한다 — 기존 파일/DB를 절대 건드리지 않는 가장
+# 비파괴적인 기본 동작이기 때문.
+_SAVE_TYPE_MAP = {"새로 만들기": "new", "덮어쓰기": "overwrite", "추가하기": "append"}
+
+
+def _normalize_save_type(raw):
+    """schedule_save_type 원문자열을 canonical 값("new"/"overwrite"/"append")으로 정규화."""
+    return _SAVE_TYPE_MAP.get((raw or "").strip(), "new")
+
 # 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
 # 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPage "②
 # 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
@@ -608,6 +619,20 @@ class GlobalToolbarTriggers:
             request_info = BlueprintStorage().read()
 
             self.task.update(deepcopy(request_info))
+
+            # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
+            # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
+            auth_conditions = self.task.get("conditions") or {}
+            if (auth_conditions.get("authMethod") == "login"
+                    and self.auth_page is not None
+                    and getattr(self.auth_page, "_auth_method", None) == "login"):
+                auth_conditions["login"] = {
+                    "loginUrl": self.auth_page._login_url.text().strip() or None,
+                    "id": self.auth_page._login_id.text().strip() or None,
+                    "password": self.auth_page._login_pw.text() or None,
+                    "login_method": (auth_conditions.get("login") or {}).get("login_method"),
+                }
+
             self.task["job"]        = "수동 실행"
             self.task["delay"]      = dashboard_page.delay_spin.value()
             self.task["threads"]    = dashboard_page.thread_spin.value()
@@ -1759,7 +1784,7 @@ class MonitorPageTriggers:
         dlg.adjustSize()
         dlg.exec()
 
-    def _extract_result_table(self, source: str, silent: bool = False):
+    def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None):
         """
         source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
         호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
@@ -1769,6 +1794,11 @@ class MonitorPageTriggers:
             _run_refine() 폴백을 호출하지 않습니다 — 호출부가 이미 알맞은 고정
             규칙으로 _run_refine()을 실행한 뒤이므로, 여기서 화면 상태 기반으로
             다시 실행하면 무인 실행 취지에 어긋납니다.
+        extract_override: 전달되면 self.output_info["extract"] 대신 이 dict를 저장
+            목적지/DB 접속정보 소스로 사용합니다(스케줄 자신의 저장 설정 — 대시보드의
+            실시간 output_info와는 무관). 이 경우 "schedule_save_type"(새로 만들기/
+            덮어쓰기/추가하기)에 따라 모달 없이 결정론적으로 저장합니다. None이면
+            (수동 추출 버튼 등) 기존과 동일하게 self.output_info와 확인 모달을 사용합니다.
         """
         lm = getattr(self.window(), 'log_manager', None)
 
@@ -1793,43 +1823,52 @@ class MonitorPageTriggers:
                 return
         headers = list(data[0].keys())
 
+        extract_cfg = extract_override if extract_override is not None else self.output_info["extract"]
+        save_type = _normalize_save_type(extract_cfg.get("schedule_save_type")) if extract_override is not None else None
+
         try:
-            if self.output_info["extract"]["file"]["enabled"] is True:
-                file_path   = self.output_info["extract"]["file"]["file_path"]
-                file_name   = self.output_info["extract"]["file"]["file_name"]
-                file_format = self.output_info["extract"]["file"]["file_format"]
+            if extract_cfg["file"]["enabled"] is True:
+                file_path   = extract_cfg["file"]["file_path"]
+                file_name   = extract_cfg["file"]["file_name"]
+                file_format = extract_cfg["file"]["file_format"]
 
                 if file_format == "CSV":
-                    delimiter = self.output_info["extract"]["file"]["file_delimiter"]
-                    final_file_name = file_name
-                    if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
-                        count = 1
-                        while True:
-                            new_file_name = f"{file_name} ({count})"
-                            if not os.path.exists(os.path.join(file_path, f"{new_file_name}.{file_format}")):
-                                break
-                            count += 1
-                        final_file_name = new_file_name
-                    with open(os.path.join(file_path, f"{final_file_name}.csv"),
-                              mode='w', encoding='utf-8-sig', newline='') as f:
-                        writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
-                        writer.writeheader()
-                        writer.writerows(data)
+                    delimiter = extract_cfg["file"]["file_delimiter"]
+                    if save_type is None:
+                        final_file_name = file_name
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
+                            count = 1
+                            while True:
+                                new_file_name = f"{file_name} ({count})"
+                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.{file_format}")):
+                                    break
+                                count += 1
+                            final_file_name = new_file_name
+                        with open(os.path.join(file_path, f"{final_file_name}.csv"),
+                                  mode='w', encoding='utf-8-sig', newline='') as f:
+                            writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
+                            writer.writeheader()
+                            writer.writerows(data)
+                    else:
+                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type)
 
                 elif file_format == "JSON":
-                    if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
-                        reply = QMessageBox.question(
-                            self, '덮어쓰기 확인',
-                            f"'{file_name}.{file_format}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?",
-                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                            QMessageBox.StandardButton.No
-                        )
-                        if reply == QMessageBox.StandardButton.No:
-                            return
-                    with open(os.path.join(file_path, f"{file_name}.json"), 'w', encoding='utf-8') as f:
-                        json.dump(data, f, ensure_ascii=False, indent=4)
+                    if save_type is None:
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
+                            reply = QMessageBox.question(
+                                self, '덮어쓰기 확인',
+                                f"'{file_name}.{file_format}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No
+                            )
+                            if reply == QMessageBox.StandardButton.No:
+                                return
+                        with open(os.path.join(file_path, f"{file_name}.json"), 'w', encoding='utf-8') as f:
+                            json.dump(data, f, ensure_ascii=False, indent=4)
+                    else:
+                        self._write_json_unattended(file_path, file_name, data, save_type, lm)
 
-                is_open_save_path = self.output_info["extract"]["file"]["is_open_save_path"]
+                is_open_save_path = extract_cfg["file"]["is_open_save_path"]
                 if file_path and is_open_save_path:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
@@ -1838,38 +1877,115 @@ class MonitorPageTriggers:
                     else:
                         subprocess.Popen(['xdg-open', file_path])
 
-            elif self.output_info["extract"]["db"]["enabled"] is True:
-                db_info = self.output_info["extract"]["db"]
+            elif extract_cfg["db"]["enabled"] is True:
+                db_info = extract_cfg["db"]
                 try:
-                    is_exist  = db_conn._check_db_table_exists(db_info)
-                    save_mode = 'append'
-                    if is_exist:
-                        msg_box = QMessageBox(self)
-                        msg_box.setWindowTitle("DB 데이터 처리 선택")
-                        msg_box.setText(
-                            f"'{db_info['save_data_nm']}' 테이블이 이미 존재합니다.\n어떻게 처리하시겠습니까?")
-                        msg_box.setIcon(QMessageBox.Icon.Question)
-                        btn_overwrite = msg_box.addButton("덮어쓰기(새로 생성)",
-                                                          QMessageBox.ButtonRole.DestructiveRole)
-                        btn_append    = msg_box.addButton("추가 적재(이어 쓰기)",
-                                                          QMessageBox.ButtonRole.AcceptRole)
-                        msg_box.addButton("취소", QMessageBox.ButtonRole.RejectRole)
-                        msg_box.setDefaultButton(btn_append)
-                        msg_box.exec()
-                        clicked = msg_box.clickedButton()
-                        if clicked == btn_overwrite:
-                            save_mode = 'overwrite'
-                        elif clicked == btn_append:
-                            save_mode = 'append'
-                        else:
-                            return
-                    db_conn.save_db(db_info, data, mode=save_mode)
+                    if save_type is None:
+                        is_exist  = db_conn._check_db_table_exists(db_info)
+                        save_mode = 'append'
+                        if is_exist:
+                            msg_box = QMessageBox(self)
+                            msg_box.setWindowTitle("DB 데이터 처리 선택")
+                            msg_box.setText(
+                                f"'{db_info['save_data_nm']}' 테이블이 이미 존재합니다.\n어떻게 처리하시겠습니까?")
+                            msg_box.setIcon(QMessageBox.Icon.Question)
+                            btn_overwrite = msg_box.addButton("덮어쓰기(새로 생성)",
+                                                              QMessageBox.ButtonRole.DestructiveRole)
+                            btn_append    = msg_box.addButton("추가 적재(이어 쓰기)",
+                                                              QMessageBox.ButtonRole.AcceptRole)
+                            msg_box.addButton("취소", QMessageBox.ButtonRole.RejectRole)
+                            msg_box.setDefaultButton(btn_append)
+                            msg_box.exec()
+                            clicked = msg_box.clickedButton()
+                            if clicked == btn_overwrite:
+                                save_mode = 'overwrite'
+                            elif clicked == btn_append:
+                                save_mode = 'append'
+                            else:
+                                return
+                        db_conn.save_db(db_info, data, mode=save_mode)
+                    else:
+                        self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
                     QMessageBox.critical(
                         self, "DB 저장 실패",
                         f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
         except Exception as e:
             QMessageBox.critical(self, "추출 오류", str(e))
+
+    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
+        full_path = os.path.join(file_path, f"{file_name}.csv")
+        if save_type == "new":
+            final_file_name = file_name
+            if os.path.exists(full_path):
+                count = 1
+                while True:
+                    new_file_name = f"{file_name} ({count})"
+                    if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
+                        break
+                    count += 1
+                final_file_name = new_file_name
+            full_path = os.path.join(file_path, f"{final_file_name}.csv")
+            mode, write_header = 'w', True
+        elif save_type == "overwrite":
+            mode, write_header = 'w', True
+        else:  # "append"
+            write_header = not os.path.exists(full_path)
+            mode = 'a'
+        with open(full_path, mode=mode, encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
+            if write_header:
+                writer.writeheader()
+            writer.writerows(data)
+
+    def _write_json_unattended(self, file_path, file_name, data, save_type, lm):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
+        full_path = os.path.join(file_path, f"{file_name}.json")
+        if save_type == "new" and os.path.exists(full_path):
+            count = 1
+            while True:
+                candidate = os.path.join(file_path, f"{file_name} ({count}).json")
+                if not os.path.exists(candidate):
+                    break
+                count += 1
+            full_path = candidate
+            out_data = data
+        elif save_type == "append" and os.path.exists(full_path):
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+                if isinstance(existing, list):
+                    out_data = existing + data
+                else:
+                    out_data = data
+                    if lm:
+                        lm.append_log("warn", f"'{file_name}.json' 기존 내용이 배열이 아니어서 새 데이터로 대체합니다.")
+            except Exception as e:
+                out_data = data
+                if lm:
+                    lm.append_log("warn", f"'{file_name}.json' 읽기 실패, 새로 씁니다: {e}")
+        else:  # "overwrite", 또는 파일이 없는 "new"/"append"
+            out_data = data
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(out_data, f, ensure_ascii=False, indent=4)
+
+    def _save_db_unattended(self, db_info, data, save_type, lm):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 DB에 모달 없이 저장합니다."""
+        if save_type == "overwrite":
+            db_conn.save_db(db_info, data, mode='overwrite')
+        elif save_type == "append":
+            db_conn.save_db(db_info, data, mode='append')
+        else:  # "new" — 기존 테이블은 건드리지 않고 이름에 접미사를 붙여 새로 생성
+            target = dict(db_info)
+            base_name = target["save_data_nm"]
+            count = 1
+            while db_conn._check_db_table_exists(target):
+                target["save_data_nm"] = f"{base_name}_{count}"
+                count += 1
+            if target["save_data_nm"] != base_name and lm:
+                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{target['save_data_nm']}'(으)로 새로 생성합니다.")
+            db_conn.save_db(target, data, mode='overwrite')
 
 
 # ══════════════════════════════════════════════════════
@@ -2306,12 +2422,14 @@ class SchedulerPageTriggers:
             f"color:{ACCENT_LIGHT}; font-size:13px; font-weight:bold; "
             f"background:transparent; border:none;")
 
-    def mark_done(self, job_name: str):
+    def mark_done(self, job_name: str, total: int | None = None):
         """작업 완료 후 interval에 따라 next run_at 자동 계산하여 재스케줄링"""
         now = datetime.now()
         for i, s in enumerate(store.get_schedules()):
             if s["task_nm"] != job_name:
                 continue
+            if total is not None:
+                s["last_result"] = {"total": total, "finished_at": now.isoformat()}
             iv_key = s["schedule"]["interval"]
             run_at = s["schedule"].get("run_at", now)
             if iv_key == "daily":
@@ -3530,88 +3648,6 @@ class AuthManagerPageTriggers:
         if lm is not None:
             lm.append_log(level, message)
 
-    def _test_login(self):
-        url = self._login_url.text().strip()
-        uid = self._login_id.text().strip()
-        if not url or not uid:
-            self._log_auth("warn", "사이트 URL과 아이디를 입력하세요.")
-            return
-        self._login_status_dot.setStyleSheet(
-            f"color:{AMBER}; font-size:14px; background:transparent; border:none;")
-        self._login_status_lbl.setText("테스트 중...")
-        self._login_status_lbl.setStyleSheet(
-            f"color:{AMBER}; font-size:12px; background:transparent; border:none;")
-        self._log_auth("info", f"연결 테스트 시작: {url}")
-        QTimer.singleShot(1200, lambda: self._on_test_done(url))
-
-    def _on_test_done(self, url):
-        self._login_status_dot.setStyleSheet(
-            f"color:{GREEN}; font-size:14px; background:transparent; border:none;")
-        self._login_status_lbl.setText("연결 성공")
-        self._login_status_lbl.setStyleSheet(
-            f"color:{GREEN}; font-size:12px; background:transparent; border:none;")
-        self._log_auth("ok", f"로그인 페이지 도달 확인: {url}")
-        self._log_auth("ok", f"연결 테스트 성공: {url}")
-
-    def _save_login(self):
-        url    = self._login_url.text().strip()
-        uid    = self._login_id.text().strip()
-        pw     = self._login_pw.text()
-        method = self._login_method.currentText()
-
-        if not url or not uid or not pw:
-            self._log_auth("warn", "URL, 아이디, 비밀번호는 필수 항목입니다.")
-            return
-
-        r = self._profile_table.rowCount()
-        self._profile_table.insertRow(r)
-        vals   = [url, uid, method, "유효"]
-        colors = [ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED, GREEN]
-        for col, (val, color) in enumerate(zip(vals, colors)):
-            item = QTableWidgetItem(val)
-            item.setForeground(QColor(color))
-            self._profile_table.setItem(r, col, item)
-
-        del_btn = QPushButton("삭제")
-        del_btn.setFixedHeight(22)
-        del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        del_btn.setStyleSheet(f"""
-            QPushButton{{background:transparent;color:{RED};border:1px solid {RED};
-            border-radius:4px;padding:0 8px;font-size:11px;}}
-            QPushButton:hover{{background:#7f1d1d;}}
-        """)
-        del_btn.clicked.connect(lambda _, ri=r: self._profile_table.removeRow(ri))
-        dw  = QWidget()
-        dl2 = QHBoxLayout(dw)
-        dl2.setContentsMargins(4, 2, 4, 2)
-        dl2.addWidget(del_btn)
-        self._profile_table.setCellWidget(r, 4, dw)
-
-        masked_pw = pw[:2] + "****"
-        cred = {
-            "name":    f"{uid}@{url.split('//')[-1].split('/')[0]}",
-            "type":    "Cookie" if "Form" in method else "Basic Auth",
-            "key":     masked_pw,
-            "expires": "세션",
-            "status":  "유효",
-        }
-        self._auth_rows.append(cred)
-        self._insert_table_row(cred)
-
-        self._log_auth("ok", f"저장 완료: {uid} → {url}")
-        self._log_auth("ok", f"Login Profile 등록됨: {uid}@{url}")
-
-        self._login_url.clear()
-        self._login_id.clear()
-        self._login_pw.clear()
-        self._login_selector.clear()
-        self._login_success_kw.clear()
-        self._tabs.setCurrentIndex(1)
-
-    def _clear_login_profiles(self):
-        self._profile_table.setRowCount(0)
-        self._log_auth("warn", "Login Profile 전체 삭제됨")
-
     def _add_cred_dialog(self):
         dlg = QDialog(self)
         dlg.setWindowTitle("자격증명 추가")
@@ -3753,7 +3789,14 @@ class MainWindowTriggers:
     def _start_crawl_from_schedule(self, cfg: dict):
         # schedule 키는 워커에 전달할 필요가 없으므로 제거 후 대기 큐 경유
         cfg = dict(cfg)   # 원본 dict 보호 (호출자의 sched_task 변형 방지)
-        cfg.pop("schedule", None)
+        schedule_meta = cfg.pop("schedule", None) or {}
+        # schedule_save_type은 위에서 제거되는 "schedule" 서브딕트 안에 있지만
+        # _on_finished()의 자동 저장 단계에서 필요하다. extract는 그대로 task로
+        # 살아남으므로 여기 얹어 함께 흘려보낸다. extract는 store에 저장된
+        # 스케줄 dict와 같은 객체이므로 얕은 복사 후 추가해 원본을 오염시키지 않는다.
+        if schedule_meta.get("schedule_save_type"):
+            cfg["extract"] = dict(cfg.get("extract", {}))
+            cfg["extract"]["schedule_save_type"] = schedule_meta["schedule_save_type"]
         cfg.setdefault("job", "스케줄 실행")
 
         if self._worker and self._worker.isRunning():
@@ -3860,33 +3903,49 @@ class MainWindowTriggers:
             url_count = summary.get("url_count", 0)
             skipped   = summary.get("skipped", 0)
             elapsed   = summary.get("elapsed", 0)
+            is_unattended = task.get("job") == "스케줄 실행"
             self.log_manager.append_log(
                 "err",
                 f"크롤링 완료 — 수집된 데이터가 없습니다 "
                 f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
             )
             self.dashboard._update_step_ui(0)
-            msg = QMessageBox(self)
-            msg.setWindowTitle("수집 결과 없음")
-            msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
-                        f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
-                        "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
-            msg.setIcon(QMessageBox.Icon.Warning)
-            msg.setStyleSheet(f"""
-                QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
-                QPushButton {{
-                    background:{ACCENT}; color:white; border:none;
-                    border-radius:5px; padding:5px 14px; font-size:12px;
-                }}
-                QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-            """)
-            msg.exec()
-            if task.get("job") == "수동 실행":
-                self.stack.setCurrentIndex(1)
-                for i, btn in enumerate(self.sidebar._btns):
-                    btn.setChecked(i == 1)
-                self.monitor_page.tab_widget.setCurrentIndex(0)
+            if is_unattended:
+                # 무인(스케줄) 실행 — 모달은 아무도 없는 자리에서 프로세스를
+                # 막아버리므로 띄우지 않고, 트레이 알림으로만 경고한다.
+                self.tray_manager.show_message(
+                    "⚠ 수집 결과 없음",
+                    f"'{task.get('task_nm', '')}' 스케줄 실행이 완료됐지만 수집된 데이터가 0건입니다.\n"
+                    "사이트 구조 변경 여부를 확인해 주세요.",
+                    icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+            else:
+                msg = QMessageBox(self)
+                msg.setWindowTitle("수집 결과 없음")
+                msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                            f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+                            "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setStyleSheet(f"""
+                    QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
+                    QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
+                    QPushButton {{
+                        background:{ACCENT}; color:white; border:none;
+                        border-radius:5px; padding:5px 14px; font-size:12px;
+                    }}
+                    QPushButton:hover {{ background:{ACCENT_HOVER}; }}
+                """)
+                msg.exec()
+                if task.get("job") == "수동 실행":
+                    self.stack.setCurrentIndex(1)
+                    for i, btn in enumerate(self.sidebar._btns):
+                        btn.setChecked(i == 1)
+                    self.monitor_page.tab_widget.setCurrentIndex(0)
+            # 0건이어도 스케줄은 재무장해야 함 — 그렇지 않으면 다음 회차가
+            # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
+            job_name = task.get("task_nm")
+            if job_name:
+                self.schedule_page.mark_done(job_name, total=0)
             # 결과 없어도 대기 큐 소비는 계속 진행
             self._consume_pending_queue()
             return
@@ -3918,7 +3977,14 @@ class MainWindowTriggers:
                         rules_override=sched_refine_rules, skip_ui_update=True,
                         fill_value_override=sched_fill_value,
                     )
-                self.monitor_page._extract_result_table(source=auto_save_source, silent=is_unattended)
+                # 무인(스케줄) 실행일 때만 스케줄 자신의 extract 설정(저장 위치/DB
+                # 접속정보/저장 방식)을 강제 주입한다. 수동 실행은 override 없이
+                # 넘겨 기존과 동일하게 self.output_info["extract"]를 그대로 쓴다.
+                self.monitor_page._extract_result_table(
+                    source=auto_save_source,
+                    silent=is_unattended,
+                    extract_override=extract_cfg if is_unattended else None,
+                )
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 
@@ -3926,7 +3992,7 @@ class MainWindowTriggers:
 
         job_name = task.get("task_nm")
         if job_name:
-            self.schedule_page.mark_done(job_name)
+            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
 
         if task.get("job") == "수동 실행":
             self.stack.setCurrentIndex(1)

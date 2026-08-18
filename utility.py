@@ -33,6 +33,28 @@ def get_app_name(default: str = "CollectorApp") -> str:
     return default
 
 
+def data_dir(app_name: Optional[str] = None) -> str:
+    '''
+    앱이 실제로 읽고 쓰는 활성 데이터 폴더 경로를 반환합니다.
+
+    - 운영(빌드된 .exe, sys._MEIPASS 존재): 쓰기 가능한 사용자별 폴더.
+        Windows → %LOCALAPPDATA%\\<app_name>, 그 외 → ~/.config/<app_name>
+    - 개발(.py 실행): 프로젝트(저장소) 경로(resource_path())를 그대로 사용 —
+      편집한 파일이 곧 실행되는 파일이 되어 브레이크포인트·Step Into가 정상 동작하고,
+      seed 복사본이 없어 stale 문제가 발생하지 않습니다.
+
+    resource_path()가 "배포 기본값(read-only) 위치"라면, 이 함수는 "실제로 읽고
+    쓰는 활성 데이터 위치"입니다 — 운영에서만 둘이 갈라집니다.
+    '''
+    if hasattr(sys, '_MEIPASS'):
+        if sys.platform == 'win32':
+            root = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
+        else:
+            root = os.path.join(os.path.expanduser("~"), ".config")
+        return os.path.join(root, app_name or get_app_name())
+    return resource_path()
+
+
 def get_isin_dict(data_dict: dict, key_list: list):
     return {k: v for k, v in data_dict.items() if k in key_list}
 

@@ -36,12 +36,35 @@ class HtmlSeleniumSpider(scrapy.Spider):
         else:
             self.request_info = request_info
 
+        # 이 스파이더 실행(수집 세션) 전체에서 재사용하는 단일 브라우저 세션.
+        # start_requests()에서 생성하고, closed()에서 한 번만 종료합니다 —
+        # 로그인 성공 시 같은 세션이 쿠키를 그대로 유지하므로 요청마다 새
+        # driver를 만들거나 쿠키를 재주입할 필요가 없습니다.
+        self.driver = None
+
     # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
         try:
+            conditions = self.request_info["conditions"]
+            seq_no = self.request_info["seq_no"]
+
+            self.driver = engine.set_chrome_webdriver()
+
+            # 로그인 인증이 필요하면, engine.get_scrapy_request()로 타겟 URL 요청을
+            # 만들기 전에 반드시 먼저 로그인을 완료합니다. (로그인 전에 인증이
+            # 필요한 URL을 요청하면 서버가 로그인 페이지로 리다이렉트시켜 실제
+            # 타겟 URL을 잃어버리는 문제를 방지하기 위함)
+            if engine.requires_login(conditions):
+                login_info = conditions["login"]
+                if not engine.perform_login(self.driver, login_info, seq_no):
+                    self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
+                    return
+
+                self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+
             url_list = glean.get_grains(self.request_info)
             for url in url_list:
-                yield engine.get_scrapy_request(url, self.request_info["conditions"], callback=self.parse)
+                yield engine.get_scrapy_request(url, conditions, callback=self.parse)
                 self.logger.info(f'➡️ 요청 예약 완료: URL {url}')
 
         except Exception as e:
@@ -57,52 +80,48 @@ class HtmlSeleniumSpider(scrapy.Spider):
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
                 return
 
-            # ChromeDriver 객체 생성
-            driver = engine.set_chrome_webdriver()
+            # 인증이 필요한 URL은 리다이렉트를 거쳐 response.url이 로그인 페이지 등으로
+            # 바뀌어 있을 수 있으므로, 리다이렉트 전 원래 요청했던 URL로 이동합니다.
+            target_url = response.meta.get("redirect_urls", [response.url])[0]
 
-            try:
-                # 웹 페이지 실행
-                time.sleep(PAGE_LOAD_WAIT_SECONDS)
-                driver.get(response.url)
-                time.sleep(PAGE_LOAD_WAIT_SECONDS)
+            # 웹 페이지 실행 — 세션 전체에서 재사용하는 self.driver (로그인 상태 유지됨)
+            time.sleep(PAGE_LOAD_WAIT_SECONDS)
+            self.driver.get(target_url)
+            time.sleep(PAGE_LOAD_WAIT_SECONDS)
 
-                conditions = self.request_info["conditions"]
-                seq_no = self.request_info["seq_no"]
-                root = conditions["items"]["root"]
-                _items = {key: value for key, value in conditions["items"].items() if key != 'root'}
+            conditions = self.request_info["conditions"]
+            seq_no = self.request_info["seq_no"]
+            root = conditions["items"]["root"]
+            _items = {key: value for key, value in conditions["items"].items() if key != 'root'}
 
-                # 로그인 기능이 있는 사이트 시 로그인 실행 (custom_rules/render/{seq_no}.py의 login())
-                login_info = conditions["login"]
-                if login_info is not None:
-                    login_fn = conf.CustomModuleStorage().load_login(seq_no)
-                    if login_fn is None:
-                        self.logger.error(f'❌ 로그인 설정(conditions.login)은 있으나 custom_rules/render/{seq_no}.py에 login()이 정의되어 있지 않습니다.')
-                        return
-                    login_fn(driver, login_info)
+            # 렌더링 결과 추출
+            # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
+            # 경우에만 custom_rules/render/{seq_no}.py의 render()를 사용하고, 없으면
+            # 범용 root/items 추출(html 스파이더와 동일한 로직)로 폴백합니다.
+            render_fn = conf.CustomModuleStorage().load_render(seq_no) if conditions.get("rendering") else None
+            if render_fn is not None:
+                self.logger.info(f'ℹ️ custom_rules/render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
+                selectors = self.driver.find_elements(By.XPATH, root)
+                result = render_fn(self.driver, selectors, _items)
+            else:
+                root_selectors = Selector(text=self.driver.page_source).xpath(root)
+                result = engine.get_result(self.request_info, root_selectors, _items)
 
-                time.sleep(PAGE_LOAD_WAIT_SECONDS)
+            # 데이터 처리
+            loader = engine.set_item_loader(response, self.request_info, result)
 
-                # 렌더링 결과 추출
-                # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
-                # 경우에만 custom_rules/render/{seq_no}.py의 render()를 사용하고, 없으면
-                # 범용 root/items 추출(html 스파이더와 동일한 로직)로 폴백합니다.
-                render_fn = conf.CustomModuleStorage().load_render(seq_no) if conditions.get("rendering") else None
-                if render_fn is not None:
-                    self.logger.info(f'ℹ️ custom_rules/render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
-                    selectors = driver.find_elements(By.XPATH, root)
-                    result = render_fn(driver, selectors, _items)
-                else:
-                    root_selectors = Selector(text=driver.page_source).xpath(root)
-                    result = engine.get_result(self.request_info, root_selectors, _items)
-
-                # 데이터 처리
-                loader = engine.set_item_loader(response, self.request_info, result)
-
-                yield loader.load_item()
-            finally:
-                driver.quit()
+            yield loader.load_item()
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+
+    def closed(self, reason):
+        """스파이더 종료 시 Scrapy가 자동 호출 — 로그인 상태 정리 후, 세션 전체에서 재사용한 driver를 한 번만 종료합니다."""
+        if self.driver is not None:
+            conditions = self.request_info.get("conditions") or {}
+            if engine.requires_login(conditions):
+                engine.perform_logout(self.request_info.get("seq_no", ""))
+            self.driver.quit()
+            self.driver = None

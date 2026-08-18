@@ -1,5 +1,4 @@
 import os
-import sys
 import ast
 import json
 import shutil
@@ -124,11 +123,7 @@ class BlueprintStorage:
         if self._initialized:
             return
         self._initialized = True
-        if sys.platform == 'win32':
-            self.root_path = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
-        else:
-            self.root_path = os.path.join(os.path.expanduser("~"), ".config")
-        self.app_dir   = os.path.join(self.root_path, app_name)
+        self.app_dir   = utility.data_dir(app_name)
         self.file_path = os.path.join(self.app_dir, filename)
         self.default_source = os.path.join(utility.resource_path(), filename)
 
@@ -142,7 +137,11 @@ class BlueprintStorage:
     def _initialize_storage(self) -> None:
         try:
             os.makedirs(self.app_dir, exist_ok=True)
-            if not os.path.exists(self.file_path) and os.path.exists(self.default_source):
+            # 개발(.py) 환경에선 file_path == default_source(둘 다 저장소)라 시딩 불필요 —
+            # 같은 경로 복사(SameFileError) 방지 겸, 저장소 파일을 그대로 사용.
+            if (self.file_path != self.default_source
+                    and not os.path.exists(self.file_path)
+                    and os.path.exists(self.default_source)):
                 shutil.copy2(self.default_source, self.file_path)
         except Exception as e:
             logger.error("[BlueprintStorage] 초기화 오류: %s", e)
@@ -296,11 +295,7 @@ class CustomModuleStorage:
         if self._initialized:
             return
         self._initialized = True
-        if sys.platform == 'win32':
-            self.root_path = os.getenv("LOCALAPPDATA", os.path.expanduser("~"))
-        else:
-            self.root_path = os.path.join(os.path.expanduser("~"), ".config")
-        self.app_dir = os.path.join(self.root_path, app_name)
+        self.app_dir = utility.data_dir(app_name)
 
     # ── 경로 해석 ──────────────────────────────────────
     def resolve_path(self, seq_no, kind: str) -> str:
@@ -320,7 +315,10 @@ class CustomModuleStorage:
         file_path      = os.path.join(self.app_dir, "custom_rules", kind, filename)
         default_source = os.path.join(utility.resource_path(), "custom_rules", kind, filename)
 
-        if not os.path.exists(file_path) and os.path.exists(default_source):
+        # 개발(.py) 환경에선 file_path == default_source(둘 다 저장소)라 시딩 불필요 —
+        # 같은 경로 복사(SameFileError) 방지 겸, 저장소 파일을 그대로 사용.
+        if (file_path != default_source
+                and not os.path.exists(file_path) and os.path.exists(default_source)):
             try:
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 shutil.copy2(default_source, file_path)
