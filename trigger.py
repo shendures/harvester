@@ -1869,8 +1869,10 @@ class MonitorPageTriggers:
                         self._write_json_unattended(file_path, file_name, data, save_type, lm)
 
                 # 스케줄(무인) 실행은 저장 폴더를 여는 사람이 없으므로 설정값과
-                # 무관하게 항상 열지 않는다 — 고정값으로 강제.
-                is_open_save_path = extract_cfg["file"]["is_open_save_path"]
+                # 무관하게 항상 열지 않는다 — 고정값으로 강제. 스케줄 자체 저장
+                # 설정(extract_override)에는 이 키가 애초에 없으므로(대시보드
+                # output_info에만 존재) get()으로 안전하게 조회한다.
+                is_open_save_path = extract_cfg["file"].get("is_open_save_path", False)
                 if file_path and is_open_save_path and not silent:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
