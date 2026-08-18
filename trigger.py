@@ -1868,8 +1868,10 @@ class MonitorPageTriggers:
                     else:
                         self._write_json_unattended(file_path, file_name, data, save_type, lm)
 
+                # 스케줄(무인) 실행은 저장 폴더를 여는 사람이 없으므로 설정값과
+                # 무관하게 항상 열지 않는다 — 고정값으로 강제.
                 is_open_save_path = extract_cfg["file"]["is_open_save_path"]
-                if file_path and is_open_save_path:
+                if file_path and is_open_save_path and not silent:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
                     elif sys.platform == 'darwin':
