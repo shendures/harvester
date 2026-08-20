@@ -4,7 +4,7 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 미해결 이슈·백로그는 `ISSUES.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-08-11 16:48
+- **최신 갱신**: 2026-08-19 17:41
 
 ---
 
@@ -121,26 +121,9 @@
 | 2026-07-30 | `<커밋 예정>` | `BUILD_GUIDE.md` 신설 — Windows exe/설치 프로그램 빌드 절차 가이드 | 사용자가 사용자 매뉴얼(PDF) 작성 작업 도중 "exe 파일로 생성하려면 어떻게 해야 하는지" 문의 — 기존에는 `build-exe.ps1`/`build-installer.ps1`의 사용법이 `PROJECT_REPORT.md`(개요)·`ISSUES.md`(이슈㉕·㉗·㉘ 수정 이력)·스크립트 자체 주석에 흩어져 있을 뿐, 단계별로 따라 할 수 있는 단일 사용자용 가이드가 없었음 | `guidelines/BUILD_GUIDE.md` 신설(사전 조건, 1단계 청사진 준비, 2단계 `build-exe.ps1`, 3단계 `build-installer.ps1`, 실행 후 확인, 트러블슈팅 표, 관련 문서) — `DOCUMENTATION_GUIDE.md` §1.2 문서 지도에 등록, `PROJECT_REPORT.md` 상단 "함께 관리되는 문서" 및 §6 의존성 요약 표 아래에 상호 참조 추가 | 두 스크립트(`build-exe.ps1`/`build-installer.ps1`)와 `ISSUES.md`(이슈㉕·㉗·㉘)·`HISTORY.md`(PR #64·#65·#66) 원문을 직접 재확인해 파라미터·동작·트러블슈팅 항목을 작성 — WSL 환경 한계로 실제 Windows 빌드 실행 검증은 미실시 |
 | 2026-08-11 | - (문서 전용, 코드 변경 없음) | 다중 블루프린트(이슈 ⑯ 재설계) 착수 여부 검토 — 착수 보류, 조사 결과만 기록 | 사용자가 "단일 수집→다중 수집 전환"을 새 기능으로 시작할지 문의 — 코드 반영 없이 검토만 요청. 조사 결과: `BlueprintStorage._load()`(`conf.py:150-195`)가 최상위 리스트 2개 이상이면 `_validate()`의 `"url" in list`가 항상 False→빈 dict 폴백(이슈 ⑯ 근본 원인), `layout.py:35-36`의 전역 `request_info = BlueprintStorage().read()`가 앱 전체가 참조하는 단일 진입점, `trigger.py`의 스케줄 `_run_now()`도 모든 스케줄이 동일한 전역 blueprint의 conditions/items를 공유. 다만 `custom_rules/{render,refine}/{seq_no}.py`(`conf.py:301-328` `CustomModuleStorage.resolve_path`)는 이미 seq_no 단위 파일 분리가 돼 있고, `SchedulerPage`의 테이블 기반 N행 관리+영속화 패턴, `worker.py`가 매 수집을 별도 `multiprocessing.Process`로 격리하는 구조(Scrapy `CrawlerProcess`가 프로세스당 1회 `start()` 제약이라 이렇게 격리돼 있음)는 다중 블루프린트 지원의 기존 초석으로 재사용 가능함을 확인 | 설계 검토만 진행 — 데이터 모델은 단일 JSON 배열(리스트 vs dict 모호성이 이슈 ⑯의 원인이므로 지양)보다 `custom_rules`와 동일한 `blueprints/{seq_no}.json` 파일 분리 방식을 권장안으로 제시. "순차 실행"(워커 1개로 큐 처리, 변경 범위 작음) vs "진짜 동시 실행"(`self._worker`→`dict[seq_no, worker]` 등 워커 관리 전면 재작업 필요)이 핵심 갈림길임을 확인. 이어서 "다중 블루프린트로 진행하는 게 맞는 선택인가"를 재질문받아, 실계약 0건·미해결 이슈(㉒㉓㉔㉙)·테스트 0개·`env/database.ini` 평문 API 키 노출 등 더 시급한 항목이 남아있고 마케팅 문서(v5)도 다중 사이트를 "동시 모니터링"이 아닌 "사이트별 별도 프로젝트"로 이미 포지셔닝해 둔 점을 근거로 "지금은 아닐 가능성이 높다"는 의견 제시. 사용자가 이 시점에 착수하지 않고 조사·설계 검토 내용만 본 항목으로 기록해두기로 결정 — 실제 착수 시점은 추후 필요할 때 사용자가 다시 지시 | 코드 변경 없음(문서 전용). 이슈 ⑯은 `ISSUES.md` §2에 계속 ⏸ 보류 상태로 유지 |
 
+| 2026-08-19 | `<커밋 예정>` | 로그인 필요 사이트 수집 아키텍처 검토 및 `custom_rules/` → `render/`·`login/`·`refine/` 재구조화 | 로그인 인증 수집을 `html_render` 외 모든 스파이더로 확장하는 안(브라우저 로그인+쿠키 이관 vs `conditions.headers`에 쿠키 주입)을 여러 차례 검토 — 특히 `spidetail.py`의 3개 요청 생성부 전체에 쿠키를 일관되게 실어야 하는 위험, `RandomUserAgentMiddleware`(요청마다 UA 랜덤 변경)·`RandomCookieMiddleware`와의 충돌로 인한 세션 무효화 리스크를 코드로 확인. 최종적으로 안전성(로그인·수집이 동일 브라우저 세션이라 세션 일관성이 보장되는 기존 `html_render` 방식)을 이유로 스파이더 확장은 하지 않기로 결정. 다만 `login()`/`render()`가 `custom_rules/render/{seq_no}.py` 한 폴더에 혼재해 역할 구분이 안 되는 문제는 남아있어, 로그인 로직 독립 관리를 위한 폴더 재구조화를 요청받음 | `custom_rules/refine/000000.py`→`refine/000000.py`, `custom_rules/render/000010.py`(`render()`만 정의)→`render/000010.py`, `custom_rules/render/{000013,000014,000018}.py`(`login()`만 정의 — 사전 확인 결과 각 파일이 `login()`/`render()` 중 하나만 가져 순수 이동으로 분리 가능했음)→`login/{동일 파일명}.py`로 이동, `custom_rules/` 폴더 삭제(`__init__.py`가 어디서도 패키지로 `import`되지 않음을 확인 후 제거). `conf.CustomModuleStorage._KINDS`에 `"login"` 추가, `resolve_path()`에서 `"custom_rules"` 경로 세그먼트 제거(kind 폴더가 이제 루트/앱데이터 폴더 바로 아래), `has_login()`/`load_login()`이 `login/{seq_no}.py`를 읽도록 변경. `engine.py`/`spiders/spirenderer.py`/`preprocess.py`의 관련 주석·로그 메시지 경로 갱신. `build-exe.ps1`의 스테이징 로직을 `render`/`login`/`refine` 3개 kind 순회 + `custom_rules` 래핑 없이 각 kind를 별도 `--add-data`로 전달하도록 재작성. `.gitignore`를 `custom_rules/`에서 `/render/`·`/refine/`·`/login/`으로 갱신(git 미추적 정책 자체는 유지). `PROJECT_REPORT.md`/`BUILD_GUIDE.md`/`PREPROCESS.md`(§3.1a 전면 갱신)/`.agents/product-marketing.md`의 관련 경로 서술 갱신(`HISTORY.md`/`ISSUES.md`의 과거 항목은 그 시점 기록이므로 보존) | uv venv(Python 3.12)에 PyQt6·selenium 설치 후 `conf.CustomModuleStorage`로 실제 검증 — `has_render`/`has_login`/`has_refine`이 새 폴더 구조에서 정확히 판별되고, `load_login('000013')`/`load_render('000010')`/`load_refine('000000')`가 실제 함수 객체를 반환하며 `resolve_path()`가 `custom_rules` 없이 루트 경로를 정확히 가리킴을 확인(PASS), 존재하지 않는 seq_no(`999999`)는 `None` 반환 확인. `conf.py`/`engine.py`/`preprocess.py`/`spiders/spirenderer.py`는 `py_compile`로 문법 오류 없음 확인. `build-exe.ps1`은 WSL 환경 한계로 Windows 실 빌드 미검증(기존 관례와 동일) — 다음 Windows 빌드 시 확인 필요 |
+
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
 ---
 
-## 현재 브랜치 상태 (2026-07-18 기준)
-
-| 브랜치 | 커밋 | WSL | Windows |
-|---|---|---|---|
-| `main` | `0c43305` (PR #86, 14차 릴리스·문서 전용) | ✅ | 미확인 |
-| `develop` | `0c43305`(내용상 동일) | ✅ | 미확인 |
-
-`main`/`develop`이 PR #86(14차 릴리스, 문서 전용)로 동기화됨. PR #77(10차) 이후
-릴리스 4건(PR #83=11차/`e480b0a`, PR #84=12차/`1f717bf`, PR #85=13차/`4396f52`,
-PR #86=14차/`0c43305`)이 이번 세션에 소급 정리되어 처음으로 `HISTORY.md`에
-기록됨 — PR #84·#85는 각 PR 자체 제목이 번호를 잘못 붙였으나(둘 다 "11차"/"5차"
-자칭) 이 문서의 실제 순번(직전 릴리스 다음 번호)을 기준으로 12차/13차로 정정
-기록. 미실시 release PR 없음.
-`gh pr merge --admin --delete-branch`가 원격 `develop`을 실제로는 지우지
-않아(룰셋 보호로 추정) 매번 로컬만 재생성함. 정제 규칙 UI 전 계열 작업은
-main 반영 완료 — Windows 실 빌드로 최종 확인 필요(WSL 환경 한계로 미실시,
-각 PR 본문 참고).
-
-미결 사항: `git-setup-windows.ps1` untracked 건은 `6bd7490`으로 해소됨.

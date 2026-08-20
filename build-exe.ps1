@@ -2,11 +2,11 @@
 # 사용법: .\build-exe.ps1 -SeqNo 000000
 #
 # 레포 루트의 request_info.json(.gitignore 대상, 배포할 고객의 blueprint)과
-# custom_rules/{render,refine}/{SeqNo}.py를 PyInstaller로 하나의 exe에 담습니다.
+# render/, login/, refine/ 각 폴더의 {SeqNo}.py를 PyInstaller로 하나의 exe에 담습니다.
 #
-# custom_rules/는 여러 고객의 규칙 파일을 함께 보관하는 "개발자용" 폴더입니다
+# render/·login/·refine/은 여러 고객의 규칙 파일을 함께 보관하는 "개발자용" 폴더입니다
 # (guidelines/PREPROCESS.md §3.1a). 그대로 통째로 번들에 넣으면 다른 고객의
-# 정제/렌더링 로직까지 이번 exe에 함께 유출됩니다 — 이 스크립트는 -SeqNo로
+# 정제/렌더링/로그인 로직까지 이번 exe에 함께 유출됩니다 — 이 스크립트는 -SeqNo로
 # 지정한 파일만 골라 임시 스테이징 폴더에 모은 뒤 그 폴더만 --add-data로
 # 넘기는 방식으로 이를 방지합니다.
 #
@@ -21,7 +21,7 @@ param(
     # 데이터 폴더명도 함께 결정합니다(utility.get_app_name()이 sys.executable의
     # 파일명을 읽어 자동으로 맞춥니다). 빌드 후 exe 파일명을 직접 바꾸면 다음 실행부터
     # 앱 데이터 폴더도 그 이름을 따라가므로, 기존에 시딩된 request_info.json/
-    # custom_rules를 못 찾는 것처럼 보일 수 있어 주의가 필요합니다.
+    # render·login·refine을 못 찾는 것처럼 보일 수 있어 주의가 필요합니다.
     [string]$AppName = "CollectorApp"
 )
 
@@ -45,24 +45,23 @@ if ($actualSeqNo -ne $SeqNo) {
     exit 1
 }
 
-# ── 2. 해당 SeqNo의 custom_rules만 스테이징 (다른 고객 파일 유출 방지) ──
+# ── 2. 해당 SeqNo의 render/login/refine 규칙만 스테이징 (다른 고객 파일 유출 방지) ──
 $stagingRoot = Join-Path $repoRoot "_build_staging"
-$stagingCustomRules = Join-Path $stagingRoot "custom_rules"
 if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }
 
-$foundAny = $false
-foreach ($kind in @("render", "refine")) {
-    $srcFile = Join-Path $repoRoot "custom_rules\$kind\$SeqNo.py"
+$foundKinds = @()
+foreach ($kind in @("render", "login", "refine")) {
+    $srcFile = Join-Path $repoRoot "$kind\$SeqNo.py"
     if (Test-Path $srcFile) {
-        $destDir = Join-Path $stagingCustomRules $kind
+        $destDir = Join-Path $stagingRoot $kind
         New-Item -ItemType Directory -Path $destDir -Force | Out-Null
         Copy-Item $srcFile (Join-Path $destDir "$SeqNo.py")
-        Write-Host "포함: custom_rules\$kind\$SeqNo.py"
-        $foundAny = $true
+        Write-Host "포함: $kind\$SeqNo.py"
+        $foundKinds += $kind
     }
 }
-if (-not $foundAny) {
-    Write-Host "경고: SeqNo=$SeqNo 에 해당하는 custom_rules 파일이 없습니다(render/refine 모두). 커스텀 규칙 없이 빌드를 계속합니다."
+if ($foundKinds.Count -eq 0) {
+    Write-Host "경고: SeqNo=$SeqNo 에 해당하는 규칙 파일이 없습니다(render/login/refine 모두). 커스텀 규칙 없이 빌드를 계속합니다."
 }
 
 # ── 3. PyInstaller 실행 ────────────────────────────────────────────
@@ -85,8 +84,8 @@ $addDataArgs = @(
     "--add-data", "$(Join-Path $repoRoot 'spiders');spiders",
     "--add-data", "$iconPath;."
 )
-if ($foundAny) {
-    $addDataArgs += @("--add-data", "$stagingCustomRules;custom_rules")
+foreach ($kind in $foundKinds) {
+    $addDataArgs += @("--add-data", "$(Join-Path $stagingRoot $kind);$kind")
 }
 
 # Scrapy/Twisted 계열은 importlib.metadata로 설치된 패키지 정보를 조회하는데,
@@ -132,4 +131,4 @@ Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "빌드 완료: dist\$AppName.exe"
-Write-Host "최초 실행 시 request_info.json / custom_rules가 %LOCALAPPDATA%\$AppName\ 로 자동 시딩됩니다."
+Write-Host "최초 실행 시 request_info.json / render / login / refine이 %LOCALAPPDATA%\$AppName\ 로 자동 시딩됩니다."

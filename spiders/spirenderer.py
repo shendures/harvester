@@ -8,7 +8,7 @@ from selenium.webdriver.common.by import By
 from scrapy.selector import Selector
 
 # Chrome WebDriver로 렌더링한 페이지를 두 경로로 처리합니다:
-# custom_rules/render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
+# render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
 # 그대로 넘기고, 없으면 driver.page_source를 Selector로 감싸 범용 XPath 추출로 폴백합니다.
 
 PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
@@ -96,11 +96,11 @@ class HtmlSeleniumSpider(scrapy.Spider):
 
             # 렌더링 결과 추출
             # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
-            # 경우에만 custom_rules/render/{seq_no}.py의 render()를 사용하고, 없으면
+            # 경우에만 render/{seq_no}.py의 render()를 사용하고, 없으면
             # 범용 root/items 추출(html 스파이더와 동일한 로직)로 폴백합니다.
             render_fn = conf.CustomModuleStorage().load_render(seq_no) if conditions.get("rendering") else None
             if render_fn is not None:
-                self.logger.info(f'ℹ️ custom_rules/render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
+                self.logger.info(f'ℹ️ render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
                 selectors = self.driver.find_elements(By.XPATH, root)
                 result = render_fn(self.driver, selectors, _items)
             else:

@@ -282,13 +282,14 @@ UI/UX 피드백으로 완전히 제거되었습니다.
 - 파일명: `{seq_no}.py` — `request_info.json`의 `seq_no` 값과 **문자열
   그대로 정확히 일치**해야 함 (예: `seq_no="000000"` → `000000.py`).
 - **런타임/배포 경로**는 `request_info.json`(`BlueprintStorage`)과 같은
-  seed-on-first-run 정책을 따르되, kind(`render`/`refine`)별 서브폴더로
-  나뉩니다 (2026-07-13, `53978d0`):
+  seed-on-first-run 정책을 따르되, kind(`render`/`login`/`refine`)별
+  폴더로 나뉩니다 (2026-07-13, `53978d0`; 2026-08-19에 `login`을 `render`에서
+  분리하고 프로젝트 루트로 이동):
   - 번들 리소스 경로(`utility.resource_path()` 루트, 개발 시 프로젝트 루트 /
-    PyInstaller 빌드 후 `_MEIPASS`) 아래 `custom_rules/refine/{seq_no}.py`에
-    고객별 기본값을 패키징. 정제 단계는 `refine`, 수집(렌더링/로그인) 단계는
-    `render`를 씁니다 — §3.1a 참고.
-  - 앱 데이터 폴더(`LOCALAPPDATA/CollectorApp/custom_rules/refine/` 등)에
+    PyInstaller 빌드 후 `_MEIPASS`) 아래 `refine/{seq_no}.py`에
+    고객별 기본값을 패키징. 정제 단계는 `refine`, 렌더링 단계는 `render`,
+    로그인 단계는 `login`을 씁니다 — §3.1a 참고.
+  - 앱 데이터 폴더(`LOCALAPPDATA/CollectorApp/refine/` 등)에
     파일이 없으면 최초 실행 시 번들 기본값을 그대로 복사(seed)하고, 이후에는
     앱 데이터 폴더 사본을 우선 사용 — 고객 PC에서 직접 수정 가능.
   - 경로 해석·시딩·로드는 `conf.CustomModuleStorage`(`resolve_path()`/
@@ -296,28 +297,33 @@ UI/UX 피드백으로 완전히 제거되었습니다.
     패턴입니다. 이 클래스는 kind별 경로만 알고 있으며, 아래 §3.1a의 개발용
     폴더 구조와 1:1로 대응합니다.
 
-#### 3.1a 개발 시점 관리 폴더: `custom_rules/`
+#### 3.1a 개발 시점 관리 폴더: `render/`·`login/`·`refine/`
 
-레포 루트의 `custom_rules/{kind}/{seq_no}.py`는 **개발자가 여러 고객/블루프린트의
+레포 루트의 `{kind}/{seq_no}.py`는 **개발자가 여러 고객/블루프린트의
 정제·수집 규칙 모듈을 한곳에 모아 작업하는 개발 전용 폴더**입니다. 런타임이
 참조하는 §3.1의 경로와 구조가 그대로 대응합니다(레포 루트 = `utility.resource_path()`
-위치).
+위치). 2026-08-19 이전에는 세 폴더가 `custom_rules/{render,refine}/` 아래
+있었고 로그인은 `render/`에 `render()`와 함께 혼재해 있었으나, 로그인 로직을
+독립적으로 관리하기 위해 프로젝트 루트로 이동하고 `render`에서 `login`을
+분리했습니다.
 
-- `request_info.json`(고객별 로컬 설정)과 마찬가지로 `custom_rules/`도
-  `.gitignore`에 등록되어 **git 미추적**입니다(2026-07-21) — 고객별 규칙
-  코드는 프로그램 개발 자체에 반드시 필요한 항목은 아니라는 판단으로,
-  기존 "코드이므로 이력 관리" 방침(`b5721db`)에서 전환. 로컬 디스크에는
-  그대로 남아 있고 `build-exe.ps1`의 배포 동작에도 영향 없습니다 — 개발자
-  로컬 환경에서 파일로 관리합니다.
+- `request_info.json`(고객별 로컬 설정)과 마찬가지로 `render/`·`login/`·
+  `refine/`도 `.gitignore`에 등록되어 **git 미추적**입니다(2026-07-21) —
+  고객별 규칙 코드는 프로그램 개발 자체에 반드시 필요한 항목은 아니라는
+  판단으로, 기존 "코드이므로 이력 관리" 방침(`b5721db`)에서 전환. 로컬
+  디스크에는 그대로 남아 있고 `build-exe.ps1`의 배포 동작에도 영향
+  없습니다 — 개발자 로컬 환경에서 파일로 관리합니다.
 - `refine/{seq_no}.py`: 정제 단계(`refine()`/`refine_row()`, 메인 GUI
   프로세스에서 실행). 이 문서(§3.2 이하)의 주 대상.
-- `render/{seq_no}.py`: 수집 단계(`render()`/`login()`, Selenium 자식
-  프로세스에서 실행). 함수 계약은 `conf.CustomModuleStorage`의 클래스
+- `render/{seq_no}.py`: 렌더링 단계(`render()`, Selenium 자식 프로세스에서
+  실행).
+- `login/{seq_no}.py`: 로그인 단계(`login(driver, login_info)`, Selenium
+  자식 프로세스에서 실행). 함수 계약은 `conf.CustomModuleStorage`의 클래스
   docstring 참고.
 - **배포**: 특정 고객에게 배포할 때는 `build-exe.ps1 -SeqNo {seq_no}`를
   실행합니다. 이 스크립트가 `request_info.json`의 `seq_no`와 일치하는지
-  검증한 뒤, 해당 seq_no의 `refine/`·`render/` 파일만 골라 임시 스테이징
-  폴더에 모아 `--add-data`로 PyInstaller에 전달합니다 — `custom_rules/`
+  검증한 뒤, 해당 seq_no의 `refine/`·`render/`·`login/` 파일만 골라 임시
+  스테이징 폴더에 모아 `--add-data`로 PyInstaller에 전달합니다 — 이 폴더들
   전체를 그대로 번들에 넣으면 다른 고객의 규칙 파일까지 함께 유출되므로,
   레포 루트로 수동 복사하던 과거 방식 대신 이 스크립트로 seq_no 단위 선별을
   강제합니다(레포 루트 참고).
@@ -377,7 +383,7 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
    `true`로 설정.
 2. **seq_no 확인**: 대상 블루프린트의 `seq_no` 값을 정확히 확인 (문자열
    앞자리 0 유실 등 오타 주의).
-3. **정제 함수 작성**: `custom_rules/refine/{seq_no}.py`에 `refine()` 또는
+3. **정제 함수 작성**: `refine/{seq_no}.py`에 `refine()` 또는
    `refine_row()` 중 로직에 맞는 형태로 작성 (§3.2 계약 준수, Windows
    개발 환경 기준). 이 폴더는 git 미추적(2026-07-21)이므로 커밋 대상이
    아니며, 로컬 디스크에만 보관합니다.
@@ -386,14 +392,14 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
    검증 스크립트는 확인 후 삭제(저장소 커밋 정책과 동일하게 산출물로
    남기지 않음).
 5. **배포 빌드**: `.\build-exe.ps1 -SeqNo {seq_no}`를 실행 — 스크립트가
-   `custom_rules/refine/{seq_no}.py`(있으면 `render/{seq_no}.py`도)와
+   `refine/{seq_no}.py`(있으면 `render/{seq_no}.py`·`login/{seq_no}.py`도)와
    `request_info.json`을 자동으로 골라 exe에 포함시킵니다. 최초 실행 시
    앱 데이터 폴더로 자동 시딩됨.
 6. **GUI 통합 확인**: "② 정제 규칙 설정" 탭 진입 시 경고 팝업이 뜨지
    않는지, "커스텀 정제 규칙 적용" 체크박스가 켜져 있는지, 실제 수집 1회
    실행 후 로그에 `"사용자 정의 규칙 적용됨"` 문구가 남는지,
    결과 데이터가 기대대로 정규화됐는지 확인.
-7. **정리**: 검증용 임시 스크립트/파일 삭제. `custom_rules/refine/{seq_no}.py`
+7. **정리**: 검증용 임시 스크립트/파일 삭제. `refine/{seq_no}.py`
    원본은 유지 — 배포용 스테이징 폴더는 `build-exe.ps1`이 빌드 후 자동
    삭제하므로 별도 정리가 필요 없습니다.
 
@@ -407,11 +413,11 @@ def refine_row(row: dict) -> dict: ...             # 행 단위
 
 **1) `request_info.json`에서 `needs_cleaning: true` 설정**
 
-**2) `custom_rules/refine/000000.py` 작성** (Windows 개발 환경, git 미추적 —
+**2) `refine/000000.py` 작성** (Windows 개발 환경, git 미추적 —
 현재 실제 배포된 내용, `418597f`에서 자릿수 기반 재조합 방식 대신 단순
 치환으로 교체됨)
 ```python
-# custom_rules/refine/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
+# refine/000000.py — seq_no=000000(샤브올데이) 전용 커스텀 정제
 import re
 
 
@@ -425,7 +431,7 @@ def refine_row(row: dict) -> dict:
 **3) 배포 전 단독 검증** (임시, 커밋 안 함)
 ```python
 import importlib.util
-spec = importlib.util.spec_from_file_location("test", "custom_rules/refine/000000.py")
+spec = importlib.util.spec_from_file_location("test", "refine/000000.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 sample = [{"tel": "02)1234-5678", "name": "가게A"}, {"tel": "010)9876-5432", "name": "가게B"}]
@@ -433,14 +439,14 @@ print([m.refine_row(r) for r in sample])
 # → tel이 "02-1234-5678", "010-9876-5432"로 정규화되는지 확인
 ```
 
-**4) 배포**: `.\build-exe.ps1 -SeqNo 000000` 실행 — `custom_rules/refine/000000.py`와
+**4) 배포**: `.\build-exe.ps1 -SeqNo 000000` 실행 — `refine/000000.py`와
 `request_info.json`을 자동으로 골라 exe에 포함.
 
 **5) GUI 통합 확인**: 탭 진입 시 경고 없음 → 수집 1회 실행 →
 `"사용자 정의 규칙 적용됨"` 로그 확인 → 결과의 `tel` 필드
 정규화 확인.
 
-**6) 정리**: 검증 스크립트 삭제. `custom_rules/refine/000000.py` 원본은 유지 —
+**6) 정리**: 검증 스크립트 삭제. `refine/000000.py` 원본은 유지 —
 스테이징 폴더는 빌드 스크립트가 자동 삭제.
 
 ---

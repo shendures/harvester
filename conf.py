@@ -265,23 +265,24 @@ class CustomModuleStorage:
     같은 seq_no라도 kind별로 물리적으로 다른 파일에 둡니다. exec 단위(=장애
     단위)도 함께 분리되어, 한쪽 파일의 버그나 무거운 import가 다른 kind의
     로드에 영향을 주지 않습니다.
-      - kind="render" → custom_rules/render/{seq_no}.py:
-            login(driver, login_info: dict) -> None
+      - kind="render" → render/{seq_no}.py:
             render(driver, selectors, items: dict) -> list[dict]
-      - kind="refine" → custom_rules/refine/{seq_no}.py:
+      - kind="login" → login/{seq_no}.py:
+            login(driver, login_info: dict) -> None
+      - kind="refine" → refine/{seq_no}.py:
             refine(data: list[dict]) -> list[dict]
             refine_row(row: dict) -> dict
 
     앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 kind별 서브폴더
     구성이며, seed-on-first-run 정책도 동일합니다. 번들 리소스 경로
-    (default_source)는 실제 소스가 `custom_rules/{kind}/` 서브폴더에 있으므로
+    (default_source)는 실제 소스가 프로젝트 루트의 `{kind}/` 폴더에 있으므로
     그 하위를 가리킵니다. 파일이 seq_no마다 다르므로 BlueprintStorage처럼
     단일 값을 메모리에 캐싱하지 않고, 매 호출마다 해당 파일을 새로 읽습니다 —
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
     반영됩니다.
     """
     _instance = None
-    _KINDS = ("render", "refine")
+    _KINDS = ("render", "login", "refine")
 
     # ── 싱글턴 ────────────────────────────────────────
     def __new__(cls, *args, **kwargs):
@@ -312,8 +313,8 @@ class CustomModuleStorage:
             raise ValueError(f"지원하지 않는 kind 값입니다: {kind!r} ({self._KINDS}만 지원)")
 
         filename       = f"{seq_no}.py"
-        file_path      = os.path.join(self.app_dir, "custom_rules", kind, filename)
-        default_source = os.path.join(utility.resource_path(), "custom_rules", kind, filename)
+        file_path      = os.path.join(self.app_dir, kind, filename)
+        default_source = os.path.join(utility.resource_path(), kind, filename)
 
         # 개발(.py) 환경에선 file_path == default_source(둘 다 저장소)라 시딩 불필요 —
         # 같은 경로 복사(SameFileError) 방지 겸, 저장소 파일을 그대로 사용.
@@ -361,8 +362,8 @@ class CustomModuleStorage:
         return self._defines(seq_no, "render", "render")
 
     def has_login(self, seq_no) -> bool:
-        """`render/{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "render", "login")
+        """`login/{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
+        return self._defines(seq_no, "login", "login")
 
     # ── 로드 (exec 실행) ────────────────────────────────
     def _load_module(self, seq_no, kind: str):
@@ -423,13 +424,13 @@ class CustomModuleStorage:
 
     def load_login(self, seq_no):
         """
-        `render/{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
+        `login/{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
 
         Returns:
             callable(driver, login_info) -> None | None — 파일이 없거나
             login()이 없으면 None.
         """
-        module = self._load_module(seq_no, "render")
+        module = self._load_module(seq_no, "login")
         if module is None:
             return None
         return getattr(module, "login", None)

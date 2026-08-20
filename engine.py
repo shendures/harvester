@@ -178,12 +178,12 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
     추출·재주입할 필요가 없습니다.
 
     Returns:
-        bool — 로그인 성공 여부. custom_rules/render/{seq_no}.py에 login()이
+        bool — 로그인 성공 여부. login/{seq_no}.py에 login()이
         정의돼 있지 않거나 로그인에 실패하면 False.
     """
     login_fn = conf.CustomModuleStorage().load_login(seq_no)
     if login_fn is None:
-        logger.error("[perform_login] custom_rules/render/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
+        logger.error("[perform_login] login/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
         return False
 
     pre_login_url = driver.current_url
@@ -198,7 +198,7 @@ def perform_logout(seq_no: str) -> None:
     수집 종료 후 로그인 인증 상태를 정리합니다.
 
     현재는 로컬 정리(로그 기록)만 수행합니다 — 사이트에 실제 로그아웃 요청을
-    보내는 것은 범위 밖입니다(추후 필요 시 custom_rules/render/{seq_no}.py에
+    보내는 것은 범위 밖입니다(추후 필요 시 login/{seq_no}.py에
     logout(driver) 훅을 추가하는 방향으로 확장 가능). 캐시된 쿠키 자체를
     비우는 것은 호출 측(스파이더)의 책임입니다.
     """
@@ -237,8 +237,8 @@ def get_response_status(response):
     return response_status
 
 
-# run_login() / get_render_result()의 seq_no 하드코딩 분기는 custom_rules/render/{seq_no}.py의
-# login() / render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
+# run_login() / get_render_result()의 seq_no 하드코딩 분기는 login/{seq_no}.py의
+# login() 훅과 render/{seq_no}.py의 render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
 
 
 def get_result(collect_info, target, _items):

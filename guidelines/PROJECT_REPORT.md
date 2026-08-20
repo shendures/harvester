@@ -62,7 +62,7 @@
 
 [설정 관리]
     request_info.json  →  BlueprintStorage (싱글턴)
-    custom_rules/{render,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
+    {render,login,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
     customized_settings.py (기본값 정의)
     settings.py (Scrapy 설정)
 ```
@@ -181,10 +181,10 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 
 `run_login()`/`get_render_result()`처럼 사이트별(seq_no) 로그인·렌더링 로직을
 `engine.py`에 하드코딩하던 옛 함수들은 제거되었습니다 — 현재는
-`custom_rules/render/{seq_no}.py`의 `login(driver, login_info)`/
-`render(driver, selectors, items)`를 `conf.CustomModuleStorage.load_login()`/
-`load_render()`가 로드해 대체합니다(`engine.py:158` 주석 참고, §데이터 정제
-및 `PREPROCESS.md` §3.1a 참고).
+`login/{seq_no}.py`의 `login(driver, login_info)`와
+`render/{seq_no}.py`의 `render(driver, selectors, items)`를
+`conf.CustomModuleStorage.load_login()`/`load_render()`가 로드해 대체합니다
+(`engine.py:158` 주석 참고, §데이터 정제 및 `PREPROCESS.md` §3.1a 참고).
 
 ---
 
@@ -241,7 +241,7 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **커스텀 정제 규칙 (`custom_rule`, "7번째 규칙")**: 수집물(blueprint)마다 원시
   데이터 형식이 달라 범용 규칙만으로 커버되지 않는 경우를 위한 플러그인 메커니즘.
-  `custom_rules/refine/{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를
+  `refine/{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를
   정의하면 `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에
   전달합니다. 경로 해석·시딩·실제 로드는 `conf.CustomModuleStorage`가
   전담(§`conf.py` 참고). 상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
@@ -263,12 +263,13 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **`CustomModuleStorage`**: seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을
   로드합니다 (`53978d0`, render/refine 분리 리팩터링으로 옛 `CustomRuleStorage`를
-  대체). 수집 단계(Selenium 자식 프로세스)와 정제 단계(메인 GUI 프로세스)는
-  실행 컨텍스트가 달라 `kind` 파라미터(`"render"` / `"refine"`)로 물리적으로
-  다른 서브폴더를 씁니다:
-  - `kind="render"` → `custom_rules/render/{seq_no}.py`: `login(driver, login_info)`,
-    `render(driver, selectors, items)`
-  - `kind="refine"` → `custom_rules/refine/{seq_no}.py`: `refine(data)` 또는
+  대체; 2026-08-19에 render에서 login()을 분리하고 프로젝트 루트로 폴더를
+  이동). 수집 단계(Selenium 자식 프로세스)와 정제 단계(메인 GUI 프로세스)는
+  실행 컨텍스트가 달라 `kind` 파라미터(`"render"` / `"login"` / `"refine"`)로
+  물리적으로 다른 폴더를 씁니다:
+  - `kind="render"` → `render/{seq_no}.py`: `render(driver, selectors, items)`
+  - `kind="login"` → `login/{seq_no}.py`: `login(driver, login_info)`
+  - `kind="refine"` → `refine/{seq_no}.py`: `refine(data)` 또는
     `refine_row(row)`
 
   `BlueprintStorage`와 동일한 경로 정책을 씁니다 — 데이터 폴더(`app_dir`)는
@@ -462,7 +463,7 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `SQLAlchemy` | ORM (DB 추상화) |
 | `furl` | URL 파싱/조작 |
 | `python-dotenv` | 환경 변수 로드 |
-| `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `custom_rules/`·`request_info.json`을 선별 번들 |
+| `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `render/`·`login/`·`refine/`·`request_info.json`을 선별 번들 |
 | Inno Setup | (Python 패키지 아님, Windows 전용 외부 도구) `build-installer.ps1`이 `build-exe.ps1`로 만든 `dist\{AppName}.exe`를 `installer.iss`로 감싸 설치 프로그램(`dist\{AppName}-Setup.exe`)으로 패키징 — 파일 배포 대신 설치/제거·바로가기 생성을 지원 |
 
 > exe/설치 프로그램 빌드 절차 전체(사전 준비물, 단계별 명령, 트러블슈팅)는 `BUILD_GUIDE.md` 참고.
