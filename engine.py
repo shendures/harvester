@@ -16,6 +16,7 @@ from scrapy.selector import Selector
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.remote_connection import RemoteConnection
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -26,6 +27,10 @@ from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
 
 logger = logging.getLogger(__name__)
+
+# 개별 WebDriver 명령(페이지 로드 포함)의 최대 대기 시간 — 기본값은 사실상 무제한이라
+# 사이트 응답이 느리거나 멈추면 perform_login()/parse()가 영영 리턴하지 않게 됨.
+SELENIUM_COMMAND_TIMEOUT_SECONDS = 30
 
 def get_login_failure_phrases():
     """로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)"""
@@ -135,6 +140,12 @@ def set_chrome_webdriver(headless=False):
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
 
+    # RemoteConnection은 driver 생성 시점에 자기 _client_config로 클래스 속성을
+    # 새로 덮어쓰므로, 타임아웃 설정은 반드시 driver 생성 "이후"에 호출해야 함
+    # (생성 전에 호출하면 무시되거나 최초 호출 시 AttributeError 발생).
+    RemoteConnection.set_timeout(SELENIUM_COMMAND_TIMEOUT_SECONDS)
+    driver.set_page_load_timeout(SELENIUM_COMMAND_TIMEOUT_SECONDS)
+
     return driver
 
 
@@ -179,7 +190,7 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
 
     Returns:
         bool — 로그인 성공 여부. login/{seq_no}.py에 login()이
-        정의돼 있지 않거나 로그인에 실패하면 False.
+        정의돼 있지 않거나 로그인에 실패(응답 지연·타임아웃 포함)하면 False.
     """
     login_fn = conf.CustomModuleStorage().load_login(seq_no)
     if login_fn is None:
@@ -188,9 +199,14 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
 
     pre_login_url = driver.current_url
     pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
-    login_fn(driver, login_info)
-
-    return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
+    try:
+        login_fn(driver, login_info)
+        return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
+    except Exception as e:
+        # SELENIUM_COMMAND_TIMEOUT_SECONDS 초과(응답 지연·행) 등으로 로그인
+        # 처리 중 예외가 나면, 이후 수집 자체를 시작하지 않도록 실패로 처리.
+        logger.error("[perform_login] 로그인 처리 중 오류 발생(seq_no=%s): %s", seq_no, e)
+        return False
 
 
 def perform_logout(seq_no: str) -> None:
