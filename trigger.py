@@ -2436,16 +2436,14 @@ class SchedulerPageTriggers:
                 s["last_result"] = {"total": total, "finished_at": now.isoformat()}
             iv_key = s["schedule"]["interval"]
             run_at = s["schedule"].get("run_at", now)
-            if iv_key == "daily":
-                next_run = run_at + timedelta(days=1)
-            elif iv_key == "weekly":
-                next_run = run_at + timedelta(weeks=1)
-            elif iv_key == "monthly":
-                next_run = run_at + timedelta(days=30)
-            else:
+            if iv_key not in self._RECUR_STEP:
                 store.remove_schedule(i)
                 self._refresh_table()
                 return
+            # 대기 큐에 밀려 늦게 실행되는 등 지연이 한 주기를 넘어도 다음 실행
+            # 시각이 과거에 남지 않도록 _advance_to_future()로 한 번 더 보정
+            # (과거에 남으면 _register_timer()가 즉시 재실행시키는 것과 같은 버그).
+            next_run = self._advance_to_future(run_at + self._RECUR_STEP[iv_key], iv_key)
             store.get_schedules()[i]["schedule"]["run_at"] = next_run
             store.update_schedule_status(i, "대기")
             self._register_timer(i)
@@ -2467,6 +2465,24 @@ class SchedulerPageTriggers:
         except Exception as e:
             print(f"[SchedulerPage] 스케줄 저장 실패: {e}")
 
+    _RECUR_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1), "monthly": timedelta(days=30)}
+
+    def _advance_to_future(self, run_at: datetime, iv_key: str) -> datetime:
+        """run_at이 과거 시각이면 iv_key 주기만큼 반복해서 더해 미래 시각으로 당깁니다.
+
+        앱이 꺼져 있는 동안 실행 시각이 지나버린 반복 스케줄을 그대로 두면
+        _register_timer()가 ms=max(0, 음수)=0으로 계산해 앱 기동 직후
+        (시작 버튼을 누르지 않아도) 즉시 실행돼 버리므로, 로드 시점에 다음
+        미래 시각으로 보정합니다.
+        """
+        step = self._RECUR_STEP.get(iv_key)
+        if step is None:
+            return run_at
+        now = datetime.now()
+        while run_at <= now:
+            run_at += step
+        return run_at
+
     def _load_schedules_from_json(self):
         target = self.file_path if os.path.exists(self.file_path) else self.default_source
         if not os.path.exists(target):
@@ -2482,10 +2498,12 @@ class SchedulerPageTriggers:
                     run_at_raw = entry.get("schedule", {}).get("run_at")
                     run_at_dt  = (datetime.fromisoformat(run_at_raw)
                                   if isinstance(run_at_raw, str) else None)
-                    if (entry.get("schedule", {}).get("interval") == "date"
-                            and run_at_dt and run_at_dt < now):
+                    iv_key = entry.get("schedule", {}).get("interval")
+                    if iv_key == "date" and run_at_dt and run_at_dt < now:
                         entry["schedule"]["status"] = "완료"
                         entry["schedule"]["run_at"]  = None
+                    elif run_at_dt and run_at_dt < now and iv_key in self._RECUR_STEP:
+                        entry["schedule"]["run_at"] = self._advance_to_future(run_at_dt, iv_key)
                     else:
                         entry["schedule"]["run_at"] = run_at_dt
                     store.add_schedule(entry)
