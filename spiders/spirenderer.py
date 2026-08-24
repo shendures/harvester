@@ -54,13 +54,8 @@ class HtmlSeleniumSpider(scrapy.Spider):
             # 만들기 전에 반드시 먼저 로그인을 완료합니다. (로그인 전에 인증이
             # 필요한 URL을 요청하면 서버가 로그인 페이지로 리다이렉트시켜 실제
             # 타겟 URL을 잃어버리는 문제를 방지하기 위함)
-            if engine.requires_login(conditions):
-                login_info = conditions["login"]
-                if not engine.perform_login(self.driver, login_info, seq_no):
-                    self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
-                    return
-
-                self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+            if not self._try_login(conditions, seq_no):
+                return
 
             url_list = glean.get_grains(self.request_info)
             for url in url_list:
@@ -69,6 +64,20 @@ class HtmlSeleniumSpider(scrapy.Spider):
 
         except Exception as e:
             self.logger.error('Exception during start_requests: %s', e)
+
+    def _try_login(self, conditions, seq_no) -> bool:
+        """로그인이 필요 없는 사이트는 즉시 True. 필요한 사이트는 login/{seq_no}.py로
+        로그인을 시도하고 성공 여부를 반환합니다(수집 흐름을 계속할지 결정하는 게이트)."""
+        if not engine.requires_login(conditions):
+            return True
+
+        login_info = conditions["login"]
+        if not engine.perform_login(self.driver, login_info, seq_no):
+            self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
+            return False
+
+        self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+        return True
 
     def parse(self, response):
         try:
