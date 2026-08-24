@@ -169,7 +169,13 @@ def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_name
         {c["name"] for c in driver.get_cookies()} - pre_login_cookie_names
     )
     password_field_gone = len(driver.find_elements(By.CSS_SELECTOR, "input[type='password']")) == 0
-    url_changed = driver.current_url != pre_login_url
+    # pre_login_url은 login() 호출 전(driver 생성 직후 "data:," 등 미탐색 상태)이라,
+    # login()이 내부에서 loginUrl로 자체 이동하는 사이트는 로그인 성공 여부와 무관하게
+    # "로그인 페이지 도착"만으로 url_changed가 항상 True가 되어 무의미해짐. loginUrl이
+    # 있으면 "로그인 페이지 자체에서 벗어났는가"로 비교 기준을 보정하고, 없는 사이트
+    # (대상 페이지에서 바로 로그인 박스를 클릭하는 방식)는 기존처럼 pre_login_url을 씀.
+    baseline_url = login_info.get("loginUrl") or pre_login_url
+    url_changed = driver.current_url != baseline_url
 
     return new_cookie_appeared or password_field_gone or url_changed
 
