@@ -137,6 +137,16 @@ def set_chrome_webdriver(headless=False):
         options.add_argument('headless')
     options.add_argument('window-size=1920x1080')
     options.add_argument("disable-gpu")
+
+    # 크롬 네이티브 "알림 허용" 등 권한 요청 팝업 차단(2=차단). 사이트 자체가
+    # DOM으로 그리는 공지사항/이벤트 모달은 이 설정으로 막을 수 없음 —
+    # 그런 경우는 render()/login() 커스텀 스크립트에서 닫기 버튼을 클릭해야 함.
+    options.add_experimental_option("prefs", {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.geolocation": 2,
+    })
+    options.add_argument("--disable-notifications")
+
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
 
