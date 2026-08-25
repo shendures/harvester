@@ -726,7 +726,7 @@ class ClickableRuleRow(QWidget):
 
 
 # ══════════════════════════════════════════════════════
-#  정제 규칙 체크박스 행 빌더 — MonitorPage "② 정제 규칙 설정" 탭과
+#  정제 규칙 체크박스 행 빌더 — MonitorPageSingle "② 정제 규칙 설정" 탭과
 #  스케줄 등록 다이얼로그의 정제 규칙 설정이 공유하는 빌더
 # ══════════════════════════════════════════════════════
 # 이 리스트 순서는 화면 표시(위→아래) 순서일 뿐, preprocess.DataRefiner의 실제
@@ -784,7 +784,7 @@ def build_refine_rule_rows(
         drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
         fit_desc_one_line: True면 컨트롤이 붙는 행(drop_columns/fill_null)의
             설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로 표시되도록 합니다.
-            컨테이너 폭이 넉넉한 호출부(MonitorPage 탭)에서만 켜야 합니다 —
+            컨테이너 폭이 넉넉한 호출부(MonitorPageSingle 탭)에서만 켜야 합니다 —
             폭이 좁게 제한된 호출부(스케줄 등록 패널, 260~400px)에서 켜면
             최소폭 요구가 패널 최대폭을 넘어 레이아웃이 깨질 수 있습니다.
 
@@ -828,7 +828,7 @@ def build_refine_rule_rows(
             f"color:{theme.TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
         )
         # 좁은 컨테이너(스케줄 등록의 정제 규칙 패널 등)에서 텍스트가 잘리지
-        # 않도록 줄바꿈 허용 — MonitorPage 탭처럼 폭이 넉넉한 곳에서도 무해함
+        # 않도록 줄바꿈 허용 — MonitorPageSingle 탭처럼 폭이 넉넉한 곳에서도 무해함
         desc_lbl.setWordWrap(True)
         text_col.addWidget(title_lbl)
         text_col.addWidget(desc_lbl)

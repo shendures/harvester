@@ -73,7 +73,7 @@ $iconPath = Join-Path $repoRoot "combine-harvester.ico"
 # 코드 어디에도 `import pipelines`/`import middlewares` 같은 정적 import가
 # 없어 PyInstaller의 자동 의존성 분석이 이 모듈들을 놓치므로 --add-data로
 # 소스 그대로 번들 루트에 넣어 일반 import 폴백이 찾을 수 있게 합니다.
-# combine-harvester.ico도 --icon(exe 파일 아이콘)과는 별개로 layout.py가
+# combine-harvester.ico도 --icon(exe 파일 아이콘)과는 별개로 layout_single.py가
 # 트레이 아이콘으로 런타임에 파일 경로로 직접 읽으므로 데이터로 필요합니다.
 $addDataArgs = @(
     "--add-data", "$requestInfoPath;.",

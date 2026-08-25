@@ -1,9 +1,11 @@
 # trigger.py
 # 각 페이지 클래스의 기능(액션) 메서드를 Mixin 클래스로 분리 관리합니다.
-# layout.py의 각 클래스가 해당 Mixin을 다중상속하여 메서드를 주입받습니다.
+# layout_single.py/layout_multi.py 양쪽의 각 클래스가 해당 Mixin을 다중상속하여
+# 메서드를 주입받습니다 — 단일 수집 레이아웃과 다중 수집 레이아웃이 이 트리거
+# 스크립트 하나를 공유합니다(파일 끝의 "다중 수집 전용 트리거" 절 참고).
 #
 # MRO(메서드 탐색 순서):  PageClass → QWidget → ... → PageMixin → object
-# QWidget 계열 메서드와 충돌하지 않으며, self.xxx 속성은 layout.py의
+# QWidget 계열 메서드와 충돌하지 않으며, self.xxx 속성은 layout_single.py의
 # _build()에서 이미 생성되어 있으므로 참조 안전합니다.
 
 import os
@@ -95,7 +97,7 @@ def _normalize_save_type(raw):
     return _SAVE_TYPE_MAP.get((raw or "").strip(), "new")
 
 # 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
-# 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPage "②
+# 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPageSingle "②
 # 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
 # "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
 # 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
@@ -183,7 +185,7 @@ class LogViewerDialog(QDialog):
     # ── 로그 수신 (구 LogView.append_log) ───────────────────────────────
     def append_log(self, level: str, message: str) -> None:
         """
-        외부(Worker, GlobalToolbar 등)에서 호출 — 이력 버퍼에 누적하고
+        외부(Worker, GlobalToolbarSingle 등)에서 호출 — 이력 버퍼에 누적하고
         다이얼로그가 열려 있을 때는 뷰어에도 즉시 반영합니다.
         last_log 시그널로 하단 상태바에 실시간 전달합니다.
         """
@@ -541,11 +543,52 @@ class LogViewerDialog(QDialog):
         event.ignore()
 
 
+def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_page,
+                          auth_page, job_name: str) -> None:
+    """
+    실행 태스크(task)에 공통 설정(딜레이/스레드/타임아웃/재시도/UA/쿠키/프록시/
+    추출 설정/로그인 정보 오버라이드)을 채워 넣는다.
+    `GlobalToolbarTriggers._actual_start()`가 self.task를 채울 때 사용하는
+    로직 — 모듈 함수로 분리해 두어 향후 다른 호출부에서도 재사용 가능하다.
+    """
+    # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
+    # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
+    auth_conditions = task.get("conditions") or {}
+    if (auth_conditions.get("authMethod") == "login"
+            and auth_page is not None
+            and getattr(auth_page, "_auth_method", None) == "login"):
+        auth_conditions["login"] = {
+            "loginUrl": auth_page._login_url.text().strip() or None,
+            "id": auth_page._login_id.text().strip() or None,
+            "password": auth_page._login_pw.text() or None,
+            "login_method": (auth_conditions.get("login") or {}).get("login_method"),
+        }
+
+    task["job"]        = job_name
+    task["delay"]      = dashboard_page.delay_spin.value()
+    task["threads"]    = dashboard_page.thread_spin.value()
+    task["timeout"]    = dashboard_page.timeout_spin.value()
+    task["retry"]      = dashboard_page.retry_spin.value()
+    task["user_agent"] = session_page.ua_check.isChecked()
+    task["cookie"]     = session_page.cookie_check.isChecked()
+    task["proxy"] = {
+        "enabled":       session_page._global_cb.isChecked(),
+        "rotate":        session_page._rotate_cb.isChecked(),
+        "allow_ip_cnts": session_page._allow_ip_cnts.value(),
+        "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
+    }
+    task["extract"] = monitor_page.output_info["extract"]
+    task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
+    task["extract"]["auto_save_source"] = (
+        "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+    )
+
+
 # ══════════════════════════════════════════════════════
-#  GlobalToolbar Mixin
+#  GlobalToolbarSingle Mixin
 # ══════════════════════════════════════════════════════
 class GlobalToolbarTriggers:
-    """GlobalToolbar의 버튼·시그널 콜백 메서드"""
+    """GlobalToolbarSingle의 버튼·시그널 콜백 메서드"""
 
     def _copy_url(self):
         """URL을 클립보드에 복사하고 입력창의 텍스트를 전체 선택합니다."""
@@ -619,37 +662,10 @@ class GlobalToolbarTriggers:
             request_info = BlueprintStorage().read()
 
             self.task.update(deepcopy(request_info))
-
-            # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
-            # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
-            auth_conditions = self.task.get("conditions") or {}
-            if (auth_conditions.get("authMethod") == "login"
-                    and self.auth_page is not None
-                    and getattr(self.auth_page, "_auth_method", None) == "login"):
-                auth_conditions["login"] = {
-                    "loginUrl": self.auth_page._login_url.text().strip() or None,
-                    "id": self.auth_page._login_id.text().strip() or None,
-                    "password": self.auth_page._login_pw.text() or None,
-                    "login_method": (auth_conditions.get("login") or {}).get("login_method"),
-                }
-
-            self.task["job"]        = "수동 실행"
-            self.task["delay"]      = dashboard_page.delay_spin.value()
-            self.task["threads"]    = dashboard_page.thread_spin.value()
-            self.task["timeout"]    = dashboard_page.timeout_spin.value()
-            self.task["retry"]      = dashboard_page.retry_spin.value()
-            self.task["user_agent"] = session_page.ua_check.isChecked()
-            self.task["cookie"]     = session_page.cookie_check.isChecked()
-            self.task["proxy"] = {
-                "enabled":       session_page._global_cb.isChecked(),
-                "rotate":        session_page._rotate_cb.isChecked(),
-                "allow_ip_cnts": session_page._allow_ip_cnts.value(),
-                "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
-            }
-            self.task["extract"] = monitor_page.output_info["extract"]
-            self.task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
-            self.task["extract"]["auto_save_source"] = (
-                "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+            _apply_task_settings(
+                self.task, dashboard_page=dashboard_page, session_page=session_page,
+                monitor_page=monitor_page, auth_page=self.auth_page,
+                job_name="수동 실행",
             )
             self.start_requested.emit(self.task)
 
@@ -698,7 +714,7 @@ class GlobalToolbarTriggers:
             self.log_manager.append_log(level, message)
 
     def _main_window(self):
-        """부모 위젯을 순회하여 MainWindow 인스턴스를 반환합니다. 없으면 None."""
+        """부모 위젯을 순회하여 MainWindowSingle 인스턴스를 반환합니다. 없으면 None."""
 
         w = self.parent()
         while w is not None:
@@ -712,7 +728,7 @@ class GlobalToolbarTriggers:
 
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:
-        """MainWindow 초기화 후 실제 페이지 인스턴스를 주입합니다."""
+        """MainWindowSingle 초기화 후 실제 페이지 인스턴스를 주입합니다."""
         if dashboard    is not None:
             self.dashboard    = dashboard
         if monitor_page is not None:
@@ -723,15 +739,15 @@ class GlobalToolbarTriggers:
             self.auth_page    = auth_page
 
     def set_log_manager(self, log_manager) -> None:
-        """MainWindow 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
+        """MainWindowSingle 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
         self.log_manager = log_manager
 
 
 # ══════════════════════════════════════════════════════
-#  DashboardPage Mixin
+#  DashboardPageSingle Mixin
 # ══════════════════════════════════════════════════════
 class DashboardPageTriggers:
-    """DashboardPage의 테이블·필터·내보내기 메서드"""
+    """DashboardPageSingle의 테이블·필터·내보내기 메서드"""
 
     def _on_auto_save_toggled(self, checked: bool):
         """자동 저장 체크박스 — 꺼져 있으면 저장 대상(RAW/정제) 토글은 의미가 없어 비활성화"""
@@ -835,10 +851,10 @@ class DashboardPageTriggers:
 
 
 # ══════════════════════════════════════════════════════
-#  MonitorPage Mixin
+#  MonitorPageSingle Mixin
 # ══════════════════════════════════════════════════════
 class MonitorPageTriggers:
-    """MonitorPage의 필터·상세·추출·다이얼로그 메서드"""
+    """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
 
     def _add_realtime_row(self, row: dict):
         self._all_rows.append(row)
@@ -1132,7 +1148,7 @@ class MonitorPageTriggers:
     def _has_collected_data_or_warn(self) -> bool:
         """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
 
-        "제외 필드 지정" 체크박스 활성화 시(layout.py)와 "⚙ 필드 선택" 버튼
+        "제외 필드 지정" 체크박스 활성화 시(layout_single.py)와 "⚙ 필드 선택" 버튼
         클릭 시(_open_drop_columns_dialog) 양쪽에서 공유하는 헬퍼입니다.
         """
         if self._collected_data:
@@ -2795,8 +2811,8 @@ class SchedulerPageTriggers:
         if sched_refine_fill_input is not None:
             sched_refine_fill_input.setText(_saved_fill_value)
 
-        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동 — MonitorPage의
-        # _on_custom_rule_toggled(trigger.py)와 동일 로직(fill_null 제외,
+        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동 — MonitorPageSingle의
+        # _on_custom_rule_toggled()와 동일 로직(fill_null 제외,
         # 2026-07-17), 이 패널의 로컬 checkboxes 딕셔너리에 대해서만 적용.
         _sched_refine_custom_cb = sched_refine_checkboxes.get("custom_rule")
         if _sched_refine_custom_cb is not None:
@@ -3657,7 +3673,7 @@ class AuthManagerPageTriggers:
 
     def _get_log_manager(self):
         """
-        최상위 MainWindow의 log_manager(LogViewerDialog 싱글턴)를 반환합니다.
+        최상위 MainWindowSingle의 log_manager(LogViewerDialog 싱글턴)를 반환합니다.
         QWidget.window()는 위젯 트리 최상단 QMainWindow를 반환하므로
         별도의 부모 순회 없이 안전하게 참조할 수 있습니다.
         log_manager가 아직 준비되지 않은 경우 None을 반환합니다.
@@ -3791,10 +3807,10 @@ class TrayManagerTriggers:
 
 
 # ══════════════════════════════════════════════════════
-#  MainWindow Mixin
+#  MainWindowSingle Mixin
 # ══════════════════════════════════════════════════════
-class MainWindowTriggers:
-    """MainWindow의 페이지 전환·워커·종료 메서드"""
+class MainWindowTriggersSingle:
+    """MainWindowSingle의 페이지 전환·워커·종료 메서드"""
 
     def _switch_page(self, idx):
         self.stack.setCurrentIndex(idx)
@@ -4082,3 +4098,285 @@ class MainWindowTriggers:
         self.log_manager._viewer.clear()
         self.log_manager._load_history()
         self.log_manager.show()
+
+
+# ══════════════════════════════════════════════════════
+#  다중 수집 전용 트리거 — layout_multi.MainWindowMulti가 사용
+# ══════════════════════════════════════════════════════
+# MainWindowTriggersMulti는 MainWindowTriggersSingle를 상속해, 단일 블루프린트를
+# 전제한 워커 기동/완료 처리만 "블루프린트 번들 라우팅" 방식으로
+# 오버라이드합니다. 나머지 동작(_switch_page, _stop_crawl,
+# _start_crawl_from_schedule, exit_app 등)은 위 MainWindowTriggersSingle를 그대로
+# 상속합니다 — 다중 수집 쪽에서 self.dashboard/self.monitor_page가 항상
+# "활성 번들"의 페이지를 가리키도록 layout_multi._activate_blueprint()가
+# 유지하므로 참조가 안전합니다.
+#
+# _build_task()/_on_finished()는 위 MainWindowTriggersSingle의 단일 수집용
+# 해당 로직(GlobalToolbarTriggers._actual_start()/_on_finished())을
+# seq_no 인자화해 옮긴 것이므로, 그쪽을 수정하면 여기도 함께 확인해야 합니다.
+
+BATCH_JOB = "전체 수집"
+
+
+class MainWindowTriggersMulti(MainWindowTriggersSingle):
+    """MainWindowMulti(다중 수집 레이아웃)의 순차 수집·번들 라우팅 메서드"""
+
+    # ── 태스크 빌드 ───────────────────────────────────
+    def _build_task(self, seq_no: str) -> dict:
+        """
+        특정 블루프린트(seq_no)의 실행 태스크 dict를 구성합니다.
+        (단일 GlobalToolbarTriggers._actual_start()와 공통 로직을 공유 —
+        모듈 함수 _apply_task_settings() 참고)
+        """
+        bundle = self._get_or_create_bundle(seq_no)
+        task = BlueprintStorage().get(seq_no)
+        _apply_task_settings(
+            task, dashboard_page=bundle.dashboard, session_page=self.session_page,
+            monitor_page=bundle.monitor_page, auth_page=bundle.auth_page,
+            job_name=BATCH_JOB,
+        )
+        # 순차 수집은 대기 큐에 여러 태스크가 동시에 존재하므로,
+        # monitor_page.output_info["extract"] 참조를 그대로 두면 나중에 그
+        # 페이지 설정이 바뀔 때 대기 중인 태스크까지 함께 바뀐다 — 제출
+        # 시점 스냅샷으로 분리해 둔다.
+        task["extract"] = deepcopy(task["extract"])
+        return task
+
+    # ── 순차 수집 시작 ─────────────────────────────────
+    def _start_batch(self, seq_no_list: list):
+        """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다."""
+        if not seq_no_list:
+            self.log_manager.append_log("warn", "[전체 수집] 선택된 블루프린트가 없습니다.")
+            return
+
+        tasks = [self._build_task(s) for s in seq_no_list]
+        for i, t in enumerate(tasks):
+            t["batch_meta"] = {"index": i, "total": len(tasks)}
+
+        if self._worker and self._worker.isRunning():
+            # 실행 중 요청 — 진행 중 작업을 죽이지 않고 뒤에 순차 대기
+            self._pending_queue.extend(tasks)
+            self.log_manager.append_log(
+                "info",
+                f"[전체 수집] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
+            )
+            return
+
+        first, rest = tasks[0], tasks[1:]
+        self._pending_queue.extend(rest)
+        store.clear_rows()
+        self._reset_bundle_pages(first.get("seq_no"))
+        self.log_manager.append_log(
+            "info",
+            f"[전체 수집] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
+            f"'{first.get('title') or first.get('seq_no')}'"
+        )
+        self._launch_worker(first, job_name=BATCH_JOB)
+
+    def _reset_bundle_pages(self, seq_no) -> None:
+        """실행 직전 해당 번들의 대시보드/모니터링 페이지를 초기화합니다."""
+        bundle = self._get_or_create_bundle(seq_no)
+        bundle.dashboard._reset_dashboard()
+        bundle.monitor_page._reset_monitor_page()
+
+    # ── 워커 기동 (번들 라우팅) ────────────────────────
+    def _launch_worker(self, cfg: dict, job_name="실행"):
+        if self._worker and self._worker.isRunning():
+            self._worker.stop()
+            self._worker.wait(1500)
+
+        # 실행 대상 블루프린트로 화면 자동 포커스 — 이후 시그널은 아래에서
+        # 캡처한 "그 번들"에 정적으로 연결되므로, 사용자가 다른 블루프린트로
+        # 전환해도 진행 중 작업의 갱신은 원래 번들에 계속 반영된다.
+        seq_no = cfg.get("seq_no")
+        self._activate_blueprint(seq_no)
+        bundle = self._get_or_create_bundle(seq_no)
+        dash, mon = bundle.dashboard, bundle.monitor_page
+
+        self._worker = MultiprocessWorker(cfg, job_name)
+        self._worker.new_row.connect(dash.add_row)
+        self._worker.new_row.connect(mon._add_realtime_row)
+        self._worker.progress.connect(
+            lambda done, total, d=dash: self._update_progress_for(d, done, total))
+        self._worker.stats_update.connect(dash.update_stats)
+        self._worker.log_message.connect(self.log_manager.append_log)
+        self._worker.finished.connect(self._on_finished)
+        self._worker.start()
+
+        self._reset_progress_for(dash)
+        self.blueprint_list_page.set_status(seq_no, "running")
+        self.global_toolbar.set_running(True)
+        dash._update_step_ui(2)
+
+    # ── 진행률 (번들별) ────────────────────────────────
+    @staticmethod
+    def _update_progress_for(dash, done: int, total: int):
+        pct = int(done / total * 100) if total else 0
+        dash.prog_bar.setValue(pct)
+        dash.prog_pct.setText(f"{pct}%")
+        dash.prog_lbl.setText(f"진행률 · {done} / {total}")
+
+    @staticmethod
+    def _reset_progress_for(dash):
+        dash.prog_bar.setValue(0)
+        dash.prog_pct.setText("0%")
+        dash.prog_lbl.setText("대기 중")
+
+    # ── 대기 큐 소비 (전체 수집/스케줄 공용) ────────────
+    def _consume_pending_queue(self):
+        if not self._pending_queue:
+            return
+        next_cfg = self._pending_queue.pop(0)
+        remaining = len(self._pending_queue)
+
+        meta = next_cfg.get("batch_meta")
+        if meta:
+            self.log_manager.append_log(
+                "info",
+                f"[전체 수집] {meta['index'] + 1}/{meta['total']}번째 "
+                f"'{next_cfg.get('title') or next_cfg.get('seq_no')}' 실행 "
+                f"(남은 대기: {remaining}건)"
+            )
+        else:
+            self.log_manager.append_log(
+                "info",
+                f"[스케줄] '{next_cfg.get('task_nm', next_cfg.get('job', ''))}' 대기 큐에서 실행 "
+                f"(남은 대기: {remaining}건)"
+            )
+
+        self._reset_bundle_pages(next_cfg.get("seq_no"))
+        self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
+        self.stack.setCurrentIndex(0)
+        for i, btn in enumerate(self.sidebar._btns):
+            btn.setChecked(i == 0)
+
+    # ── 완료 처리 (번들 라우팅) ────────────────────────
+    def _on_finished(self, task: dict, summary: dict):
+        # 늦게 도착한 이전 워커의 finished 신호 무시 (단일과 동일한 가드)
+        if self.sender() is not self._worker:
+            return
+
+        seq_no = task.get("seq_no")
+        bundle = self._get_or_create_bundle(seq_no)
+        dash, mon = bundle.dashboard, bundle.monitor_page
+
+        self.global_toolbar.set_running(False)
+        self._reset_progress_for(dash)
+        dash.set_running(False)
+        self.blueprint_list_page.set_status(seq_no, "done")
+
+        if summary.get("interrupted"):
+            row_count = mon.result_table.rowCount()
+            self.log_manager.append_log(
+                "warn",
+                f"수집 중단 (Collection Interrupted) — {row_count}건 수집 후 중지 "
+                f"(소요: {summary['elapsed']}s)"
+            )
+            dash._update_step_ui(0)
+            self.blueprint_list_page.set_status(seq_no, "idle")
+            # 중단은 _stop_crawl()에서 큐를 이미 비웠으므로 큐 소비 불필요
+            return
+
+        # 전체 수집·스케줄 실행은 "무인 흐름" — 모달을 띄우면 사용자가
+        # 닫아줄 때까지 다음 순번이 영영 시작되지 않으므로 트레이 알림만 사용.
+        is_unattended = task.get("job") in ("스케줄 실행", BATCH_JOB)
+
+        if summary.get("total", 0) == 0:
+            url_count = summary.get("url_count", 0)
+            skipped   = summary.get("skipped", 0)
+            elapsed   = summary.get("elapsed", 0)
+            self.log_manager.append_log(
+                "err",
+                f"크롤링 완료 — 수집된 데이터가 없습니다 "
+                f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
+            )
+            dash._update_step_ui(0)
+            if is_unattended:
+                job_label = task.get("task_nm") or task.get("title") or seq_no
+                self.tray_manager.show_message(
+                    "⚠ 수집 결과 없음",
+                    f"'{job_label}' 실행이 완료됐지만 수집된 데이터가 0건입니다.\n"
+                    "사이트 구조 변경 여부를 확인해 주세요.",
+                    icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+            else:
+                msg = QMessageBox(self)
+                msg.setWindowTitle("수집 결과 없음")
+                msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                            f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+                            "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setStyleSheet(f"""
+                    QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
+                    QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
+                    QPushButton {{
+                        background:{ACCENT}; color:white; border:none;
+                        border-radius:5px; padding:5px 14px; font-size:12px;
+                    }}
+                    QPushButton:hover {{ background:{ACCENT_HOVER}; }}
+                """)
+                msg.exec()
+                if task.get("job") == "수동 실행":
+                    self._show_monitor_for(seq_no)
+            # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
+            job_name = task.get("task_nm")
+            if job_name:
+                self.schedule_page.mark_done(job_name, total=0)
+            self._consume_pending_queue()
+            return
+
+        self.log_manager.append_log("info", "크롤링 완료")
+
+        dash._update_step_ui(3)
+        QApplication.processEvents()
+
+        mon.preprocess(task)
+        self.stats_page.reload()
+
+        dash._update_step_ui(4)
+
+        try:
+            extract_cfg = task.get("extract", {})
+            if extract_cfg.get("auto_save"):
+                auto_save_source = extract_cfg.get("auto_save_source", "raw")
+                if auto_save_source == "refined" and is_unattended:
+                    sched_refine_rules = extract_cfg.get("refine_rules", SCHEDULED_REFINE_RULES)
+                    sched_fill_value   = extract_cfg.get("fill_null_value", "")
+                    mon._run_refine(
+                        rules_override=sched_refine_rules, skip_ui_update=True,
+                        fill_value_override=sched_fill_value,
+                    )
+                # 스케줄 실행일 때만 스케줄 자신의 extract 설정을 강제 주입 (단일과
+                # 동일). 배치는 각 번들의 화면 설정 스냅샷을 그대로 사용한다.
+                is_schedule = task.get("job") == "스케줄 실행"
+                mon._extract_result_table(
+                    source=auto_save_source,
+                    silent=is_unattended,
+                    extract_override=extract_cfg if is_schedule else None,
+                )
+        except Exception as e:
+            self.log_manager.append_log("err", f"자동 저장 실패: {e}")
+
+        dash._update_step_ui(0)
+
+        job_name = task.get("task_nm")
+        if job_name:
+            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
+
+        # 수동 실행: 즉시 모니터링 화면으로. 전체 수집: 마지막 순번이 끝난
+        # 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링 화면으로 전환.
+        if task.get("job") == "수동 실행":
+            self._show_monitor_for(seq_no)
+        elif task.get("job") == BATCH_JOB and not self._pending_queue:
+            self.log_manager.append_log("info", "[전체 수집] 전체 순차 실행 완료")
+            self._show_monitor_for(seq_no)
+
+        self._consume_pending_queue()
+
+    def _show_monitor_for(self, seq_no) -> None:
+        """해당 블루프린트를 활성화하고 모니터링(nav 1) 화면을 표시합니다."""
+        self._activate_blueprint(seq_no)
+        self.stack.setCurrentIndex(1)
+        for i, btn in enumerate(self.sidebar._btns):
+            btn.setChecked(i == 1)
+        self._get_or_create_bundle(seq_no).monitor_page.tab_widget.setCurrentIndex(0)

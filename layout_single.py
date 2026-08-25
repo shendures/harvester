@@ -8,7 +8,7 @@ from trigger import (
     GlobalToolbarTriggers, DashboardPageTriggers, MonitorPageTriggers,
     StatisticsPageTriggers, SchedulerPageTriggers,
     SessionSettingsPageTriggers, AuthManagerPageTriggers,
-    TrayManagerTriggers, MainWindowTriggers,
+    TrayManagerTriggers, MainWindowTriggersSingle,
     LogViewerDialog,
 )
 from style import (
@@ -79,9 +79,9 @@ PURPLE        = theme.PURPLE
 # ══════════════════════════════════════════════════════
 #  GLOBAL TOOLBAR  (모든 페이지 공통 상단 툴바)
 # ══════════════════════════════════════════════════════
-class GlobalToolbar(QWidget, GlobalToolbarTriggers):
+class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     """
-    Sidebar 오른쪽 콘텐츠 영역 최상단에 고정 표시되는 공통 툴바.
+    SidebarSingle 오른쪽 콘텐츠 영역 최상단에 고정 표시되는 공통 툴바.
     - URL 라벨 / URL 입력창 / URL 복사 버튼 / 시작·중지 버튼
     - start_requested : 시작 버튼 클릭 시 emit (request_info dict)
     - stop_requested  : 중지 버튼 클릭 시 emit
@@ -95,12 +95,12 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
         super().__init__(parent)
         self._running = False
         self._start_cancelled = False   # 중지 시 QTimer 예약 콜백을 막는 플래그
-        # 실제 페이지 인스턴스는 MainWindow._build()에서 set_pages()로 주입됩니다.
+        # 실제 페이지 인스턴스는 MainWindowSingle._build()에서 set_pages()로 주입됩니다.
         self.dashboard = None
         self.monitor_page = None
         self.session_page = None
         self.auth_page = None
-        self.log_manager = None  # MainWindow 생성 후 set_log_manager()로 주입
+        self.log_manager = None  # MainWindowSingle 생성 후 set_log_manager()로 주입
         self._build()
         self.task = {}
 
@@ -139,7 +139,7 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
 # ══════════════════════════════════════════════════════
 #  SIDEBAR
 # ══════════════════════════════════════════════════════
-class Sidebar(QWidget):
+class SidebarSingle(QWidget):
     page_changed = pyqtSignal(int)
 
     def __init__(self):
@@ -211,7 +211,7 @@ class Sidebar(QWidget):
 # ══════════════════════════════════════════════════════
 #  DASHBOARD PAGE
 # ══════════════════════════════════════════════════════
-class DashboardPage(QWidget, DashboardPageTriggers):
+class DashboardPageSingle(QWidget, DashboardPageTriggers):
 
     def __init__(self):
         super().__init__()
@@ -409,7 +409,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         stl.addLayout(sg)
         bl.addWidget(stw)
 
-        # ── 수집 모니터링 테이블 (MonitorPage에서 이동) ──────────
+        # ── 수집 모니터링 테이블 (MonitorPageSingle에서 이동) ──────────
         mon_tcw, mon_tc = parts.card_widget("수집 모니터링")
         mon_tcw.setMinimumHeight(300)  # 최소 높이를 300으로 제한
         mon_tbl_ctrl = QHBoxLayout()
@@ -482,11 +482,11 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self._update_step_ui(0)
 
     def set_running(self, v: bool):
-        """GlobalToolbar 에서 상태를 받아 내부 플래그만 동기화합니다."""
+        """GlobalToolbarSingle 에서 상태를 받아 내부 플래그만 동기화합니다."""
         self._running = v
 
     def _get_result_columns(self):
-        """동적 컬럼 목록 — MonitorPage에서도 사용하므로 유지."""
+        """동적 컬럼 목록 — MonitorPageSingle에서도 사용하므로 유지."""
         # [수정] request_info 구조 불완전 시 KeyError 방지
         try:
             items = list(request_info["conditions"]["items"].keys())
@@ -497,7 +497,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
 # ══════════════════════════════════════════════════════
 #  MONITOR PAGE
 # ══════════════════════════════════════════════════════
-class MonitorPage(QWidget, MonitorPageTriggers):
+class MonitorPageSingle(QWidget, MonitorPageTriggers):
     def __init__(self):
         super().__init__()
         self._all_rows       = []
@@ -1230,7 +1230,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         self._load_schedules_from_json()   # ← 앱 시작 시 저장된 스케줄 로드
         self._refresh_table()
         self.sched_task = {}
-        self.session_page = None  # MainWindow가 실제 SessionSettingsPage 인스턴스를 주입
+        self.session_page = None  # MainWindowSingle가 실제 SessionSettingsPage 인스턴스를 주입
 
     # ────────────────────────────────────────────────
     def _build(self):
@@ -1769,7 +1769,7 @@ class TrayManager(QObject, TrayManagerTriggers):
 
         quit_action = QAction("종료", self.main_window)
         # QApplication.quit() 직접 연결 시 closeEvent를 우회하므로
-        # 반드시 MainWindow.exit_app()을 통해 저장 후 종료해야 합니다.
+        # 반드시 MainWindowSingle.exit_app()을 통해 저장 후 종료해야 합니다.
         quit_action.triggered.connect(self.main_window.exit_app)
 
         tray_menu.addAction(show_action)
@@ -1787,7 +1787,7 @@ class TrayManager(QObject, TrayManagerTriggers):
 # ══════════════════════════════════════════════════════
 #  MAIN WINDOW
 # ══════════════════════════════════════════════════════
-class MainWindow(QMainWindow, MainWindowTriggers):
+class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DataCrawler v2.0")
@@ -1806,32 +1806,32 @@ class MainWindow(QMainWindow, MainWindowTriggers):
 
     def _build(self):
 
-        # ──  왼쪽 컨텐츠 영역: Sidebar ──
+        # ──  왼쪽 컨텐츠 영역: SidebarSingle ──
         left_widget = QWidget()
         self.setCentralWidget(left_widget)
         layout = QHBoxLayout(left_widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.sidebar = Sidebar()
+        self.sidebar = SidebarSingle()
         self.sidebar.page_changed.connect(self._switch_page)
         layout.addWidget(self.sidebar)
 
-        # ── 오른쪽 컨텐츠 영역: GlobalToolbar + QStackedWidget ──
+        # ── 오른쪽 컨텐츠 영역: GlobalToolbarSingle + QStackedWidget ──
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
         # 공통 Toolbar (모든 페이지 공유)
-        self.global_toolbar = GlobalToolbar()
+        self.global_toolbar = GlobalToolbarSingle()
         self.global_toolbar.start_requested.connect(self._start_crawl)
         self.global_toolbar.stop_requested.connect(self._stop_crawl)
         right_layout.addWidget(self.global_toolbar)
 
         self.stack = QStackedWidget()
-        self.dashboard = DashboardPage()
-        self.monitor_page = MonitorPage()
+        self.dashboard = DashboardPageSingle()
+        self.monitor_page = MonitorPageSingle()
         self.schedule_page = SchedulerPage()
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()
@@ -1852,7 +1852,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
             )
             self.stack.addWidget(self.auth_page)  # 5
 
-        # GlobalToolbar에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
+        # GlobalToolbarSingle에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
         self.global_toolbar.set_log_manager(self.log_manager)
         self.global_toolbar.set_pages(
             dashboard=self.dashboard,
