@@ -6,7 +6,7 @@
 > - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
 > - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
 
-- **최신 갱신**: 2026-07-30
+- **최신 갱신**: 2026-08-26 02:01
 
 ---
 
@@ -22,6 +22,11 @@
   .\.venv\Scripts\Activate.ps1
   pip install -r requirements.txt
   ```
+  **주의**: WSL 네이티브 경로(`/home/...`)의 저장소 클론에서는 `.venv`가 WSL 실행/테스트용
+  가상환경(Python 3.12, `guidelines/STUDY_WSL_DB_CONNECT.md` 등 참고)으로 이미 쓰이고
+  있습니다 — 이 클론에서 위 명령을 그대로 실행하면 그 가상환경을 덮어씁니다. Windows
+  빌드는 반드시 Windows 네이티브 경로(`/mnt/c`, `/mnt/d` 등)의 별도 클론에서, 또는 최소한
+  다른 이름(`.venv-win` 등)의 가상환경으로 진행하세요.
 - 설치 프로그램(`Setup.exe`)까지 만들려면 [Inno Setup](https://jrsoftware.org/isinfo.php)이
   추가로 필요합니다(무료, Windows 전용 외부 도구 — Python 패키지 아님).
 
