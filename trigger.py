@@ -2290,6 +2290,7 @@ class SchedulerPageTriggers:
 
         common_fields = {
             "task_nm":      name_val,
+            "seq_no":       sched_info_dict["blueprint_combo"].currentData(),
             "callback_url": url_val,
             "delay":        sched_info_dict["delay"].value(),
             "threads":      sched_info_dict["threads"].value(),
@@ -2360,7 +2361,7 @@ class SchedulerPageTriggers:
             self._register_timer(len(store.get_schedules()) - 1)
         else:
             target = store.get_schedules()[idx]
-            for key in ("task_nm", "callback_url", "delay", "threads",
+            for key in ("task_nm", "seq_no", "callback_url", "delay", "threads",
                         "timeout", "retry", "user_agent", "cookie", "proxy"):
                 target[key] = common_fields[key]
             target["extract"]["file"].update(common_fields["extract"]["file"])
@@ -2392,7 +2393,12 @@ class SchedulerPageTriggers:
         store.update_schedule_status(idx, "실행 중")
         self._refresh_table()
 
-        self.sched_task.update(deepcopy(BlueprintStorage().read()))
+        blueprint = BlueprintStorage().get(s.get("seq_no"))
+        if blueprint is None:
+            # seq_no가 없는(구버전) 스케줄이거나 대상 블루프린트가 삭제된 경우 —
+            # 활성 블루프린트로 폴백(기존 동작 유지)
+            blueprint = deepcopy(BlueprintStorage().read())
+        self.sched_task.update(blueprint)
         self.sched_task.update(s)
         self.schedule_run.emit(self.sched_task)
 
@@ -2421,13 +2427,13 @@ class SchedulerPageTriggers:
         for row, s in enumerate(schedules):
             run_at = s["schedule"]["run_at"]
             txt    = self._format_remaining(run_at) if run_at else "—"
-            item   = self.sched_table.item(row, 4)
+            item   = self.sched_table.item(row, 5)
             if item:
                 item.setText(txt)
             else:
                 new_item = QTableWidgetItem(txt)
                 new_item.setForeground(QColor(PURPLE))
-                self.sched_table.setItem(row, 4, new_item)
+                self.sched_table.setItem(row, 5, new_item)
 
         active = [s for s in schedules
                   if s["schedule"]["run_at"] and s["schedule"]["status"] != "완료"]
@@ -2670,15 +2676,36 @@ class SchedulerPageTriggers:
         root.addWidget(sec_label("기본 정보"))
         root.addSpacing(8)
 
+        # 대상 블루프린트 선택 — 이 스케줄이 어느 수집 항목을 실행할지 지정
+        sched_blueprint_combo = QComboBox()
+        for bp in BlueprintStorage().list_blueprints():
+            sched_blueprint_combo.addItem(bp.get("title") or bp.get("seq_no"), bp.get("seq_no"))
+        if len(BlueprintStorage().list_seq_nos()) <= 1:
+            sched_blueprint_combo.setEnabled(False)
+
         if sched_task == "등록":
             sched_name   = QLineEdit("작업명을 입력하세요.")
             callback_url = QLineEdit(BlueprintStorage().read()["callback_url"])
+            default_idx = sched_blueprint_combo.findData(BlueprintStorage().active_seq_no)
+            sched_blueprint_combo.setCurrentIndex(max(default_idx, 0))
+            # 대상 선택이 바뀌면 그 블루프린트의 URL로 Target URL을 갱신
+            sched_blueprint_combo.currentIndexChanged.connect(
+                lambda _: callback_url.setText(
+                    (BlueprintStorage().get(sched_blueprint_combo.currentData()) or {}).get("callback_url", "")
+                )
+            )
         else:
             sched_name   = QLineEdit(s.get("task_nm", ""))
             callback_url = QLineEdit(s.get("callback_url", ""))
+            saved_idx = sched_blueprint_combo.findData(s.get("seq_no"))
+            if saved_idx < 0:
+                saved_idx = sched_blueprint_combo.findData(BlueprintStorage().active_seq_no)
+            sched_blueprint_combo.setCurrentIndex(max(saved_idx, 0))
 
         callback_url.setCursorPosition(0)
         root.addLayout(field_row("Task Name", sched_name))
+        root.addSpacing(6)
+        root.addLayout(field_row("대상 블루프린트", sched_blueprint_combo))
         root.addSpacing(6)
         root.addLayout(field_row("Target URL", callback_url))
         root.addSpacing(12)
@@ -3365,6 +3392,7 @@ class SchedulerPageTriggers:
             "sched_task":   sched_task,         # _apply_schedule이 모드를 구분하는 키
             "idx":          idx,                 # 수정 시 int, 등록 시 None
             "sched_name":   sched_name,
+            "blueprint_combo": sched_blueprint_combo,
             "callback_url": callback_url,
             "delay":        sched_delay,
             "threads":      sched_threads,
@@ -4107,12 +4135,12 @@ class MainWindowTriggersSingle:
 #  다중 수집 전용 트리거 — layout_multi.MainWindowMulti가 사용
 # ══════════════════════════════════════════════════════
 # MainWindowTriggersMulti는 MainWindowTriggersSingle를 상속해, 단일 블루프린트를
-# 전제한 워커 기동/완료 처리만 "블루프린트 번들 라우팅" 방식으로
-# 오버라이드합니다. 나머지 동작(_switch_page, _stop_crawl,
-# _start_crawl_from_schedule, exit_app 등)은 위 MainWindowTriggersSingle를 그대로
-# 상속합니다 — 다중 수집 쪽에서 self.dashboard/self.monitor_page가 항상
-# "활성 번들"의 페이지를 가리키도록 layout_multi._activate_blueprint()가
-# 유지하므로 참조가 안전합니다.
+# 전제한 워커 기동/완료 처리를 "블루프린트 번들 라우팅" 방식으로 오버라이드합니다.
+# _start_crawl_from_schedule도 스케줄이 지정한 seq_no의 번들을 리셋해야 하므로
+# 함께 오버라이드합니다(§ 아래). 나머지 동작(_switch_page, _stop_crawl, exit_app
+# 등)은 위 MainWindowTriggersSingle를 그대로 상속합니다 — 다중 수집 쪽에서
+# self.dashboard/self.monitor_page가 항상 "활성 번들"의 페이지를 가리키도록
+# layout_multi._activate_blueprint()가 유지하므로 참조가 안전합니다.
 #
 # _build_task()/_on_finished()는 위 MainWindowTriggersSingle의 단일 수집용
 # 해당 로직(GlobalToolbarTriggers._actual_start()/_on_finished())을
@@ -4181,6 +4209,34 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         bundle = self._get_or_create_bundle(seq_no)
         bundle.dashboard._reset_dashboard()
         bundle.monitor_page._reset_monitor_page()
+
+    # ── 스케줄 실행 (번들 라우팅) ──────────────────────
+    def _start_crawl_from_schedule(self, cfg: dict):
+        """단일 버전과 동일하되, 리셋 대상을 "현재 활성 번들"이 아니라
+        cfg가 지정한 seq_no의 번들로 고정합니다 — 스케줄 발동 시점에
+        사용자가 다른 블루프린트를 보고 있어도 엉뚱한 번들이 리셋되지 않도록."""
+        cfg = dict(cfg)   # 원본 dict 보호 (호출자의 sched_task 변형 방지)
+        schedule_meta = cfg.pop("schedule", None) or {}
+        if schedule_meta.get("schedule_save_type"):
+            cfg["extract"] = dict(cfg.get("extract", {}))
+            cfg["extract"]["schedule_save_type"] = schedule_meta["schedule_save_type"]
+        cfg.setdefault("job", "스케줄 실행")
+
+        if self._worker and self._worker.isRunning():
+            self._pending_queue.append(cfg)
+            queue_pos = len(self._pending_queue)
+            self.log_manager.append_log(
+                "info",
+                f"[스케줄] '{cfg.get('task_nm', cfg['job'])}' 대기 등록 "
+                f"(대기 순번: {queue_pos}번)"
+            )
+            return
+
+        self._reset_bundle_pages(cfg.get("seq_no"))
+        self._launch_worker(cfg, job_name=cfg["job"])
+        self.stack.setCurrentIndex(0)
+        for i, btn in enumerate(self.sidebar._btns):
+            btn.setChecked(i == 0)
 
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):

@@ -1257,9 +1257,9 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         # ══ Schedule Table ════════════════════════════
         tw, tl = parts.card_widget("등록된 작업")
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
-        self.sched_table.setColumnCount(7)
+        self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(
-            ["NO", "Task Name", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
+            ["NO", "Task Name", "대상", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
         tl.addWidget(self.sched_table)
         bl.addWidget(tw, 1)
 
@@ -1319,10 +1319,21 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             idx_item.setForeground(QColor(TEXT_MUTED))
             self.sched_table.setItem(r, 0, idx_item)
 
-            # Task Name / URL / Execution Time (설정 주기 문자열)
-            vals = [s["task_nm"], s.get("callback_url", ""), s["schedule"]["exec_str"]]
-            colors = [TEXT_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY]
-            for col, (val, color) in enumerate(zip(vals, colors), start=1):
+            # Task Name
+            name_item = QTableWidgetItem(s["task_nm"])
+            name_item.setForeground(QColor(TEXT_PRIMARY))
+            self.sched_table.setItem(r, 1, name_item)
+
+            # 대상 (스케줄이 지정한 블루프린트의 title)
+            target_bp = BlueprintStorage().get(s.get("seq_no"))
+            target_item = QTableWidgetItem(target_bp.get("title") if target_bp else "—")
+            target_item.setForeground(QColor(TEXT_SECONDARY))
+            self.sched_table.setItem(r, 2, target_item)
+
+            # URL / Execution Time (설정 주기 문자열)
+            vals = [s.get("callback_url", ""), s["schedule"]["exec_str"]]
+            colors = [ACCENT_LIGHT, TEXT_PRIMARY]
+            for col, (val, color) in enumerate(zip(vals, colors), start=3):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))
                 self.sched_table.setItem(r, col, item)
@@ -1335,13 +1346,13 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
                 remaining_txt = "—"
             nr_item = QTableWidgetItem(remaining_txt)
             nr_item.setForeground(QColor(PURPLE))
-            self.sched_table.setItem(r, 4, nr_item)
+            self.sched_table.setItem(r, 5, nr_item)
 
             # Status
             status = s["schedule"]["status"]
             si = QTableWidgetItem(status)
             si.setForeground(QColor(STATUS_COLOR.get(status, TEXT_MUTED)))
-            self.sched_table.setItem(r, 5, si)
+            self.sched_table.setItem(r, 6, si)
 
             # Action (수정 / 삭제)
             action_w = QWidget()
@@ -1359,7 +1370,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             del_btn.clicked.connect(lambda _, i=idx: self._delete_schedule(i))
             al.addWidget(edit_btn)
             al.addWidget(del_btn)
-            self.sched_table.setCellWidget(r, 6, action_w)
+            self.sched_table.setCellWidget(r, 7, action_w)
 
 
 # ══════════════════════════════════════════════════════
