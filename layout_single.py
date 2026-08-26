@@ -1440,6 +1440,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         row0.addWidget(self.ua_check)
         row0.addWidget(self.cookie_check)
         row0.addWidget(self._global_cb)
+        row0.addStretch()
         gl1.addLayout(row0)
         bl.addWidget(gw1)
 
