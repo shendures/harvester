@@ -13,7 +13,7 @@ from trigger import (
 )
 from style import (
     THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton,
-    build_refine_rule_rows,
+    build_refine_rule_rows, NoFocusDelegate,
 )
 
 from PyQt6.QtWidgets import (
@@ -145,11 +145,28 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
 #  SIDEBAR
 # ══════════════════════════════════════════════════════
 class SidebarSingle(QWidget):
+    """
+    사이드바 뼈대(로고·구분선·NAVIGATOR/SETTINGS 섹션·하단 연결 상태줄)를 구성한다.
+    SidebarMulti(layout_multi.py)가 이 클래스를 상속해 항목 목록(_nav_items/
+    _settings_items)만 오버라이드하므로, 뼈대를 고치면 양쪽에 함께 반영된다.
+    """
     page_changed = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
         self._build()
+
+    def _nav_items(self) -> list:
+        """(아이콘, 라벨, 스택 인덱스) 목록 — 상단 NAVIGATOR 섹션."""
+        return [("⬡", "대시보드", 0), ("≡", "모니터링", 1), ("◷", "스케줄러", 2), ("▲", "통계 분석", 3)]
+
+    def _settings_items(self) -> list:
+        """(아이콘, 라벨, 스택 인덱스) 목록 — 하단 SETTINGS 섹션.
+        첫번째 수집 정보 기준으로 인증 관리 항목 포함 여부를 결정한다."""
+        items = [("◎", "세션 설정", 4)]
+        if _blueprint_requires_auth(request_info):
+            items.append(("⬡", "인증 관리", 5))
+        return items
 
     def _build(self):
 
@@ -168,17 +185,10 @@ class SidebarSingle(QWidget):
         nav_lbl.setStyleSheet(nav_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
         lay.addWidget(nav_lbl)
 
-        PAGES = [("⬡", "대시보드"), ("≡", "모니터링"), ("◷", "스케줄러"), ("▲", "통계 분석")]
-
-        # 첫번째 수집 정보 기준으로 SETTINGS 빌드
-        SETTINGS = [("◎", "세션 설정"), ("⬡", "인증 관리")] if _blueprint_requires_auth(request_info) else [("◎", "세션 설정")]
-
         self._btns = []
-        for i, (icon, label) in enumerate(PAGES):
-            btn = NavItem(icon, label)
-            btn.clicked.connect(lambda _, idx=i: self._on_nav(idx))
-            lay.addWidget(btn)
-            self._btns.append(btn)
+        self._nav_idx_by_btn = {}   # NavItem -> 그 버튼이 가리키는 스택 인덱스
+        for icon, label, stack_idx in self._nav_items():
+            self._add_nav_btn(lay, icon, label, stack_idx)
 
         lay.addSpacing(8)
         lay.addWidget(Divider())
@@ -187,12 +197,8 @@ class SidebarSingle(QWidget):
         set_lbl.setStyleSheet(set_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
         lay.addWidget(set_lbl)
 
-        for j, (icon, label) in enumerate(SETTINGS):
-            btn = NavItem(icon, label)
-            page_idx = len(PAGES) + j  # 4, 5
-            btn.clicked.connect(lambda _, idx=page_idx: self._on_nav(idx))
-            lay.addWidget(btn)
-            self._btns.append(btn)
+        for icon, label, stack_idx in self._settings_items():
+            self._add_nav_btn(lay, icon, label, stack_idx)
 
         lay.addStretch()
         lay.addWidget(Divider())
@@ -208,9 +214,20 @@ class SidebarSingle(QWidget):
 
         self._btns[0].setChecked(True)
 
+    def _add_nav_btn(self, lay, icon, label, stack_idx) -> NavItem:
+        """NavItem을 만들어 레이아웃에 추가하고, 클릭 시 이동할 스택 인덱스를
+        버튼 자체에 매핑해둔다 — SidebarMulti처럼 표시 순서와 스택 인덱스가
+        다른 항목("수집 목록" 등)도 안전하게 지원하기 위함."""
+        btn = NavItem(icon, label)
+        btn.clicked.connect(lambda _, idx=stack_idx: self._on_nav(idx))
+        lay.addWidget(btn)
+        self._btns.append(btn)
+        self._nav_idx_by_btn[btn] = stack_idx
+        return btn
+
     def _on_nav(self, idx):
-        for i, b in enumerate(self._btns):
-            b.setChecked(i == idx)
+        for b in self._btns:
+            b.setChecked(self._nav_idx_by_btn[b] == idx)
         self.page_changed.emit(idx)
 
 # ══════════════════════════════════════════════════════
@@ -1507,6 +1524,8 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         # itemClicked: 행 어디를 클릭해도 활성/비활성 토글
         t.itemClicked.connect(self._on_proxy_row_clicked)
         t.setStyleSheet(t.styleSheet() + theme.PROXY_TABLE_INDICATOR_QSS)
+        # "활성" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
+        t.setItemDelegateForColumn(0, NoFocusDelegate(t))
         return t
 
     def _insert_table_row(self, data: dict):
@@ -1523,11 +1542,12 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
 
         # col 0 — 활성 여부 (ItemIsUserCheckable — setCellWidget 없이 체크박스 렌더링)
-        # setItem() 1회로 완결되어 대량 삽입 성능에 영향 없음
+        # setItem() 1회로 완결되어 대량 삽입 성능에 영향 없음. 토글은 itemClicked
+        # (_on_proxy_row_clicked)로 처리되어 선택 가능 여부와 무관하므로
+        # ItemIsSelectable은 주지 않음(체크박스만 보이도록, 포커스 사각형 방지).
         enabled_item = QTableWidgetItem()
         enabled_item.setFlags(
             Qt.ItemFlag.ItemIsEnabled |
-            Qt.ItemFlag.ItemIsSelectable |
             Qt.ItemFlag.ItemIsUserCheckable   # 체크박스 렌더링 플래그
         )
         enabled_item.setCheckState(
@@ -1796,6 +1816,41 @@ class TrayManager(QObject, TrayManagerTriggers):
         """트레이 알림 메시지 표시"""
         self.tray_icon.showMessage(title, message, icon, 3000)
 
+def build_status_bar(open_log_viewer_callback):
+    """메인 창 최하단 상태바(최신 로그 한 줄 + 전체 로그 보기 버튼)를 만든다.
+    MainWindowSingle/MainWindowMulti가 동일하게 사용한다.
+
+    Returns:
+        (status_bar 위젯, status_level 라벨, status_msg 라벨) — 호출부가
+        self.status_level/self.status_msg에 직접 대입해 보관한다.
+    """
+    status_bar = QWidget()
+    status_bar.setFixedHeight(41)
+    status_bar.setStyleSheet(
+        f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
+    )
+    sbl = QHBoxLayout(status_bar)
+    sbl.setContentsMargins(14, 0, 14, 0)
+    sbl.setSpacing(8)
+
+    # 레벨 태그 (색상 표시)
+    status_level = parts.make_label("", TEXT_MUTED, 11)
+    status_level.setFixedWidth(48)
+    sbl.addWidget(status_level)
+
+    # 최신 로그 메시지 한 줄
+    status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
+    status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    sbl.addWidget(status_msg, 1)
+
+    # 전체 로그 보기 버튼
+    log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
+    log_view_btn.clicked.connect(open_log_viewer_callback)
+    sbl.addWidget(log_view_btn)
+
+    return status_bar, status_level, status_msg
+
+
 # ══════════════════════════════════════════════════════
 #  MAIN WINDOW
 # ══════════════════════════════════════════════════════
@@ -1876,31 +1931,7 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
         right_layout.addWidget(self.stack, 1)
 
         # ── 메인 창 최하단 상태바 (최신 로그 한 줄 + 전체 로그 보기 버튼) ──
-
-        status_bar = QWidget()
-        status_bar.setFixedHeight(41)
-        status_bar.setStyleSheet(
-            f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
-        )
-        sbl = QHBoxLayout(status_bar)
-        sbl.setContentsMargins(14, 0, 14, 0)
-        sbl.setSpacing(8)
-
-        # 레벨 태그 (색상 표시)
-        self.status_level = parts.make_label("", TEXT_MUTED, 11)
-        self.status_level.setFixedWidth(48)
-        sbl.addWidget(self.status_level)
-
-        # 최신 로그 메시지 한 줄
-        self.status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
-        self.status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        sbl.addWidget(self.status_msg, 1)
-
-        # 전체 로그 보기 버튼
-        log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
-        log_view_btn.clicked.connect(self._open_log_viewer)
-        sbl.addWidget(log_view_btn)
-
+        status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
         right_layout.addWidget(status_bar)
 
         # log_manager.last_log 시그널 → 상태바 업데이트 연결

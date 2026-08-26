@@ -17,21 +17,21 @@ from copy import deepcopy
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton,
-    QStackedWidget, QSizePolicy, QMessageBox,
+    QStackedWidget, QMessageBox,
     QScrollArea, QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from conf import BlueprintStorage
-from style import NavItem, Divider, EqualSpacingTable
+from style import NavItem, EqualSpacingTable, NoFocusDelegate
 from trigger import LogViewerDialog, MainWindowTriggersMulti
 from layout_single import (
     DashboardPageSingle, MonitorPageSingle, AuthManagerPage, SchedulerPage,
-    SessionSettingsPage, StatisticsPage, GlobalToolbarSingle, TrayManager,
+    SessionSettingsPage, StatisticsPage, GlobalToolbarSingle, SidebarSingle,
+    TrayManager, build_status_bar,
     _blueprint_auth_method, _blueprint_requires_auth,
     parts,
-    BG_SECONDARY, ACCENT_LIGHT,
-    TEXT_MUTED, BORDER, GREEN,
+    BG_SECONDARY, ACCENT_LIGHT, BORDER,
 )
 
 # 블루프린트 실행 상태 라벨 — BlueprintListPage 상태 컬럼에서 사용
@@ -157,6 +157,8 @@ class BlueprintListPage(QWidget):
         self.table.setHorizontalHeaderLabels(self._COLUMNS)
         self.table.itemClicked.connect(self._on_item_clicked)
         self.table.itemChanged.connect(self._on_item_changed)
+        # 선택 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
+        self.table.setItemDelegateForColumn(self._CHECK_COL, NoFocusDelegate(self.table))
         self.table.setStyleSheet(
             self.table.styleSheet() + self.table.theme.PROXY_TABLE_INDICATOR_QSS
         )
@@ -202,9 +204,11 @@ class BlueprintListPage(QWidget):
                 self.table.setItem(row, col, item)
 
             check_item = QTableWidgetItem()
+            # ItemIsSelectable을 주지 않음 — 이 셀이 "현재 셀"로 선택되면 Qt가
+            # 기본 점선 포커스 사각형을 그리는데, 체크박스 토글은 checkState로만
+            # 처리하므로(_on_item_changed/_on_item_clicked) 선택 가능할 필요가 없다.
             check_item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable |
-                Qt.ItemFlag.ItemIsUserCheckable
+                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
             )
             check_item.setCheckState(Qt.CheckState.Unchecked)
             self.table.setItem(row, self._CHECK_COL, check_item)
@@ -315,8 +319,12 @@ class GlobalToolbarMulti(GlobalToolbarSingle):
         lay.setSpacing(10)
 
         # 수집 방식 라벨 (전환 갱신을 위해 참조 보관 — 단일과의 차이점)
+        # 2개 이상 선택 시 빈 값으로 바뀌는데, 폭을 고정해두지 않으면 라벨이
+        # 줄어들면서 옆 URL 입력창이 왼쪽으로 밀려온다 — 최장 메서드
+        # 문자열("OPTIONS") 기준으로 폭을 고정해 빈 값이어도 자리를 유지한다.
         self._method_label = parts.make_label(
             (info.get("conditions") or {}).get("method") or "", ACCENT_LIGHT, 12, True)
+        self._method_label.setFixedWidth(60)
         lay.addWidget(self._method_label)
 
         # URL 입력창
@@ -353,8 +361,11 @@ class GlobalToolbarMulti(GlobalToolbarSingle):
 # ══════════════════════════════════════════════════════
 #  SIDEBAR (다중) — 네비게이터 (블루프린트 목록/선택은 BlueprintListPage로 이전)
 # ══════════════════════════════════════════════════════
-class SidebarMulti(QWidget):
-    page_changed = pyqtSignal(int)
+class SidebarMulti(SidebarSingle):
+    """
+    SidebarSingle의 뼈대(로고·구분선·상태줄·_add_nav_btn/_on_nav)를 그대로
+    상속하고, 항목 목록만 다중 수집에 맞게 오버라이드한다.
+    """
 
     # (아이콘, 라벨, 스택 인덱스) — 스택 인덱스는 단일 공유 코드(trigger.py의
     # _switch_page가 idx==3일 때 stats_page.reload()를 호출하는 등)가 전제하는
@@ -372,77 +383,19 @@ class SidebarMulti(QWidget):
     SETTINGS = [("◎", "세션 설정", 4), ("⬡", "인증 관리", 5)]
     AUTH_NAV_INDEX = 5
 
-    def __init__(self):
-        super().__init__()
-        self._build()
+    def _nav_items(self) -> list:
+        return self.NAV_ITEMS
 
-    def _build(self):
-        self.setFixedWidth(190)
-        self.setStyleSheet(f"background:{BG_SECONDARY}; border-right:1px solid {BORDER};")
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 16, 0, 16)
-        lay.setSpacing(2)
-
-        logo = parts.make_label("DataCrawler", ACCENT_LIGHT, 15, True)
-        logo.setStyleSheet(logo.styleSheet() + " padding:0 16px 12px;")
-        lay.addWidget(logo)
-        lay.addWidget(Divider())
-
-        # ── 네비게이터 ─────────────────────────────────
-        nav_lbl = parts.make_label("NAVIGATOR", TEXT_MUTED, 9)
-        nav_lbl.setStyleSheet(nav_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
-        lay.addWidget(nav_lbl)
-
-        self._btns = []
-        self._nav_idx_by_btn: dict = {}   # NavItem -> 그 버튼이 가리키는 스택 인덱스
-        for icon, label, stack_idx in self.NAV_ITEMS:
-            self._add_nav_btn(lay, icon, label, stack_idx)
-
-        lay.addSpacing(8)
-        lay.addWidget(Divider())
-
-        set_lbl = parts.make_label("SETTINGS", TEXT_MUTED, 9)
-        set_lbl.setStyleSheet(set_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
-        lay.addWidget(set_lbl)
-
+    def _settings_items(self) -> list:
         # 인증 관리 항목은 항상 생성해 두고 활성 블루프린트에 따라
         # setVisible()로만 토글 — 재빌드로 인한 시그널 재연결 누락을 방지.
-        for icon, label, stack_idx in self.SETTINGS:
-            btn = self._add_nav_btn(lay, icon, label, stack_idx)
-            if stack_idx == self.AUTH_NAV_INDEX:
-                self._auth_btn = btn
+        return self.SETTINGS
 
-        lay.addStretch()
-        lay.addWidget(Divider())
-
-        status_row = QHBoxLayout()
-        status_row.setContentsMargins(16, 8, 16, 0)
-        dot = parts.make_label("●", GREEN, 10)
-        st = parts.make_label("연결됨", GREEN, 12)
-        status_row.addWidget(dot)
-        status_row.addWidget(st)
-        status_row.addStretch()
-        lay.addLayout(status_row)
-
-        self._btns[0].setChecked(True)
-
-    # ── 네비게이터 동작 ─────────────────────────────────
     def _add_nav_btn(self, lay, icon, label, stack_idx) -> NavItem:
-        """NavItem을 만들어 레이아웃에 추가하고, 클릭 시 이동할 스택 인덱스를
-        위치가 아니라 버튼 자체에 매핑해둔다 — 사이드바 표시 순서와 스택
-        인덱스가 다른 "수집 목록"(표시순서 2번째, 스택 인덱스 6) 같은
-        항목도 안전하게 지원하기 위함."""
-        btn = NavItem(icon, label)
-        btn.clicked.connect(lambda _, idx=stack_idx: self._on_nav(idx))
-        lay.addWidget(btn)
-        self._btns.append(btn)
-        self._nav_idx_by_btn[btn] = stack_idx
+        btn = super()._add_nav_btn(lay, icon, label, stack_idx)
+        if stack_idx == self.AUTH_NAV_INDEX:
+            self._auth_btn = btn
         return btn
-
-    def _on_nav(self, idx):
-        for b in self._btns:
-            b.setChecked(self._nav_idx_by_btn[b] == idx)
-        self.page_changed.emit(idx)
 
     def set_auth_visible(self, visible: bool) -> None:
         self._auth_btn.setVisible(visible)
@@ -521,28 +474,8 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
 
         right_layout.addWidget(self.stack, 1)
 
-        # ── 메인 창 최하단 상태바 (단일과 동일) ─────────────
-        status_bar = QWidget()
-        status_bar.setFixedHeight(41)
-        status_bar.setStyleSheet(
-            f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
-        )
-        sbl = QHBoxLayout(status_bar)
-        sbl.setContentsMargins(14, 0, 14, 0)
-        sbl.setSpacing(8)
-
-        self.status_level = parts.make_label("", TEXT_MUTED, 11)
-        self.status_level.setFixedWidth(48)
-        sbl.addWidget(self.status_level)
-
-        self.status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
-        self.status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        sbl.addWidget(self.status_msg, 1)
-
-        log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
-        log_view_btn.clicked.connect(self._open_log_viewer)
-        sbl.addWidget(log_view_btn)
-
+        # ── 메인 창 최하단 상태바 (단일과 공용 build_status_bar 사용) ───
+        status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
         right_layout.addWidget(status_bar)
 
         self.log_manager.last_log.connect(self._update_status_bar)
@@ -629,6 +562,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         checked = self.blueprint_list_page.checked_seq_nos()
         if len(checked) >= 2:
             self.global_toolbar.url_input.setText("")
+            self.global_toolbar._method_label.setText("")
         elif len(checked) == 1:
             checked_info = BlueprintStorage().get(checked[0])
             self.global_toolbar.activate_blueprint(checked_info or {})

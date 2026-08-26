@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget,
     QFrame, QCheckBox, QLineEdit,
-    QHeaderView
+    QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
 )
 
 from PyQt6.QtCore import ( Qt, QTimer )
@@ -321,6 +321,22 @@ class StatCard(QWidget):
 
     def update_value(self, v):
         self._val.setText(str(v))
+
+
+# ──────────────────────────────────────────────────────
+#  NoFocusDelegate
+# ──────────────────────────────────────────────────────
+class NoFocusDelegate(QStyledItemDelegate):
+    """셀이 '현재 셀'이 되어도 점선 포커스 사각형을 그리지 않는 델리게이트.
+
+    체크박스만 보여야 하는 컬럼(다중 수집의 수집 목록 선택 컬럼, 단일 수집의
+    프록시 목록 활성 컬럼 등)에 setItemDelegateForColumn()으로 적용한다.
+    """
+
+    def paint(self, painter, option, index):
+        option = QStyleOptionViewItem(option)
+        option.state &= ~QStyle.StateFlag.State_HasFocus
+        super().paint(painter, option, index)
 
 
 # ──────────────────────────────────────────────────────
