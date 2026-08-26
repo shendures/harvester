@@ -1,11 +1,11 @@
 import time
-import scrapy
 import glean
 import engine
 import conf
 
 from selenium.webdriver.common.by import By
 from scrapy.selector import Selector
+from spiders.base import BaseExtractorSpider
 
 # Chrome WebDriver로 렌더링한 페이지를 두 경로로 처리합니다:
 # render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
@@ -14,7 +14,7 @@ from scrapy.selector import Selector
 PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
 
 
-class HtmlSeleniumSpider(scrapy.Spider):
+class HtmlSeleniumSpider(BaseExtractorSpider):
 
     name = "spider_html_selenium"
 
@@ -25,16 +25,8 @@ class HtmlSeleniumSpider(scrapy.Spider):
         'DOWNLOAD_DELAY': 1,  # 렌더링 전 상태 확인용 요청의 다운로드 지연 시간 설정
     }
 
-    # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
     def __init__(self, request_info=None, *args, **kwargs):
-        super(HtmlSeleniumSpider, self).__init__(*args, **kwargs)
-
-        # main.py에서 전달받은 수집 목록 리스트 (딕셔너리 리스트 형태)
-        if request_info is None:
-            self.request_info = {}
-            self.logger.error("❌ 수집 목록 리스트가 main.py로부터 전달되지 않았습니다.")
-        else:
-            self.request_info = request_info
+        super().__init__(request_info, *args, **kwargs)
 
         # 이 스파이더 실행(수집 세션) 전체에서 재사용하는 단일 브라우저 세션.
         # start_requests()에서 생성하고, closed()에서 한 번만 종료합니다 —
