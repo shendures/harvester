@@ -649,7 +649,7 @@ class Parts:
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
         if title:
-            lbl = self.make_label(title.upper(), self.theme.TEXT_MUTED, 10)
+            lbl = self.make_label(title.upper(), self.theme.TEXT_SECONDARY, 12)
             lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1px;")
             outer.addWidget(lbl)
             outer.addWidget(Divider())
