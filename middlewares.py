@@ -8,7 +8,7 @@ import random
 import time
 import string
 from collections import defaultdict
-from scrapy.exceptions import IgnoreRequest, NotConfigured
+from scrapy.exceptions import IgnoreRequest
 from scrapy.exceptions import DontCloseSpider
 import scrapy
 from scrapy import signals
@@ -120,47 +120,6 @@ class LatencyTrackingMiddleware:
             latency = time.time() - start_time
             # 스파이더 로그가 아닌 여기서 직접 찍거나, response.meta에 다시 담아줍니다.
             request.meta['total_latency'] = latency
-        return response
-
-
-class RandomProxyMiddleware:
-    def __init__(self, proxies):
-        # PROXY_LIST 설정이 없으면 에러 발생
-        if not proxies:
-            raise NotConfigured("PROXY_LIST 설정이 settings.py에 정의되지 않았습니다.")
-
-        self.proxies = proxies
-        self.logger = None
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        # settings.py에서 PROXY_LIST를 가져옴
-        proxies = crawler.settings.getlist('PROXY_LIST')
-        instance = cls(proxies)
-        instance.logger = crawler.spider.logger
-        return instance
-
-    def process_request(self, request, spider):
-        """
-        요청에 무작위 프록시를 할당합니다.
-        """
-        # 이미 proxy가 설정되어 있지 않은 경우에만 처리
-        if not request.meta.get('proxy'):
-            # self.proxies 리스트에서 무작위로 하나를 선택
-            proxy_url = random.choice(self.proxies)
-
-            # 요청의 meta에 'proxy' 키를 설정합니다.
-            request.meta['proxy'] = proxy_url
-
-            self.logger.debug(f"요청 {request.url}에 무작위 프록시 {proxy_url} 할당")
-
-        return None
-
-    def process_response(self, request, response, spider):
-        """사용된 IP를 response.meta에 기록 (선택 사항)"""
-        used_proxy = request.meta.get('proxy')
-        if used_proxy:
-            response.meta['ip'] = used_proxy.split('//')[-1]
         return response
 
 

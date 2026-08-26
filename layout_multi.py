@@ -30,8 +30,8 @@ from layout_single import (
     SessionSettingsPage, StatisticsPage, GlobalToolbarSingle, TrayManager,
     _blueprint_auth_method, _blueprint_requires_auth,
     parts,
-    BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT, ACCENT_HOVER,
-    TEXT_SECONDARY, TEXT_MUTED, BORDER, GREEN,
+    BG_SECONDARY, ACCENT_LIGHT,
+    TEXT_MUTED, BORDER, GREEN,
 )
 
 # 블루프린트 실행 상태 라벨 — BlueprintListPage 상태 컬럼에서 사용
@@ -100,16 +100,20 @@ class BlueprintListPage(QWidget):
     URL·수집 방식·인증 방식 등 상세 정보를 한눈에 비교하는 목록이면서,
     동시에 순차 수집 대상을 고르는 화면이기도 하다.
 
-    - 그 외 셀 클릭: 해당 블루프린트를 활성 블루프린트로 전환한다(화면은 이
-      페이지에 그대로 머무름) → row_selected emit. 이후 우측 상단
-      GlobalToolbarMulti의 "시작" 버튼을 누르면 그 블루프린트가 실행된다.
+    - 그 외 셀 클릭: 해당 행의 선택 컬럼 체크박스를 토글하고, 그 블루프린트를
+      활성 블루프린트로 전환한다(화면은 이 페이지에 그대로 머무름) →
+      row_selected emit. 이후 우측 상단 GlobalToolbarMulti의 "시작" 버튼을
+      누르면 그 블루프린트가 실행된다.
     - 선택 컬럼: 순차 수집에 포함할 블루프린트를 체크 → "전체 수집" 클릭 시
       batch_start_requested emit. "모두 선택"은 현재 전체 체크 여부에 따라
-      전체 선택/전체 해제를 토글한다.
+      전체 선택/전체 해제를 토글한다. 체크 개수가 바뀔 때마다 selection_changed
+      emit → 2개 이상 체크되면 MainWindowMulti가 상단 URL 입력창을 비운다
+      (대상이 하나로 특정되지 않으므로).
     """
 
     row_selected = pyqtSignal(str)
     batch_start_requested = pyqtSignal(list)
+    selection_changed = pyqtSignal()   # 선택 컬럼 체크 개수가 바뀔 때마다 emit
 
     _COLUMNS = ["NO", "제목", "URL", "방식", "데이터 형식", "인증", "렌더링", "상태", "선택"]
     _SEQ_NO_COL = 0   # seq_no를 Qt.ItemDataRole.UserRole로 보관하는 컬럼 (정렬돼도 유효)
@@ -208,6 +212,7 @@ class BlueprintListPage(QWidget):
         self.table.setSortingEnabled(True)
         self.table.blockSignals(False)
         self._update_batch_btn()
+        self.selection_changed.emit()   # 재구성으로 선택 개수가 0으로 리셋됐음을 알림
 
     def set_status(self, seq_no, status: str) -> None:
         """실행 상태를 이 테이블의 상태 컬럼에 반영한다 (idle/running/done)."""
@@ -253,10 +258,20 @@ class BlueprintListPage(QWidget):
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if item.column() == self._CHECK_COL:
             self._update_batch_btn()
+            self.selection_changed.emit()
 
     def _on_item_clicked(self, item: QTableWidgetItem) -> None:
         if item.column() == self._CHECK_COL:
-            return   # 체크박스 토글은 itemChanged가 처리 — 여기서는 활성 블루프린트를 바꾸지 않음
+            return   # 체크박스 자체 클릭은 Qt 기본 토글에 맡김 — 여기서 다시 토글하면 상쇄됨
+
+        check_item = self.table.item(item.row(), self._CHECK_COL)
+        if check_item:
+            check_item.setCheckState(
+                Qt.CheckState.Unchecked
+                if check_item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
+
         id_item = self.table.item(item.row(), self._SEQ_NO_COL)
         seq_no = id_item.data(Qt.ItemDataRole.UserRole) if id_item else None
         if seq_no:
@@ -322,6 +337,11 @@ class GlobalToolbarMulti(GlobalToolbarSingle):
         self._style_run_btn(False)
         lay.addWidget(self.run_btn)
 
+        # 추출 설정 버튼 (Raw/정제 탭에 각각 있던 동일 다이얼로그 진입점을 통합)
+        self._output_settings_btn = parts.settings_btn("⚙  추출 설정")
+        self._output_settings_btn.clicked.connect(self._open_output_settings)
+        lay.addWidget(self._output_settings_btn)
+
     def activate_blueprint(self, blueprint_info: dict) -> None:
         """활성 블루프린트 전환 시 상단 method 라벨/URL 입력창만 갱신합니다."""
         self._method_label.setText(
@@ -340,12 +360,12 @@ class SidebarMulti(QWidget):
     # _switch_page가 idx==3일 때 stats_page.reload()를 호출하는 등)가 전제하는
     # 고정값(0 대시보드/1 모니터링/2 스케줄러/3 통계 분석/4 세션 설정/5 인증
     # 관리)과 반드시 일치해야 한다. "수집 목록"은 그 전제를 건드리지 않도록
-    # 기존 값들 뒤에 새 인덱스(6)로 추가하고, 사이드바 표시 순서(모니터링
+    # 기존 값들 뒤에 새 인덱스(6)로 추가하고, 사이드바 표시 순서(대시보드
     # 바로 아래)만 이 리스트의 나열 순서로 별도 조정한다.
     NAV_ITEMS = [
         ("⬡", "대시보드", 0),
-        ("≡", "모니터링", 1),
         ("▤", "수집 목록", 6),
+        ("≡", "모니터링", 1),
         ("◷", "스케줄러", 2),
         ("▲", "통계 분석", 3),
     ]
@@ -487,6 +507,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.blueprint_list_page = BlueprintListPage()   # 6 — 전역 단일, 목록 전용
         self.blueprint_list_page.row_selected.connect(self._activate_blueprint)
         self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
+        self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
 
         self.stack.addWidget(self.dashboard_slot)       # 0
         self.stack.addWidget(self.monitor_slot)         # 1
@@ -582,6 +603,9 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         # 동일 블루프린트 — 여기서 BlueprintStorage().get()을 또 호출해
         # deepcopy를 반복할 필요가 없다.
         self.global_toolbar.activate_blueprint(bundle.dashboard.blueprint_info)
+        # 수집 목록에서 2개 이상 체크된 상태로 행을 클릭했을 수 있으므로,
+        # 방금 위에서 채운 URL을 선택 개수 기준으로 다시 확정한다.
+        self._sync_toolbar_url_for_selection()
         self.global_toolbar.set_pages(
             dashboard=bundle.dashboard,
             monitor_page=bundle.monitor_page,
@@ -593,3 +617,20 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.global_toolbar.auth_page = bundle.auth_page
 
         self.sidebar.set_auth_visible(bundle.auth_page is not None)
+
+    def _sync_toolbar_url_for_selection(self) -> None:
+        """
+        수집 목록의 선택 컬럼 체크 개수에 따라 상단 URL 입력창(과 방식 라벨)을
+        갱신한다 — 실제 활성 블루프린트를 전환하지는 않고 표시만 바꾼다.
+        - 2개 이상 체크: 대상이 하나로 특정되지 않으므로 빈 값
+        - 정확히 1개 체크: 체크된 그 블루프린트의 URL
+        - 0개 체크: 현재 활성 블루프린트의 URL로 복원
+        """
+        checked = self.blueprint_list_page.checked_seq_nos()
+        if len(checked) >= 2:
+            self.global_toolbar.url_input.setText("")
+        elif len(checked) == 1:
+            checked_info = BlueprintStorage().get(checked[0])
+            self.global_toolbar.activate_blueprint(checked_info or {})
+        else:
+            self.global_toolbar.activate_blueprint(self.dashboard.blueprint_info)

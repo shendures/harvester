@@ -3,12 +3,10 @@ import json
 import logging
 import scrapy
 from scrapy.http import JsonRequest
-from furl import furl
 from typing import List, Dict, Any
 import utility
 import conf
 from http import HTTPStatus
-import glean
 
 from items import DonasItem, DonasItemLoader
 from scrapy.selector import Selector
@@ -78,12 +76,6 @@ def get_spider(request_info: dict):
 
     else:
         raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
-
-
-def set_requests(collect_info, callback):
-    url_list = glean.get_grains(collect_info)
-    for url in url_list:
-        yield get_scrapy_request(url, collect_info["conditions"], callback)
 
 
 def get_scrapy_request(url, conditions, callback):
@@ -415,38 +407,4 @@ def set_cookies(response):
         cookie = cookie + code + " "
     return cookie.strip()
 
-
-def requests_info(response, collect_info, time):
-
-    # 요청 결과
-    result = "success" if response.status == 200 else "fail"
-
-    requests_info_dict = {
-                            "seq_no": collect_info["seq_no"],
-                            "titles": collect_info["title"],
-                            "callback_url": response.url,
-                            "ip": response.ip_address.compressed,
-                            "user_agents": response.request.headers.get('User-Agent').decode('utf-8'),
-                            "cookies": set_cookies(response),
-                            "time": time,
-                            "results" : result
-                         }
-
-    return requests_info_dict
-
-
-def make_form_data_for_url_args(url):
-    result_dict = {}
-    args = furl(url).args
-    keys = args.keys()
-    for key in keys:
-        try:
-            if type(json.loads(args.get(key))) is int:
-                result_dict[key] = str(json.loads(args.get(key)))
-            else:
-                result_dict[key] = json.loads(args.get(key))
-        except Exception as e:
-            print(e)
-            result_dict[key] = args.get(key)
-    return result_dict
 

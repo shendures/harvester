@@ -78,17 +78,6 @@ class RefineStats:
             return "—"
         return f"{self.refined_count / self.raw_count * 100:.1f}%"
 
-    def to_dict(self) -> dict:
-        return {
-            "raw_count":      self.raw_count,
-            "refined_count":  self.refined_count,
-            "removed":        self.removed,
-            "filled":         self.filled,
-            "refine_rate":    self.refine_rate,
-            "deleted_count":  len(self.deleted_indices),
-            "modified_count": len(self.modified_rows),
-        }
-
 
 # ── 기본 정제 규칙 ────────────────────────────────────────────────────
 DEFAULT_RULES: dict[str, bool] = {
@@ -194,12 +183,6 @@ class DataRefiner:
                     stats.modified_rows.setdefault(refined_pos, {})[col] = (raw_val, refined_val)
 
         return data, stats
-
-    def update_rules(self, rules: dict[str, bool]) -> None:
-        """규칙 딕셔너리를 부분 갱신합니다 (없는 키는 무시)."""
-        for key in DEFAULT_RULES:
-            if key in rules:
-                self.rules[key] = bool(rules[key])
 
     # ── 유효성 검사 ───────────────────────────────────────────────────
     @staticmethod

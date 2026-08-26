@@ -3,8 +3,6 @@ import os
 import re
 import itertools
 from typing import Optional, Any
-from datetime import datetime as dt, timedelta
-import calendar
 import json
 
 def resource_path():
@@ -53,10 +51,6 @@ def data_dir(app_name: Optional[str] = None) -> str:
             root = os.path.join(os.path.expanduser("~"), ".config")
         return os.path.join(root, app_name or get_app_name())
     return resource_path()
-
-
-def get_isin_dict(data_dict: dict, key_list: list):
-    return {k: v for k, v in data_dict.items() if k in key_list}
 
 
 def transform_to_json(_variable):
@@ -184,32 +178,6 @@ def generate_combined_urls(url_template):
     return final_urls
 
 
-def get_all_nested_keys(data: dict):
-    """
-    딕셔너리(및 중첩된 딕셔너리)의 모든 레벨에 있는 키를 재귀적으로 수집하여 리스트로 반환합니다.
-
-    Args:
-        data (dict): 처리할 딕셔너리.
-
-    Returns:
-        list: 딕셔너리의 모든 키를 포함하는 리스트.
-    """
-    keys_list = []
-
-    if isinstance(data, dict):
-        # 현재 레벨의 모든 키를 가져옵니다.
-        for key, value in data.items():
-            # 1. 현재 키를 리스트에 추가합니다.
-            keys_list.append(key)
-
-            # 2. 값(value)이 다시 딕셔너리이면, 재귀적으로 이 함수를 호출합니다.
-            if isinstance(value, dict):
-                # 중첩 딕셔너리에서 반환된 키들을 현재 리스트에 확장(extend)합니다.
-                keys_list.extend(get_all_nested_keys(value))
-
-    return list(set(keys_list))
-
-
 def get_target(data: Any, target: str) -> Optional[Any]:
     """
     중첩된 dict/list 구조에서 target 키의 값을 찾아 반환.
@@ -258,90 +226,5 @@ def get_target(data: Any, target: str) -> Optional[Any]:
 
     # 원본 함수의 반환 방식: 첫 번째 결과만 반환 (리스트가 비어있으면 None 반환하여 IndexError 방지)
     return results[0] if results else None
-
-
-def _calculate_next_run(schedule_info):
-    """
-    표준 datetime 라이브러리만을 사용하여 정확한 차기 실행 시간을 계산합니다.
-    """
-    now = dt.now()
-
-    # 요일 인덱스 사전
-    day_of_week_dict = {"월요일": 0, "화요일": 1, "수요일": 2, "목요일": 3, "금요일": 4, "토요일": 5, "일요일": 6}
-
-    # 1. 사용자가 설정한 시간 파싱 (HH:MM:SS)
-    s_time_str = schedule_info.get('time', '00:00:00')
-    try:
-        t_obj = dt.strptime(s_time_str, '%H:%M:%S').time()
-    except ValueError:
-        t_obj = dt.strptime("00:00:00", '%H:%M:%S').time()
-
-    # 2. 기준 시간을 오늘 날짜와 결합
-    next_run = dt.combine(now.date(), t_obj)
-
-    # 3. 주기 유형에 따른 상세 계산
-    s_type = schedule_info.get('schedule_type')
-
-    if s_type == 'daily':
-        if next_run <= now:
-            next_run += timedelta(days=1)
-
-    elif s_type == 'weekly':
-        # target_day: 0(월) ~ 6(일)
-        target_day = int(day_of_week_dict.get(schedule_info["day_of_week"], 0))
-
-        # 현재 요일과 목표 요일의 차이 계산
-        days_ahead = target_day - now.weekday()
-
-        # 오늘이 목표 요일인데 시간이 지났거나, 목표 요일이 이미 지난 경우
-        if days_ahead < 0 or (days_ahead == 0 and next_run <= now):
-            days_ahead += 7
-
-        next_run = next_run + timedelta(days=days_ahead)
-
-    elif s_type == 'monthly':
-        target_day_val = int(schedule_info.get('day_of_month', 1))
-
-        # 이번 달의 해당 날짜로 설정
-        # 주의: 31일 설정 시 이번 달이 30일까지면 에러 발생 가능 -> 해당 월의 최대값으로 클램핑
-        last_day_of_month = calendar.monthrange(next_run.year, next_run.month)[1]
-        actual_day = min(target_day_val, last_day_of_month)
-        next_run = next_run.replace(day=actual_day)
-
-        if next_run <= now:
-            # 다음 달 계산 (연도가 넘어가는 경우 포함)
-            new_month = next_run.month + 1
-            new_year = next_run.year
-            if new_month > 12:
-                new_month = 1
-                new_year += 1
-
-            # 다음 달의 마지막 날 확인 후 날짜 재설정
-            last_day_next_month = calendar.monthrange(new_year, new_month)[1]
-            actual_day = min(target_day_val, last_day_next_month)
-            next_run = next_run.replace(year=new_year, month=new_month, day=actual_day)
-
-    elif s_type == 'specific':
-        spec_date_str = schedule_info.get('date', now.strftime('%Y-%m-%d'))
-        next_run = dt.strptime(f"{spec_date_str} {s_time_str}", '%Y-%m-%d %H:%M:%S')
-
-    return next_run
-
-
-def check_lap_time(start_time):
-    # 끝난 시간
-    end_time = dt.now()
-
-    # 걸린 시간
-    lap = end_time - start_time
-    round_lap = re.sub(r"(\.).*", "", str(lap))  # micro_seconds 제거
-
-    print("\n")
-    print("=" * 35)
-    print(f'start time : {start_time.strftime("%Y-%m-%d %H:%M:%S")}')
-    print(f'End time : {end_time.strftime("%Y-%m-%d %H:%M:%S")}')
-    print(f'lap time : {round_lap}')
-    print("=" * 35)
-    print("\n")
 
 

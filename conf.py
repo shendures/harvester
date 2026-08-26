@@ -406,14 +406,6 @@ class CustomModuleStorage:
         """`refine/{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다."""
         return self._defines(seq_no, "refine", "refine", "refine_row")
 
-    def has_render(self, seq_no) -> bool:
-        """`render/{seq_no}.py`에 render()가 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "render", "render")
-
-    def has_login(self, seq_no) -> bool:
-        """`login/{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "login", "login")
-
     # ── 로드 (exec 실행) ────────────────────────────────
     def _load_module(self, seq_no, kind: str):
         """

@@ -584,6 +584,155 @@ def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_pa
     )
 
 
+def _reset_pages(dashboard, monitor_page) -> None:
+    """대시보드·모니터링 페이지의 세션 상태를 함께 초기화한다 (여러 곳에서 반복되던 2줄 패턴)."""
+    if dashboard is not None:
+        dashboard._reset_dashboard()
+    if monitor_page is not None:
+        monitor_page._reset_monitor_page()
+
+
+def _default_msgbox_qss(label_font_size: int = 12) -> str:
+    """앱 전역에서 반복 사용되는 QMessageBox 스타일시트 (여러 다이얼로그에 그대로 복사돼 있던 블록)"""
+    return f"""
+        QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
+        QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:{label_font_size}px; }}
+        QPushButton {{
+            background:{ACCENT}; color:white; border:none;
+            border-radius:5px; padding:5px 14px; font-size:12px;
+        }}
+        QPushButton:hover {{ background:{ACCENT_HOVER}; }}
+    """
+
+
+def _show_db_conn_fail_dialog(parent, reason: str) -> None:
+    """DB 연결 실패 안내 다이얼로그 (출력 설정 / 스케줄 등록 양쪽에서 동일하게 사용)"""
+    msg = QMessageBox(parent)
+    msg.setWindowTitle("연결 실패")
+    msg.setIcon(QMessageBox.Icon.Critical)
+    msg.setText("<b>DB 연결에 실패했습니다.</b>")
+    msg.setInformativeText(reason)
+    msg.setStyleSheet(_default_msgbox_qss(12))
+    msg.exec()
+
+
+def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
+    """'수집 결과 없음' 안내 다이얼로그 (단일/다중 _on_finished에서 동일하게 사용)"""
+    msg = QMessageBox(parent)
+    msg.setWindowTitle("수집 결과 없음")
+    msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+                "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setStyleSheet(_default_msgbox_qss(13))
+    msg.exec()
+
+
+def _stop_worker_if_running(worker) -> None:
+    """실행 중인 워커가 있으면 중단 신호를 보내고 최대 1.5초 대기한다 (여러 곳에 반복되던 가드)."""
+    if worker and worker.isRunning():
+        worker.stop()
+        worker.wait(1500)
+
+
+def _build_db_settings_fields(grid: QGridLayout, db_info: dict) -> dict:
+    """DB Type/Host/Port/... 8행 그리드를 만들어 grid에 채우고 위젯 딕셔너리를 반환한다.
+    db_info: db_env/host/port/database/schema/user/password/save_data_nm 키(값은 이미
+    호출부에서 등록/수정 모드에 맞게 해석된 상태여야 함)."""
+    def _lbl(t):
+        return parts.make_label(t, TEXT_SECONDARY, 11)
+
+    def _inp(txt="", ph=""):
+        e = QLineEdit(txt)
+        e.setPlaceholderText(ph)
+        return e
+
+    db_type = QComboBox()
+    db_type.addItems(["MySQL", "PostgreSQL", "MongoDB"])
+    db_type.setCurrentText(db_info.get("db_env") or "MySQL")
+    widgets = {
+        "db_type": db_type,
+        "host":    _inp(txt=db_info.get("host") or ""),
+        "port":    _inp(txt=db_info.get("port") or ""),
+        "name":    _inp(db_info.get("database") or ""),
+        "schema":  _inp(db_info.get("schema") or ""),
+        "user":    _inp(db_info.get("user") or ""),
+        "password": _inp(db_info.get("password") or ""),
+        "save_data_nm": _inp(db_info.get("save_data_nm") or ""),
+    }
+    widgets["password"].setEchoMode(QLineEdit.EchoMode.Password)
+
+    for row_i, (label, widget) in enumerate([
+        ("DB Type", widgets["db_type"]), ("HOST", widgets["host"]), ("PORT", widgets["port"]),
+        ("DB Name", widgets["name"]), ("SCHEMA", widgets["schema"]),
+        ("USER", widgets["user"]), ("PASSWORD", widgets["password"]), ("DATA Name", widgets["save_data_nm"]),
+    ]):
+        grid.addWidget(_lbl(label), row_i, 0)
+        grid.addWidget(widget, row_i, 1)
+
+    def _on_db_type_changed(t):
+        widgets["port"].setText(DB_PORTS.get(t, ""))
+        widgets["port"].setCursorPosition(0)
+    db_type.currentTextChanged.connect(_on_db_type_changed)
+
+    return widgets
+
+
+def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:
+    """TEST CONNECTION 버튼 클릭 시 공통 DB 연결 테스트 로직을 수행한다
+    (출력 설정 / 스케줄 등록 다이얼로그에서 통째로 복제돼 있던 로직을 통합)."""
+    def _test_conn():
+        host = widgets["host"].text().strip() or "localhost"
+        try:
+            port = int(widgets["port"].text().strip())
+        except ValueError:
+            test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
+            test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            _show_db_conn_fail_dialog(
+                parent_dialog, "포트 번호에 숫자가 아닌 값이 입력되어 있습니다.\n올바른 포트 번호를 입력하세요."
+            )
+            return
+        test_result_lbl.setText("⏳ 연결 중...")
+        test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        test_btn.setEnabled(False)
+        QApplication.processEvents()
+        info = {
+            "db_env": widgets["db_type"].currentText(), "host": host, "port": str(port),
+            "database": widgets["name"].text().strip(), "schema": widgets["schema"].text().strip(),
+            "user": widgets["user"].text().strip(), "password": widgets["password"].text(),
+            "save_data_nm": widgets["save_data_nm"].text().strip() or "results",
+        }
+        try:
+            ok, reason = db_conn._check_db_connect_info(info)
+            if ok:
+                test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
+                test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
+            else:
+                test_result_lbl.setText("❌ 연결 실패")
+                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _show_db_conn_fail_dialog(parent_dialog, reason)
+        except ImportError:
+            try:
+                with socket.create_connection((host, port), timeout=3):
+                    test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
+                    test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            except OSError as e:
+                test_result_lbl.setText("❌ 연결 실패")
+                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _show_db_conn_fail_dialog(
+                    parent_dialog,
+                    f"DB 드라이버가 설치되어 있지 않아 소켓 연결을 시도했으나 실패했습니다.\n\n원인: {e}"
+                )
+        except Exception as e:
+            test_result_lbl.setText("❌ 연결 실패")
+            test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            _show_db_conn_fail_dialog(parent_dialog, str(e))
+        finally:
+            test_btn.setEnabled(True)
+
+    test_btn.clicked.connect(_test_conn)
+
+
 # ══════════════════════════════════════════════════════
 #  GlobalToolbarSingle Mixin
 # ══════════════════════════════════════════════════════
@@ -596,6 +745,12 @@ class GlobalToolbarTriggers:
         self.url_input.setFocus()
         self.url_input.selectAll()
 
+    def _open_output_settings(self):
+        """추출 설정 버튼 클릭 시 호출 — 활성 블루프린트의 모니터링 페이지가 가진 저장 설정 다이얼로그를 연다"""
+        if self.monitor_page is None:
+            return
+        self.monitor_page._open_output_settings_dialog()
+
     def _toggle_run(self):
         """시작/중지 버튼 클릭 시 호출"""
         if not self._running:
@@ -606,8 +761,7 @@ class GlobalToolbarTriggers:
                 mw.dashboard._update_step_ui(0)
 
             store.clear_rows()
-            self.dashboard._reset_dashboard()
-            self.monitor_page._reset_monitor_page()
+            _reset_pages(self.dashboard, self.monitor_page)
 
             self.set_running(True)
             self._log("info", "수집을 시작합니다.")
@@ -681,10 +835,7 @@ class GlobalToolbarTriggers:
         store.clear_rows()
         store.clear_url_maps()
 
-        if self.dashboard is not None:
-            self.dashboard._reset_dashboard()
-        if self.monitor_page is not None:
-            self.monitor_page._reset_monitor_page()
+        _reset_pages(self.dashboard, self.monitor_page)
 
         mw = self._main_window()
         if mw is not None:
@@ -722,9 +873,6 @@ class GlobalToolbarTriggers:
                 return w
             w = w.parent()
         return None
-
-    def get_url(self) -> str:
-        return self.url_input.text().strip()
 
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:
@@ -803,26 +951,26 @@ class DashboardPageTriggers:
 
         self.monitor_table.setSortingEnabled(True)
         self.mon_row_count_lbl.setText(f"{self.monitor_table.rowCount()} rows")
+
+        ERROR_STATUSES = {"404", "500", "503", "502", "429"}
+        if str(resp_info.get("status", "")).strip() in ERROR_STATUSES:
+            self._session_error_count += 1
+        try:
+            self._session_latency_sum += float(resp_info.get("pure_latency", ""))
+            self._session_latency_count += 1
+        except (ValueError, TypeError):
+            pass
         self._refresh_session_stats()
 
     def _refresh_session_stats(self):
-        """수집 모니터링 테이블 집계 → 세션 통계 카드 갱신"""
-        ERROR_STATUSES = {"404", "500", "503", "502", "429"}
+        """누적된 세션 집계(에러 수/지연시간 합)로 통계 카드 갱신 — 테이블 전체 재순회 없음"""
         total_rows = self.monitor_table.rowCount()
-        errors = 0
-        latencies = []
-        for r in range(total_rows):
-            status_item = self.monitor_table.item(r, 2)
-            if status_item and status_item.text().strip() in ERROR_STATUSES:
-                errors += 1
-            lat_item = self.monitor_table.item(r, 6)
-            if lat_item:
-                try:
-                    latencies.append(float(lat_item.text()))
-                except (ValueError, TypeError):
-                    pass
+        errors = self._session_error_count
         completed = total_rows - errors
-        avg_latency = f"{sum(latencies) / len(latencies):.2f}s" if latencies else "—"
+        avg_latency = (
+            f"{self._session_latency_sum / self._session_latency_count:.2f}s"
+            if self._session_latency_count else "—"
+        )
         self.s_total.update_value(completed)
         self.s_err.update_value(errors)
         self.s_pages.update_value(total_rows)
@@ -868,23 +1016,18 @@ class MonitorPageTriggers:
             self.result_table.setHorizontalHeaderLabels(["NO"] + columns)
         self.result_table.setSortingEnabled(False)
 
-        # 중복 감지를 위해 기존 수집 데이터 문자열 집합 유지
-        existing_keys = {
-            str(tuple(str(e.get(c, "")) for c in columns))
-            for e in self._collected_data
-        }
-
+        # 중복 감지용 키 집합은 self._existing_keys에 증분 유지(매 호출마다 재구축하지 않음)
         for entry in data:
             if not isinstance(entry, dict):
                 continue
             entry_key = str(tuple(str(entry.get(c, "")) for c in columns))
-            is_dup = entry_key in existing_keys
+            is_dup = entry_key in self._existing_keys
             is_empty_row = all(
                 entry.get(c) in (None, "", "null", "None")
                 for c in columns
             )
             self._collected_data.append(entry)
-            existing_keys.add(entry_key)
+            self._existing_keys.add(entry_key)
 
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
@@ -1597,109 +1740,20 @@ class MonitorPageTriggers:
         dp.setContentsMargins(14, 14, 14, 14)
         dp.setSpacing(8)
 
-        def _lbl(t):
-            return parts.make_label(t, TEXT_SECONDARY, 11)
-
-        def _inp(txt="", ph=""):
-            e = QLineEdit(txt)
-            e.setPlaceholderText(ph)
-            return e
-
         grid = QGridLayout()
         grid.setSpacing(8)
         grid.setColumnStretch(1, 1)
-
-        _db_type   = QComboBox()
-        _db_type.addItems(["MySQL", "PostgreSQL", "MongoDB"])
-        _db_type.setCurrentText(self.output_info["extract"]["db"]["db_env"])
-        _db_host   = _inp(txt=self.output_info["extract"]["db"]["host"])
-        _db_port   = _inp(txt=self.output_info["extract"]["db"]["port"])
-        _db_name   = _inp(self.output_info["extract"]["db"]["database"])
-        _db_schema = _inp(self.output_info["extract"]["db"]["schema"])
-        _db_user   = _inp(self.output_info["extract"]["db"]["user"])
-        _db_pw     = _inp(self.output_info["extract"]["db"]["password"])
-        _db_pw.setEchoMode(QLineEdit.EchoMode.Password)
-        _db_data   = _inp(self.output_info["extract"]["db"]["save_data_nm"])
-
-        for row_i, (label, widget) in enumerate([
-            ("DB Type", _db_type), ("HOST", _db_host), ("PORT", _db_port),
-            ("DB Name", _db_name), ("SCHEMA", _db_schema),
-            ("USER", _db_user), ("PASSWORD", _db_pw), ("DATA Name", _db_data),
-        ]):
-            grid.addWidget(_lbl(label), row_i, 0)
-            grid.addWidget(widget, row_i, 1)
-
-        def _on_db_type_changed(t):
-            _db_port.setText(DB_PORTS.get(t, ""))
-            _db_port.setCursorPosition(0)
-        _db_type.currentTextChanged.connect(_on_db_type_changed)
+        db_widgets = _build_db_settings_fields(grid, self.output_info["extract"]["db"])
+        _db_type, _db_host, _db_port  = db_widgets["db_type"], db_widgets["host"], db_widgets["port"]
+        _db_name, _db_schema          = db_widgets["name"], db_widgets["schema"]
+        _db_user, _db_pw, _db_data    = db_widgets["user"], db_widgets["password"], db_widgets["save_data_nm"]
         dp.addLayout(grid)
 
         test_row = QHBoxLayout()
         test_row.setSpacing(10)
         test_btn = parts.outline_btn("TEST CONNECTION")
         test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
-
-        def _show_conn_fail_dialog(reason: str):
-            msg = QMessageBox(dlg)
-            msg.setWindowTitle("연결 실패")
-            msg.setIcon(QMessageBox.Icon.Critical)
-            msg.setText("<b>DB 연결에 실패했습니다.</b>")
-            msg.setInformativeText(reason)
-            msg.setStyleSheet(f"""
-                QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:12px; }}
-                QPushButton {{ background:{ACCENT}; color:white; border:none;
-                    border-radius:5px; padding:5px 14px; font-size:12px; }}
-                QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-            """)
-            msg.exec()
-
-        def _test_conn():
-            host = _db_host.text().strip() or "localhost"
-            try:
-                port = int(_db_port.text().strip())
-            except ValueError:
-                test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
-                test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
-                _show_conn_fail_dialog("포트 번호에 숫자가 아닌 값이 입력되어 있습니다.")
-                return
-            test_result_lbl.setText("⏳ 연결 중...")
-            test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
-            test_btn.setEnabled(False)
-            QApplication.processEvents()
-            info = {
-                "db_env": _db_type.currentText(), "host": host, "port": str(port),
-                "database": _db_name.text().strip(), "schema": _db_schema.text().strip(),
-                "user": _db_user.text().strip(), "password": _db_pw.text(),
-                "save_data_nm": _db_data.text().strip() or "results",
-            }
-            try:
-                ok, reason = db_conn._check_db_connect_info(info)
-                if ok:
-                    test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
-                    test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
-                else:
-                    test_result_lbl.setText("❌ 연결 실패")
-                    test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                    _show_conn_fail_dialog(reason)
-            except ImportError:
-                try:
-                    with socket.create_connection((host, port), timeout=3):
-                        test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
-                        test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
-                except OSError as e:
-                    test_result_lbl.setText("❌ 연결 실패")
-                    test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                    _show_conn_fail_dialog(f"소켓 연결 실패: {e}")
-            except Exception as e:
-                test_result_lbl.setText("❌ 연결 실패")
-                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                _show_conn_fail_dialog(str(e))
-            finally:
-                test_btn.setEnabled(True)
-
-        test_btn.clicked.connect(_test_conn)
+        _wire_db_test_button(test_btn, test_result_lbl, db_widgets, dlg)
         test_row.addWidget(test_btn)
         test_row.addWidget(test_result_lbl)
         test_row.addStretch()
@@ -1858,11 +1912,11 @@ class MonitorPageTriggers:
                     delimiter = extract_cfg["file"]["file_delimiter"]
                     if save_type is None:
                         final_file_name = file_name
-                        if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.csv")):
                             count = 1
                             while True:
                                 new_file_name = f"{file_name} ({count})"
-                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.{file_format}")):
+                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
                                     break
                                 count += 1
                             final_file_name = new_file_name
@@ -1876,10 +1930,10 @@ class MonitorPageTriggers:
 
                 elif file_format == "JSON":
                     if save_type is None:
-                        if os.path.exists(os.path.join(file_path, f"{file_name}.{file_format}")):
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.json")):
                             reply = QMessageBox.question(
                                 self, '덮어쓰기 확인',
-                                f"'{file_name}.{file_format}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?",
+                                f"'{file_name}.json' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?",
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                 QMessageBox.StandardButton.No
                             )
@@ -2020,24 +2074,6 @@ class MonitorPageTriggers:
 class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
 
-    def _export_json(self):
-        rows     = store.get_rows()
-        sessions = store.get_sessions()
-        if not rows and not sessions:
-            QMessageBox.warning(self, "경고", "저장할 데이터가 없습니다.")
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "리포트 저장", "report.json", "JSON (*.json)")
-        if not path:
-            return
-        report = {
-            "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "sessions": sessions,
-            "rows": [{k: str(v) for k, v in r.items()} for r in rows],
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-        QMessageBox.information(self, "완료", f"저장 완료:\n{path}")
-
     # ── data ───────────────────────────────────
     def reload(self):
         rows = store.get_url_maps()
@@ -2157,15 +2193,7 @@ class SchedulerPageTriggers:
         svtype_idx  = sched_info_dict["save_type"].currentIndex()
         out_mode    = self._sched_out_mode
 
-        _msg_qss = f"""
-            QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-            QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
-            QPushButton {{
-                background:{ACCENT}; color:white; border:none;
-                border-radius:5px; padding:5px 14px; font-size:12px;
-            }}
-            QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-        """
+        _msg_qss = _default_msgbox_qss(13)
 
         def _warn(title, text):
             msg = QMessageBox(dlg)
@@ -2994,129 +3022,27 @@ class SchedulerPageTriggers:
         sdp.setContentsMargins(14, 14, 14, 14)
         sdp.setSpacing(8)
 
-        def _slbl(t):
-            return parts.make_label(t, TEXT_SECONDARY, 11)
-
-        def _sinp(txt="", ph=""):
-            e = QLineEdit(txt)
-            e.setPlaceholderText(ph)
-            return e
+        if sched_task == "등록":
+            _sched_db_info = output_info["extract"]["db"]
+        else:
+            edb_dflt = {"host": "localhost", "port": "3306", "db_env": "MySQL"}
+            _sched_db_info = {k: edb.get(k) or edb_dflt.get(k, "") for k in
+                               ("db_env", "host", "port", "database", "schema", "user", "password", "save_data_nm")}
 
         sgrid = QGridLayout()
         sgrid.setSpacing(8)
         sgrid.setColumnStretch(1, 1)
-
-        _sdb_type = QComboBox()
-        _sdb_type.addItems(["MySQL", "PostgreSQL", "MongoDB"])
-
-        if sched_task == "등록":
-            _sdb_type.setCurrentText(output_info["extract"]["db"]["db_env"])
-            _sdb_host   = _sinp(txt=output_info["extract"]["db"]["host"])
-            _sdb_port   = _sinp(txt=output_info["extract"]["db"]["port"])
-            _sdb_name   = _sinp(output_info["extract"]["db"]["database"])
-            _sdb_schema = _sinp(output_info["extract"]["db"]["schema"])
-            _sdb_user   = _sinp(output_info["extract"]["db"]["user"])
-            _sdb_pw     = _sinp(output_info["extract"]["db"]["password"])
-            _sdb_data   = _sinp(output_info["extract"]["db"]["save_data_nm"])
-        else:
-            _sdb_type.setCurrentText(edb.get("db_env") or "MySQL")
-            _sdb_host   = _sinp(edb.get("host") or "localhost")
-            _sdb_port   = _sinp(edb.get("port") or "3306")
-            _sdb_name   = _sinp(edb.get("database") or "")
-            _sdb_schema = _sinp(edb.get("schema") or "")
-            _sdb_user   = _sinp(edb.get("user") or "")
-            _sdb_pw     = _sinp(edb.get("password") or "")
-            _sdb_data   = _sinp(edb.get("save_data_nm") or "")
-
-        _sdb_pw.setEchoMode(QLineEdit.EchoMode.Password)
-
-        for _row_i, (_label, _widget) in enumerate([
-            ("DB Type", _sdb_type), ("HOST", _sdb_host), ("PORT", _sdb_port),
-            ("DB Name", _sdb_name), ("SCHEMA", _sdb_schema),
-            ("USER", _sdb_user), ("PASSWORD", _sdb_pw), ("DATA Name", _sdb_data),
-        ]):
-            sgrid.addWidget(_slbl(_label), _row_i, 0)
-            sgrid.addWidget(_widget, _row_i, 1)
-
-        def _on_sdb_type_changed(t):
-            _sdb_port.setText(DB_PORTS.get(t, ""))
-            _sdb_port.setCursorPosition(0)
-        _sdb_type.currentTextChanged.connect(_on_sdb_type_changed)
+        sdb_widgets = _build_db_settings_fields(sgrid, _sched_db_info)
+        _sdb_type, _sdb_host, _sdb_port = sdb_widgets["db_type"], sdb_widgets["host"], sdb_widgets["port"]
+        _sdb_name, _sdb_schema          = sdb_widgets["name"], sdb_widgets["schema"]
+        _sdb_user, _sdb_pw, _sdb_data   = sdb_widgets["user"], sdb_widgets["password"], sdb_widgets["save_data_nm"]
         sdp.addLayout(sgrid)
 
         sched_test_row = QHBoxLayout()
         sched_test_row.setSpacing(10)
         sched_test_btn = parts.outline_btn("TEST CONNECTION")
         sched_test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
-
-        def _show_sched_conn_fail_dialog(reason: str):
-            msg = QMessageBox(dlg)
-            msg.setWindowTitle("연결 실패")
-            msg.setIcon(QMessageBox.Icon.Critical)
-            msg.setText("<b>DB 연결에 실패했습니다.</b>")
-            msg.setInformativeText(reason)
-            msg.setStyleSheet(f"""
-                QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:12px; }}
-                QPushButton {{
-                    background:{ACCENT}; color:white; border:none;
-                    border-radius:5px; padding:5px 14px; font-size:12px;
-                }}
-                QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-            """)
-            msg.exec()
-
-        def _sched_test_conn():
-            host = _sdb_host.text().strip() or "localhost"
-            try:
-                port = int(_sdb_port.text().strip())
-            except ValueError:
-                sched_test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
-                sched_test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
-                _show_sched_conn_fail_dialog("포트 번호에 숫자가 아닌 값이 입력되어 있습니다.\n올바른 포트 번호를 입력하세요.")
-                return
-            sched_test_result_lbl.setText("⏳ 연결 중...")
-            sched_test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
-            sched_test_btn.setEnabled(False)
-            QApplication.processEvents()
-            info = {
-                "db_env":       _sdb_type.currentText(),
-                "host":         host,
-                "port":         str(port),
-                "database":     _sdb_name.text().strip(),
-                "schema":       _sdb_schema.text().strip(),
-                "user":         _sdb_user.text().strip(),
-                "password":     _sdb_pw.text(),
-                "save_data_nm": _sdb_data.text().strip(),
-            }
-            try:
-                ok, reason = db_conn._check_db_connect_info(info)
-                if ok:
-                    sched_test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
-                    sched_test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
-                else:
-                    sched_test_result_lbl.setText("❌ 연결 실패")
-                    sched_test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                    _show_sched_conn_fail_dialog(reason)
-            except ImportError:
-                try:
-                    with socket.create_connection((host, port), timeout=3):
-                        sched_test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
-                        sched_test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
-                except OSError as e:
-                    sched_test_result_lbl.setText("❌ 연결 실패")
-                    sched_test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                    _show_sched_conn_fail_dialog(
-                        f"DB 드라이버가 설치되어 있지 않아 소켓 연결을 시도했으나 실패했습니다.\n\n원인: {e}"
-                    )
-            except Exception as e:
-                sched_test_result_lbl.setText("❌ 연결 실패")
-                sched_test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
-                _show_sched_conn_fail_dialog(str(e))
-            finally:
-                sched_test_btn.setEnabled(True)
-
-        sched_test_btn.clicked.connect(_sched_test_conn)
+        _wire_db_test_button(sched_test_btn, sched_test_result_lbl, sdb_widgets, dlg)
         sched_test_row.addWidget(sched_test_btn)
         sched_test_row.addWidget(sched_test_result_lbl)
         sched_test_row.addStretch()
@@ -3856,8 +3782,7 @@ class MainWindowTriggersSingle:
             self.stats_page.reload()
 
     def _reset_all_pages(self):
-        self.dashboard._reset_dashboard()
-        self.monitor_page._reset_monitor_page()
+        _reset_pages(self.dashboard, self.monitor_page)
 
     def _start_crawl(self, cfg: dict):
         self._launch_worker(cfg, job_name=cfg.get("job", "수동 실행"))
@@ -3887,8 +3812,7 @@ class MainWindowTriggersSingle:
             return
 
         # 수동 실행과 동일하게 대시보드·모니터링 페이지 리셋 후 실행
-        self.dashboard._reset_dashboard()
-        self.monitor_page._reset_monitor_page()
+        self._reset_all_pages()
         self._launch_worker(cfg, job_name=cfg["job"])
         self.stack.setCurrentIndex(0)
         for i, btn in enumerate(self.sidebar._btns):
@@ -3896,9 +3820,7 @@ class MainWindowTriggersSingle:
 
     def _launch_worker(self, cfg: dict, job_name="실행"):
         # 수동 실행 경로는 기존과 동일하게 기존 워커를 중단하고 교체
-        if self._worker and self._worker.isRunning():
-            self._worker.stop()
-            self._worker.wait(1500)
+        _stop_worker_if_running(self._worker)
 
         self._worker = MultiprocessWorker(cfg, job_name)
         self._worker.new_row.connect(self.dashboard.add_row)
@@ -3928,8 +3850,7 @@ class MainWindowTriggersSingle:
             f"(남은 대기: {remaining}건)"
         )
 
-        self.dashboard._reset_dashboard()
-        self.monitor_page._reset_monitor_page()
+        self._reset_all_pages()
 
         self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
         self.stack.setCurrentIndex(0)
@@ -3996,22 +3917,7 @@ class MainWindowTriggersSingle:
                     icon=QSystemTrayIcon.MessageIcon.Warning,
                 )
             else:
-                msg = QMessageBox(self)
-                msg.setWindowTitle("수집 결과 없음")
-                msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
-                            f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
-                            "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
-                msg.setIcon(QMessageBox.Icon.Warning)
-                msg.setStyleSheet(f"""
-                    QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                    QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
-                    QPushButton {{
-                        background:{ACCENT}; color:white; border:none;
-                        border-radius:5px; padding:5px 14px; font-size:12px;
-                    }}
-                    QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-                """)
-                msg.exec()
+                _show_no_data_dialog(self, url_count, skipped, elapsed)
                 if task.get("job") == "수동 실행":
                     self.stack.setCurrentIndex(1)
                     for i, btn in enumerate(self.sidebar._btns):
@@ -4089,9 +3995,7 @@ class MainWindowTriggersSingle:
 
     def exit_app(self):
         self._pending_queue.clear()   # 종료 시 대기 큐 비워 후속 실행 방지
-        if self._worker and self._worker.isRunning():
-            self._worker.stop()
-            self._worker.wait(1500)
+        _stop_worker_if_running(self._worker)
         self.tray_manager.tray_icon.hide()
         QApplication.instance().quit()
 
@@ -4214,8 +4118,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
     def _reset_bundle_pages(self, seq_no) -> None:
         """실행 직전 해당 번들의 대시보드/모니터링 페이지를 초기화합니다."""
         bundle = self._get_or_create_bundle(seq_no)
-        bundle.dashboard._reset_dashboard()
-        bundle.monitor_page._reset_monitor_page()
+        _reset_pages(bundle.dashboard, bundle.monitor_page)
 
     # ── 스케줄 실행 (번들 라우팅) ──────────────────────
     def _start_crawl_from_schedule(self, cfg: dict):
@@ -4247,9 +4150,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):
-        if self._worker and self._worker.isRunning():
-            self._worker.stop()
-            self._worker.wait(1500)
+        _stop_worker_if_running(self._worker)
 
         # 실행 대상 블루프린트로 화면 자동 포커스 — 이후 시그널은 아래에서
         # 캡처한 "그 번들"에 정적으로 연결되므로, 사용자가 다른 블루프린트로
@@ -4366,22 +4267,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                     icon=QSystemTrayIcon.MessageIcon.Warning,
                 )
             else:
-                msg = QMessageBox(self)
-                msg.setWindowTitle("수집 결과 없음")
-                msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
-                            f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
-                            "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
-                msg.setIcon(QMessageBox.Icon.Warning)
-                msg.setStyleSheet(f"""
-                    QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
-                    QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:13px; }}
-                    QPushButton {{
-                        background:{ACCENT}; color:white; border:none;
-                        border-radius:5px; padding:5px 14px; font-size:12px;
-                    }}
-                    QPushButton:hover {{ background:{ACCENT_HOVER}; }}
-                """)
-                msg.exec()
+                _show_no_data_dialog(self, url_count, skipped, elapsed)
                 if task.get("job") == "수동 실행":
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)

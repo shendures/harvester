@@ -13,11 +13,11 @@ from trigger import (
 )
 from style import (
     THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton,
-    ClickableRuleRow, build_refine_rule_rows,
+    build_refine_rule_rows,
 )
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit,
     QTableWidgetItem, QFrame, QProgressBar,
     QScrollArea, QStackedWidget,
@@ -135,6 +135,11 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         self._style_run_btn(False)
         lay.addWidget(self.run_btn)
 
+        # 추출 설정 버튼 (Raw/정제 탭에 각각 있던 동일 다이얼로그 진입점을 통합)
+        self._output_settings_btn = parts.settings_btn("⚙  추출 설정")
+        self._output_settings_btn.clicked.connect(self._open_output_settings)
+        lay.addWidget(self._output_settings_btn)
+
 
 # ══════════════════════════════════════════════════════
 #  SIDEBAR
@@ -222,6 +227,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
         self._out_mode = None
         self.output_info = customized_settings.get_output_settings()
         self._running = False
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
         self._build()
 
     def _build(self):
@@ -467,6 +475,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
         self.s_err.update_value(0)
         self.s_pages.update_value(0)
         self.s_speed.update_value("—")
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
 
         # 수집 모니터링 테이블 초기화
         self.monitor_table.setSortingEnabled(False)
@@ -502,6 +513,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         super().__init__()
         self._all_rows       = []
         self._collected_data = []   # raw 수집 데이터
+        self._existing_keys  = set()   # _collected_data 중복판정용 캐시(증분 갱신)
         self._refined_data   = []   # 정제 후 데이터
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._cleaning_warned = False   # 이번 수집에 대해 "규칙 없음" 팝업을 이미 띄웠는지
@@ -617,10 +629,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         raw_exp_btn = parts.action_btn("EXTRACT")
         raw_exp_btn.clicked.connect(lambda: self._extract_result_table(source="raw"))
         tbl_ctrl.addWidget(raw_exp_btn)
-
-        raw_out_cfg_btn = parts.settings_btn("⚙  추출 설정")
-        raw_out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
-        tbl_ctrl.addWidget(raw_out_cfg_btn)
         tc.addLayout(tbl_ctrl)
 
         # null·중복 안내
@@ -755,10 +763,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         exp_btn = parts.action_btn("EXTRACT")
         exp_btn.clicked.connect(lambda: self._extract_result_table(source="refined"))
         ref_ctrl.addWidget(exp_btn)
-
-        out_cfg_btn = parts.settings_btn("⚙  추출 설정")
-        out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
-        ref_ctrl.addWidget(out_cfg_btn)
         rtc.addLayout(ref_ctrl)
 
         self.refined_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
@@ -865,6 +869,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         self.result_table.setSortingEnabled(True)
         self._all_rows       = []
         self._collected_data = []
+        self._existing_keys  = set()
         self.count_lbl.setText("0 rows")
         self.sum_total.update_value(0)
         self.sum_ok.update_value(0)
