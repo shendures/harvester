@@ -1629,7 +1629,10 @@ class MonitorPageTriggers:
             grid.addWidget(_lbl(label), row_i, 0)
             grid.addWidget(widget, row_i, 1)
 
-        _db_type.currentTextChanged.connect(lambda t: _db_port.setText(DB_PORTS.get(t, "")))
+        def _on_db_type_changed(t):
+            _db_port.setText(DB_PORTS.get(t, ""))
+            _db_port.setCursorPosition(0)
+        _db_type.currentTextChanged.connect(_on_db_type_changed)
         dp.addLayout(grid)
 
         test_row = QHBoxLayout()
@@ -2689,11 +2692,12 @@ class SchedulerPageTriggers:
             default_idx = sched_blueprint_combo.findData(BlueprintStorage().active_seq_no)
             sched_blueprint_combo.setCurrentIndex(max(default_idx, 0))
             # 대상 선택이 바뀌면 그 블루프린트의 URL로 Target URL을 갱신
-            sched_blueprint_combo.currentIndexChanged.connect(
-                lambda _: callback_url.setText(
+            def _on_sched_blueprint_changed(_):
+                callback_url.setText(
                     (BlueprintStorage().get(sched_blueprint_combo.currentData()) or {}).get("callback_url", "")
                 )
-            )
+                callback_url.setCursorPosition(0)
+            sched_blueprint_combo.currentIndexChanged.connect(_on_sched_blueprint_changed)
         else:
             sched_name   = QLineEdit(s.get("task_nm", ""))
             callback_url = QLineEdit(s.get("callback_url", ""))
@@ -2705,7 +2709,7 @@ class SchedulerPageTriggers:
         callback_url.setCursorPosition(0)
         root.addLayout(field_row("Task Name", sched_name))
         root.addSpacing(6)
-        root.addLayout(field_row("대상 블루프린트", sched_blueprint_combo))
+        root.addLayout(field_row("수집 대상", sched_blueprint_combo))
         root.addSpacing(6)
         root.addLayout(field_row("Target URL", callback_url))
         root.addSpacing(12)
@@ -3034,7 +3038,10 @@ class SchedulerPageTriggers:
             sgrid.addWidget(_slbl(_label), _row_i, 0)
             sgrid.addWidget(_widget, _row_i, 1)
 
-        _sdb_type.currentTextChanged.connect(lambda t: _sdb_port.setText(DB_PORTS.get(t, "")))
+        def _on_sdb_type_changed(t):
+            _sdb_port.setText(DB_PORTS.get(t, ""))
+            _sdb_port.setCursorPosition(0)
+        _sdb_type.currentTextChanged.connect(_on_sdb_type_changed)
         sdp.addLayout(sgrid)
 
         sched_test_row = QHBoxLayout()
