@@ -863,6 +863,9 @@ class MonitorPageTriggers:
         if not isinstance(data, list) or not data:
             return
         columns = self._get_result_columns()
+        if self.result_table.columnCount() == 0:
+            self.result_table.setColumnCount(len(columns) + 1)
+            self.result_table.setHorizontalHeaderLabels(["NO"] + columns)
         self.result_table.setSortingEnabled(False)
 
         # 중복 감지를 위해 기존 수집 데이터 문자열 집합 유지

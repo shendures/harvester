@@ -631,8 +631,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         tc.addWidget(info_lbl)
 
         self.result_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
-        self.result_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.result_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         self.result_table.itemClicked.connect(self._show_detail)
         self.result_table.currentItemChanged.connect(self._on_current_item_changed)
         tc.addWidget(self.result_table)
@@ -764,8 +762,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         rtc.addLayout(ref_ctrl)
 
         self.refined_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
-        self.refined_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.refined_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         self.refined_table.itemClicked.connect(self._show_refined_detail)
         self.refined_table.currentItemChanged.connect(self._on_refined_current_item_changed)
         rtc.addWidget(self.refined_table)
@@ -821,8 +817,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
             f"color:{AMBER}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
-        self.cmp_raw_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         raw_cmp_l.addWidget(self.cmp_raw_table)
         side_l.addWidget(raw_cmp_w, 1)
 
@@ -833,8 +827,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
             f"color:{GREEN}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
-        self.cmp_ref_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         ref_cmp_l.addWidget(self.cmp_ref_table)
         side_l.addWidget(ref_cmp_w, 1)
 
@@ -869,6 +861,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         # ① Raw 탭
         self.result_table.setSortingEnabled(False)
         self.result_table.setRowCount(0)
+        self.result_table.setColumnCount(0)
         self.result_table.setSortingEnabled(True)
         self._all_rows       = []
         self._collected_data = []
@@ -883,6 +876,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         self._refined_data = []
         self.refined_table.setSortingEnabled(False)
         self.refined_table.setRowCount(0)
+        self.refined_table.setColumnCount(0)
         self.refined_table.setSortingEnabled(True)
         self.refined_count_lbl.setText("— rows")
         self.ref_total.update_value("—")
@@ -894,9 +888,11 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers):
         # ③ 비교 탭
         self.cmp_raw_table.setSortingEnabled(False)
         self.cmp_raw_table.setRowCount(0)
+        self.cmp_raw_table.setColumnCount(0)
         self.cmp_raw_table.setSortingEnabled(True)
         self.cmp_ref_table.setSortingEnabled(False)
         self.cmp_ref_table.setRowCount(0)
+        self.cmp_ref_table.setColumnCount(0)
         self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_raw_count.setText("— rows")
         self.cmp_ref_count.setText("— rows")
