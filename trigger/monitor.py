@@ -1,0 +1,1028 @@
+# trigger/monitor.py
+# MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드(MonitorPageTriggers).
+
+import os
+import csv
+import json
+import sys
+import subprocess
+
+from PyQt6.QtWidgets import (
+    QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
+    QTableWidgetItem, QGridLayout, QStackedWidget, QSizePolicy, QScrollArea,
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
+
+import db_conn
+import utility
+import customized_settings
+from style import TagButton, Divider
+from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
+
+from .common import (
+    parts, BG_PRIMARY, BG_SECONDARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
+    TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
+    _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+)
+
+class MonitorPageTriggers:
+    """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
+
+    def _add_realtime_row(self, row: dict):
+        self._all_rows.append(row)
+        resp = row.get("resp_info", {})
+        data = resp.get("data", [])
+        if not isinstance(data, list) or not data:
+            return
+        columns = self._get_result_columns()
+        if self.result_table.columnCount() == 0:
+            self.result_table.setColumnCount(len(columns) + 1)
+            self.result_table.setHorizontalHeaderLabels(["NO"] + columns)
+        self.result_table.setSortingEnabled(False)
+
+        # 중복 감지용 키 집합은 self._existing_keys에 증분 유지(매 호출마다 재구축하지 않음)
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            entry_key = str(tuple(str(entry.get(c, "")) for c in columns))
+            is_dup = entry_key in self._existing_keys
+            is_empty_row = all(
+                entry.get(c) in (None, "", "null", "None")
+                for c in columns
+            )
+            self._collected_data.append(entry)
+            self._existing_keys.add(entry_key)
+
+            current_row = self.result_table.rowCount()
+            self.result_table.insertRow(current_row)
+
+            # 행 배경색 — 중복: 빨강, 전체 컬럼 빈 값: 주황, 정상(1개 이상 값 존재): 기본
+            if is_dup:
+                row_bg = QColor(RED).darker(180)
+            elif is_empty_row:
+                row_bg = QColor(AMBER).darker(220)
+            else:
+                row_bg = QColor(0, 0, 0, 0)
+
+            no_item = QTableWidgetItem()
+            no_item.setData(Qt.ItemDataRole.DisplayRole, current_row)
+            no_item.setForeground(QColor(TEXT_MUTED))
+            if row_bg.alpha() > 0:
+                no_item.setBackground(row_bg)
+            self.result_table.setItem(current_row, 0, no_item)
+
+            for col_idx, col_name in enumerate(columns, start=1):
+                val = entry.get(col_name, "—")
+                item = QTableWidgetItem()
+                if isinstance(val, (int, float)):
+                    item.setData(Qt.ItemDataRole.DisplayRole, val)
+                else:
+                    item.setText(str(val) if val is not None else "—")
+                item.setForeground(QColor(TEXT_PRIMARY))
+                if row_bg.alpha() > 0:
+                    item.setBackground(row_bg)
+                self.result_table.setItem(current_row, col_idx, item)
+
+        self.result_table.setSortingEnabled(True)
+        self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
+        self._update_summary_cards()
+
+    def _update_summary_cards(self):
+        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계"""
+        columns = self._get_result_columns()
+        total = len(self._collected_data)
+        empty_rows = 0
+        dup_rows  = 0
+        seen_keys: set = set()
+        for entry in self._collected_data:
+            is_empty_row = all(
+                entry.get(c) in (None, "", "null", "None") for c in columns
+            )
+            key = tuple(str(entry.get(c, "")) for c in columns)
+            is_dup = key in seen_keys
+            seen_keys.add(key)
+            if is_empty_row:
+                empty_rows += 1
+            if is_dup:
+                dup_rows += 1
+        normal = total - empty_rows - dup_rows
+        self.sum_total.update_value(total)
+        self.sum_ok.update_value(max(normal, 0))
+        self.sum_err.update_value(empty_rows)
+        self.sum_warn.update_value(dup_rows)
+
+    def _apply_filter(self):
+        keyword = self.search_box.text().lower().strip()
+        if not keyword:
+            for r in range(self.result_table.rowCount()):
+                self.result_table.setRowHidden(r, False)
+            self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
+            return
+        visible = 0
+        for r in range(self.result_table.rowCount()):
+            matched = any(
+                self.result_table.item(r, c) and
+                keyword in self.result_table.item(r, c).text().lower()
+                for c in range(self.result_table.columnCount())
+            )
+            self.result_table.setRowHidden(r, not matched)
+            if matched:
+                visible += 1
+        self.count_lbl.setText(f"{visible} rows")
+
+    def _apply_refined_filter(self):
+        """정제 결과 탭 검색 필터"""
+        keyword = self.refined_search_box.text().lower().strip()
+        if not keyword:
+            for r in range(self.refined_table.rowCount()):
+                self.refined_table.setRowHidden(r, False)
+            self.refined_count_lbl.setText(f"{self.refined_table.rowCount()} rows")
+            return
+        visible = 0
+        for r in range(self.refined_table.rowCount()):
+            matched = any(
+                self.refined_table.item(r, c) and
+                keyword in self.refined_table.item(r, c).text().lower()
+                for c in range(self.refined_table.columnCount())
+            )
+            self.refined_table.setRowHidden(r, not matched)
+            if matched:
+                visible += 1
+        self.refined_count_lbl.setText(f"{visible} rows")
+
+    # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
+    def _on_monitor_tab_changed(self, index: int):
+        """
+        "② 정제 규칙 설정" 탭(index=1) 진입 시, 이번 수집이 needs_cleaning=True인데
+        등록된 커스텀 규칙 파일이 없으면 팝업으로 안내합니다. 이번 수집 결과당 최초
+        1회만 확인하고(같은 결과를 보며 탭을 왔다갔다 해도 반복해서 뜨지 않음),
+        preprocess(task)에서 새 수집 결과가 들어올 때 다시 확인 가능하도록 리셋됩니다.
+        """
+        if index != 1 or self._cleaning_warned:
+            return
+
+        seq_no         = self._current_task.get("seq_no")
+        needs_cleaning = self._current_task.get("needs_cleaning", False)
+        if not (needs_cleaning and seq_no):
+            return
+
+        self._cleaning_warned = True
+        if not custom_rule_exists(seq_no):
+            QMessageBox.warning(
+                self, "정제 규칙 없음",
+                f"이 수집물(seq_no={seq_no})은 사용자 정의 정제 규칙이 필요하도록 "
+                f"표시되어 있으나(needs_cleaning=True), 등록된 규칙 파일이 없습니다.\n"
+                f"범용 규칙만 적용됩니다."
+            )
+
+    # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
+    def _on_custom_rule_toggled(self, state):
+        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④(remove_null_row/
+        trim_whitespace/remove_duplicate)를 자동으로 켭니다. fill_null(⑥, 결측값
+        치환)은 대상에서 제외됩니다(2026-07-17, 사용자 요청 — 커스텀 규칙이
+        정규화한 데이터라도 결측값 치환 여부는 별도로 판단해야 한다는 판단).
+        체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
+        ①③④에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        """
+        if state != Qt.CheckState.Checked.value:
+            return
+        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
+            cb = self._rule_checkboxes.get(key)
+            if cb is not None:
+                cb.setChecked(True)
+
+    # ── 정제 실행 ─────────────────────────────────────────────────────
+    def _run_refine(
+        self,
+        rules_override: dict[str, bool] | None = None,
+        skip_ui_update: bool = False,
+        fill_value_override: str | None = None,
+    ):
+        """
+        규칙 탭의 체크박스 상태를 읽어 DataRefiner를 구성하고 정제를 실행합니다.
+        preprocess.DataRefiner가 실제 정제 로직을 전담합니다.
+
+        rules_override: 전달되면 체크박스 상태 대신 이 규칙 dict를 그대로 사용합니다
+            (스케줄 자동 저장 등 — 실행 시점의 화면 상태에 의존하지 않도록 고정 규칙을
+            적용할 때 사용. 체크박스·제외 컬럼 등 화면 상태는 전혀 읽지 않음).
+        skip_ui_update: True면 정제 결과 테이블/요약/비교 탭 갱신과 탭 자동 전환을
+            건너뜁니다 (무인 실행 중 화면을 건드리지 않기 위함).
+        fill_value_override: rules_override와 함께 전달되는 null 치환값(⑥fill_null).
+            None이면(rules_override 경로에서) 빈 값을 사용합니다. rules_override가
+            None일 때는(수동 실행) 무시되고 화면 입력값(fill_null_input)이 사용됩니다.
+        """
+        lm = getattr(self.window(), 'log_manager', None)
+
+        if not self._collected_data:
+            if skip_ui_update:
+                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
+                if lm:
+                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 정제를 건너뜁니다.")
+            else:
+                QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            return
+
+        if rules_override is not None:
+            active_rules  = dict(rules_override)
+            drop_columns  = []
+            fill_value    = fill_value_override if fill_value_override is not None else ""
+        else:
+            # 체크박스 → _refine_rules 동기화
+            for key, cb in self._rule_checkboxes.items():
+                self._refine_rules[key] = cb.isChecked()
+
+            # 제외 컬럼 — "제외 필드 지정" 다이얼로그의 적용 시 self._drop_column_names에
+            # 이미 반영되어 있으므로 여기서는 그대로 사용
+
+            # null 치환값 파싱 (입력창 기본값은 빈 문자열 — 비워두면 빈 값으로 치환)
+            raw_fill = getattr(self, 'fill_null_input', None)
+            if raw_fill is not None:
+                self._fill_null_value = raw_fill.text()
+
+            active_rules = self._refine_rules
+            drop_columns = self._drop_column_names
+            fill_value   = self._fill_null_value
+
+        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
+        # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
+        seq_no         = self._current_task.get("seq_no")
+        needs_cleaning = self._current_task.get("needs_cleaning", False)
+        custom_rule_fn = None
+
+        if needs_cleaning and seq_no:
+            try:
+                custom_rule_fn = load_custom_rule(seq_no)
+            except Exception as e:
+                custom_rule_fn = None
+                if lm:
+                    lm.append_log("err", f"사용자 정의 정제 규칙 로드 실패 (seq_no={seq_no}): {e}")
+
+            if custom_rule_fn is None and lm:
+                lm.append_log(
+                    "warn",
+                    f"사용자 정의 정제 규칙 파일을 찾을 수 없습니다 (seq_no={seq_no}). "
+                    f"범용 규칙만 적용합니다."
+                )
+
+        # DataRefiner 구성 및 실행
+        refiner = DataRefiner(
+            rules        = active_rules,
+            drop_columns = drop_columns,
+            custom_rule  = custom_rule_fn,
+            fill_value   = fill_value,
+        )
+        try:
+            refined, stats = refiner.run(self._collected_data)
+        except (TypeError, ValueError) as e:
+            QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
+            return
+
+        self._refined_data = refined
+
+        custom_rule_note = ""
+        if stats.custom_rule_applied:
+            custom_rule_note = ", 사용자 정의 규칙 적용됨"
+        elif stats.custom_rule_error:
+            custom_rule_note = ", 사용자 정의 규칙 실행 실패"
+            if lm:
+                lm.append_log(
+                    "err",
+                    f"사용자 정의 정제 규칙 실행 실패 (seq_no={seq_no}): {stats.custom_rule_error}. "
+                    f"원본 데이터로 계속합니다."
+                )
+
+        if not skip_ui_update:
+            # UI 갱신
+            self._populate_refined_table(refined)
+            self._update_refined_summary(stats)
+            self._update_compare_tab(self._collected_data, refined, stats)
+
+            # 정제 결과 탭으로 자동 이동
+            self.tab_widget.setCurrentIndex(2)
+
+        # 로그 기록
+        if lm:
+            lm.append_log(
+                "ok",
+                f"정제 완료 — Raw {stats.raw_count}행 → 정제 후 {stats.refined_count}행 "
+                f"(제거 {stats.removed}행, 치환 {stats.filled}건, 정제율 {stats.refine_rate}"
+                f"{custom_rule_note})"
+            )
+
+    # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
+    def _update_drop_columns_summary(self):
+        n = len(self._drop_column_names)
+        self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
+
+    # ── Raw 수집 결과 존재 여부 확인 (없으면 경고) ───────────────────
+    def _has_collected_data_or_warn(self) -> bool:
+        """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
+
+        "제외 필드 지정" 체크박스 활성화 시(layout_single.py)와 "⚙ 필드 선택" 버튼
+        클릭 시(_open_drop_columns_dialog) 양쪽에서 공유하는 헬퍼입니다.
+        """
+        if self._collected_data:
+            return True
+        QMessageBox.warning(
+            self, "필드 선택 불가",
+            "수집된 데이터가 없습니다.\n수집을 먼저 진행한 후 필드를 선택해 주세요."
+        )
+        return False
+
+    # ── "제외 필드 지정"(⑤) 필드 다중 선택 Dialog ───────────────────
+    def _open_drop_columns_dialog(self):
+        """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
+
+        체크 상태의 source of truth는 self._drop_column_names(list[str])이며,
+        이 다이얼로그의 버튼은 열 때마다 새로 만들어 그 값으로 초기화하고
+        [적용] 시에만 다시 self._drop_column_names에 반영합니다 — 다이얼로그를
+        닫아도(취소) 값이 유지되도록.
+        """
+        if not self._has_collected_data_or_warn():
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("제외 필드 선택")
+        dlg.setFixedWidth(420)
+        dlg.setStyleSheet(f"""
+            QDialog {{
+                background:{BG_SECONDARY};
+                border:1px solid {BORDER};
+                border-radius:10px;
+            }}
+        """)
+
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(22, 18, 22, 18)
+        vl.setSpacing(0)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(parts.make_label("제외 필드 선택", TEXT_PRIMARY, 14, True))
+        title_row.addStretch()
+        vl.addLayout(title_row)
+        vl.addSpacing(10)
+        vl.addWidget(Divider())
+        vl.addSpacing(14)
+
+        vl.addWidget(parts.make_label("추출 결과에서 제외할 필드를 선택하세요.", TEXT_MUTED, 11))
+        vl.addSpacing(10)
+
+        field_names = self._get_result_columns()
+        field_buttons: dict[str, TagButton] = {}
+
+        container = QWidget()
+        grid = QGridLayout(container)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(6)
+
+        if field_names:
+            cols = 4
+            for i, field in enumerate(field_names):
+                btn = TagButton(field)
+                btn.setChecked(field in self._drop_column_names)
+                field_buttons[field] = btn
+                grid.addWidget(btn, i // cols, i % cols)
+        else:
+            grid.addWidget(parts.make_label("설정된 필드가 없습니다.", TEXT_MUTED, 11), 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(200)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;}}"
+        )
+        scroll.setWidget(container)
+        vl.addWidget(scroll)
+        vl.addSpacing(16)
+        vl.addWidget(Divider())
+        vl.addSpacing(12)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        def _apply():
+            self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
+            self._update_drop_columns_summary()
+            dlg.accept()
+
+        apply_btn = parts.action_btn("적용")
+        apply_btn.clicked.connect(_apply)
+        cancel_btn = parts.outline_btn("취소")
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(cancel_btn)
+        vl.addLayout(btn_row)
+
+        dlg.adjustSize()
+        dlg.exec()
+
+    def _populate_refined_table(self, data: list):
+        """정제 결과 탭 테이블에 데이터 채우기"""
+        columns = self._get_result_columns()
+        if self._refine_rules.get("drop_columns") and self._drop_column_names:
+            columns = [c for c in columns if c not in self._drop_column_names]
+        self.refined_table.setSortingEnabled(False)
+        self.refined_table.setRowCount(0)
+        self.refined_table.setColumnCount(len(columns) + 1)
+        self.refined_table.setHorizontalHeaderLabels(["NO"] + columns)
+        for row_idx, entry in enumerate(data):
+            self.refined_table.insertRow(row_idx)
+            no_item = QTableWidgetItem()
+            no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
+            no_item.setForeground(QColor(TEXT_MUTED))
+            self.refined_table.setItem(row_idx, 0, no_item)
+            for col_idx, col_name in enumerate(columns, start=1):
+                val = entry.get(col_name, "—")
+                item = QTableWidgetItem()
+                if isinstance(val, (int, float)):
+                    item.setData(Qt.ItemDataRole.DisplayRole, val)
+                else:
+                    item.setText(str(val) if val is not None else "—")
+                item.setForeground(QColor(TEXT_PRIMARY))
+                self.refined_table.setItem(row_idx, col_idx, item)
+        self.refined_table.setSortingEnabled(True)
+        self.refined_count_lbl.setText(f"{len(data)} rows")
+
+    def _update_refined_summary(self, stats: RefineStats):
+        """정제 결과 탭 요약 카드 갱신 (RefineStats 객체 수신)"""
+        self.ref_total.update_value(stats.refined_count)
+        self.ref_removed.update_value(stats.removed)
+        self.ref_filled.update_value(stats.filled)
+        self.ref_rate.update_value(stats.refine_rate)
+
+    def _update_compare_tab(self, raw_data: list, refined_data: list, stats=None):
+        """비교 탭 Raw / Refined 테이블 및 요약 카드 갱신.
+
+        stats(RefineStats)가 주어지면 삭제된 Raw 행은 빨간 음영,
+        값이 변경된 Refined 행만 초록 음영으로 표시됩니다.
+        """
+        CLR_DEL_FG = QColor(RED)
+        CLR_REF_FG = QColor(GREEN)
+
+        deleted_set      = set(stats.deleted_indices) if stats else set()
+        modified_rows_set = set(stats.modified_rows)  if stats else set()
+
+        columns = self._get_result_columns()
+        ref_columns = (
+            [c for c in columns if c not in self._drop_column_names]
+            if self._refine_rules.get("drop_columns") and self._drop_column_names
+            else columns
+        )
+
+        # ── 좌: Raw 테이블 — 삭제 행 빨간 음영, 생존 행 기본색 ────────
+        self.cmp_raw_table.setSortingEnabled(False)
+        self.cmp_raw_table.setRowCount(0)
+        self.cmp_raw_table.setColumnCount(len(columns) + 1)
+        self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + columns)
+        for row_idx, entry in enumerate(raw_data):
+            self.cmp_raw_table.insertRow(row_idx)
+            is_deleted = row_idx in deleted_set
+
+            no_item = QTableWidgetItem()
+            no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
+            no_item.setForeground(QColor(TEXT_MUTED))
+            if is_deleted:
+                # no_item.setBackground(CLR_DEL_BG)
+                pass
+            self.cmp_raw_table.setItem(row_idx, 0, no_item)
+
+            for col_idx, col_name in enumerate(columns, start=1):
+                val  = entry.get(col_name, "—")
+                item = QTableWidgetItem()
+                item.setText(str(val) if val is not None else "—")
+                if is_deleted:
+                    item.setForeground(CLR_DEL_FG)
+                    # item.setBackground(CLR_DEL_BG)
+                else:
+                    item.setForeground(QColor(TEXT_PRIMARY))
+                self.cmp_raw_table.setItem(row_idx, col_idx, item)
+        self.cmp_raw_table.setSortingEnabled(True)
+        self.cmp_raw_count.setText(f"{len(raw_data)} rows")
+
+        # ── 우: Refined 테이블 — 변경된 행만 초록 음영 ─────────────────
+        self.cmp_ref_table.setSortingEnabled(False)
+        self.cmp_ref_table.setRowCount(0)
+        self.cmp_ref_table.setColumnCount(len(ref_columns) + 1)
+        self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + ref_columns)
+        for row_idx, entry in enumerate(refined_data):
+            self.cmp_ref_table.insertRow(row_idx)
+            is_modified = row_idx in modified_rows_set
+
+            no_item = QTableWidgetItem()
+            no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
+            no_item.setForeground(QColor(TEXT_MUTED))
+            if is_modified:
+                # no_item.setBackground(CLR_REF_BG)
+                pass
+            self.cmp_ref_table.setItem(row_idx, 0, no_item)
+
+            for col_idx, col_name in enumerate(ref_columns, start=1):
+                val  = entry.get(col_name, "—")
+                item = QTableWidgetItem()
+                if isinstance(val, (int, float)):
+                    item.setData(Qt.ItemDataRole.DisplayRole, val)
+                else:
+                    item.setText(str(val) if val is not None else "—")
+                if is_modified:
+                    item.setForeground(CLR_REF_FG)
+                    # item.setBackground(CLR_REF_BG)
+                else:
+                    item.setForeground(QColor(TEXT_PRIMARY))
+                self.cmp_ref_table.setItem(row_idx, col_idx, item)
+        self.cmp_ref_table.setSortingEnabled(True)
+        self.cmp_ref_count.setText(f"{len(refined_data)} rows")
+
+        # ── 요약 카드 ────────────────────────────────────────────────────
+        raw_total = len(raw_data)
+        ref_total = len(refined_data)
+        removed   = raw_total - ref_total
+        rate = f"{ref_total / raw_total * 100:.1f}%" if raw_total else "—"
+        self.cmp_raw_total.update_value(raw_total)
+        self.cmp_ref_total.update_value(ref_total)
+        self.cmp_removed.update_value(removed)
+        self.cmp_rate.update_value(rate)
+
+    # ── 비교 탭 좌우 테이블 스크롤·정렬 동기화 ──────────────────────────
+    def _sync_cmp_vscroll(self, source, target, value):
+        """비교 탭 좌우 테이블의 세로 스크롤 위치를 상호 동기화합니다."""
+        if target.verticalScrollBar().value() == value:
+            return
+        target.verticalScrollBar().setValue(value)
+
+    def _sync_cmp_sort(self, source, target, logical_index, order):
+        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향으로 동기화합니다.
+
+        Raw/Refined는 행 수·컬럼 구성이 다를 수 있어(중복/null 행 제거,
+        drop_columns) "같은 줄에 같은 원본 행"까지는 보장하지 않고, 같은
+        컬럼명·정렬 방향만 맞춥니다. 대응 컬럼이 반대쪽에 없으면(예:
+        drop_columns로 제외된 컬럼) 아무 것도 하지 않습니다.
+        """
+        header_item = source.horizontalHeaderItem(logical_index)
+        if header_item is None:
+            return
+        col_name = header_item.text()
+
+        # sortIndicatorSection()은 사용자가 아직 정렬한 적 없는 테이블에서도
+        # columnCount()와 같은 범위 밖 값을 반환할 수 있어(Qt 특성, 컬럼 수 변경 후
+        # 미갱신 상태) 반드시 상한까지 확인해야 함 (헤더 아이템 None 접근 방지)
+        target_header  = target.horizontalHeader()
+        target_sec     = target_header.sortIndicatorSection()
+        if 0 <= target_sec < target.columnCount():
+            target_item = target.horizontalHeaderItem(target_sec)
+            if (target_item is not None and target_item.text() == col_name
+                    and target_header.sortIndicatorOrder() == order):
+                return  # 이미 동일 상태 — 상호 연결로 인한 재귀 호출 종료
+
+        for i in range(target.columnCount()):
+            item = target.horizontalHeaderItem(i)
+            if item is not None and item.text() == col_name:
+                target.sortByColumn(i, order)
+                return
+
+    def _render_detail(self, table, label, row, columns):
+        """행 상세 정보를 컬럼별로 렌더링해 label에 표시한다 (_show_detail/_show_refined_detail 공용)."""
+        detail_parts = []
+        for col_idx, col_name in enumerate(columns):
+            cell = table.item(row, col_idx + 1)
+            val = cell.text() if cell else "—"
+            detail_parts.append(
+                f"<b style='color:{ACCENT_LIGHT};'>{col_name}:</b> "
+                f"<span style='color:{VALUE_COLORS.get(col_idx, TEXT_MUTED)};'>{val}</span>"
+            )
+        label.setText("<br>".join(detail_parts))
+        label.setTextFormat(Qt.TextFormat.RichText)
+
+    def _show_refined_detail(self, item):
+        """정제 결과 탭 행 클릭 — 상세 표시"""
+        columns = self._get_result_columns()
+        if self._refine_rules.get("drop_columns") and self._drop_column_names:
+            columns = [c for c in columns if c not in self._drop_column_names]
+        self._render_detail(self.refined_table, self.refined_detail_lbl, item.row(), columns)
+
+    def _on_current_item_changed(self, current, previous):
+        if current is not None:
+            self._show_detail(current)
+
+    def _on_refined_current_item_changed(self, current, previous):
+        """정제 결과 탭 — 키보드 방향키·클릭으로 currentItemChanged 수신 시 상세 표시"""
+        if current is not None:
+            self._show_refined_detail(current)
+
+    def _show_detail(self, item):
+        columns = self._get_result_columns()
+        self._render_detail(self.result_table, self.detail_lbl, item.row(), columns)
+
+    def _open_output_settings_dialog(self):
+        """출력 대상 / 상세 설정(인라인) / AUTO SAVE Dialog"""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("추출 설정")
+        dlg.setFixedWidth(500)
+        dlg.setStyleSheet(f"""
+            QDialog {{
+                background:{BG_SECONDARY};
+                border:1px solid {BORDER};
+                border-radius:10px;
+            }}
+        """)
+
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(22, 18, 22, 18)
+        vl.setSpacing(0)
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(parts.make_label("추출 설정", TEXT_PRIMARY, 14, True))
+        title_row.addStretch()
+        vl.addLayout(title_row)
+        vl.addSpacing(10)
+        vl.addWidget(Divider())
+        vl.addSpacing(14)
+
+        out_file_btn = TagButton("FILE")
+        out_file_btn.setToolTip("로컬 파일로 저장 (CSV / JSON / Excel)")
+        out_db_btn   = TagButton("DB")
+        out_db_btn.setToolTip("데이터베이스 서버로 전송")
+
+        self._out_mode = "FILE" if self.output_info["extract"]["file"]["enabled"] else "DB"
+        out_file_btn.setChecked(self._out_mode == "FILE")
+        out_db_btn.setChecked(self._out_mode == "DB")
+
+        is_file_mode = out_file_btn.isChecked()
+
+        out_mode_lbl = parts.make_label(
+            "로컬 파일 저장 모드" if is_file_mode else "DB 서버 전송 모드",
+            TEXT_MUTED, 10
+        )
+        out_row = QHBoxLayout()
+        out_row.setSpacing(8)
+        out_row.addWidget(parts.make_label("출력 대상", TEXT_SECONDARY, 12))
+        out_row.addSpacing(6)
+        out_row.addWidget(out_file_btn)
+        out_row.addWidget(out_db_btn)
+        out_row.addSpacing(10)
+        out_row.addWidget(out_mode_lbl)
+        out_row.addStretch()
+        vl.addLayout(out_row)
+        vl.addSpacing(14)
+        vl.addWidget(Divider())
+        vl.addSpacing(14)
+
+        detail_title = parts.make_label("상세 설정", TEXT_MUTED, 10)
+        detail_title.setStyleSheet(detail_title.styleSheet() + " letter-spacing:1px;")
+        vl.addWidget(detail_title)
+        vl.addSpacing(10)
+
+        stack = QStackedWidget()
+        stack.setObjectName("extractStack")
+        stack.setStyleSheet(f"""
+            QStackedWidget#extractStack {{
+                background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;
+            }}
+            QStackedWidget#extractStack > QWidget {{ background:{BG_PRIMARY}; border:none; }}
+        """)
+        stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+
+        # ── PAGE 0: FILE 설정 ─────────────────────────────
+        file_page, _file_widgets, _toggle_csv_fields = _build_output_file_page(
+            self.output_info["extract"]["file"], dlg
+        )
+        path_edit, file_nm, fmt_combo = (
+            _file_widgets["path_edit"], _file_widgets["file_nm"], _file_widgets["fmt_combo"]
+        )
+        enc_combo, csv_delimeter = _file_widgets["enc_combo"], _file_widgets["csv_delimeter"]
+
+        open_path_chk = QCheckBox("저장 완료 후 폴더 열기")
+        open_path_chk.setChecked(self.output_info["extract"]["file"]["is_open_save_path"])
+        file_page.layout().addWidget(open_path_chk)
+        stack.addWidget(file_page)  # index 0
+
+        # ── PAGE 1: DB 설정 ───────────────────────────────
+        db_page = QWidget()
+        dp = QVBoxLayout(db_page)
+        dp.setContentsMargins(14, 14, 14, 14)
+        dp.setSpacing(8)
+
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        grid.setColumnStretch(1, 1)
+        db_widgets = _build_db_settings_fields(grid, self.output_info["extract"]["db"])
+        _db_type, _db_host, _db_port  = db_widgets["db_type"], db_widgets["host"], db_widgets["port"]
+        _db_name, _db_schema          = db_widgets["name"], db_widgets["schema"]
+        _db_user, _db_pw, _db_data    = db_widgets["user"], db_widgets["password"], db_widgets["save_data_nm"]
+        dp.addLayout(grid)
+
+        test_row = QHBoxLayout()
+        test_row.setSpacing(10)
+        test_btn = parts.outline_btn("TEST CONNECTION")
+        test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
+        _wire_db_test_button(test_btn, test_result_lbl, db_widgets, dlg)
+        test_row.addWidget(test_btn)
+        test_row.addWidget(test_result_lbl)
+        test_row.addStretch()
+        dp.addLayout(test_row)
+        stack.addWidget(db_page)  # index 1
+
+        stack.setCurrentIndex(0 if is_file_mode else 1)
+
+        def update_dialog_size():
+            current_page = stack.currentWidget()
+            if current_page:
+                current_page.layout().activate()
+                stack.setFixedHeight(current_page.layout().sizeHint().height())
+            dlg.layout().activate()
+            dlg.adjustSize()
+
+        def _on_fmt_changed(fmt_text: str):
+            _toggle_csv_fields(fmt_text)
+            update_dialog_size()
+
+        def _on_file_clicked():
+            self._out_mode = "FILE"
+            out_mode_lbl.setText("로컬 파일 저장 모드")
+            out_db_btn.setChecked(False)
+            stack.setCurrentIndex(0)
+            stack.setMinimumHeight(0)
+            stack.setMaximumHeight(16777215)
+            update_dialog_size()
+
+        def _on_db_clicked():
+            self._out_mode = "DB"
+            out_mode_lbl.setText("DB 서버 전송 모드")
+            out_file_btn.setChecked(False)
+            stack.setCurrentIndex(1)
+            stack.setMinimumHeight(0)
+            stack.setMaximumHeight(16777215)
+            update_dialog_size()
+
+        out_file_btn.clicked.connect(_on_file_clicked)
+        out_db_btn.clicked.connect(_on_db_clicked)
+        fmt_combo.currentTextChanged.connect(_on_fmt_changed)
+        _on_fmt_changed(fmt_combo.currentText())
+
+        vl.addWidget(stack)
+        vl.addSpacing(16)
+        vl.addWidget(Divider())
+        vl.addSpacing(12)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        def _apply_file():
+            try:
+                if self._out_mode == "FILE":
+                    file_path      = utility.to_forward_slash(os.path.normpath(path_edit.text()))
+                    file_name      = utility.update_empty_value(file_nm.text())
+                    file_format    = utility.update_empty_value(fmt_combo.currentText())
+                    file_encoding  = utility.update_empty_value(enc_combo.currentText())
+                    file_delimeter = utility.update_empty_value(csv_delimeter.text())
+                    is_open_save_path = open_path_chk.isChecked()
+                    self.output_info["extract"]["db"] = customized_settings.get_output_settings()["extract"]["db"]
+                    self.output_info["extract"]["file"]["enabled"]           = True
+                    self.output_info["extract"]["file"]["file_path"]         = file_path
+                    self.output_info["extract"]["file"]["file_name"]         = file_name
+                    self.output_info["extract"]["file"]["file_format"]       = file_format
+                    self.output_info["extract"]["file"]["file_encoding"]     = file_encoding
+                    self.output_info["extract"]["file"]["file_delimiter"]    = file_delimeter
+                    self.output_info["extract"]["file"]["is_open_save_path"] = is_open_save_path
+                elif self._out_mode == "DB":
+                    db_env      = utility.update_empty_value(_db_type.currentText())
+                    db_host     = utility.update_empty_value(_db_host.text())
+                    db_port     = utility.update_empty_value(_db_port.text())
+                    db_schema   = utility.update_empty_value(_db_schema.text())
+                    db_name     = utility.update_empty_value(_db_name.text())
+                    db_user     = utility.update_empty_value(_db_user.text())
+                    db_pass     = utility.update_empty_value(_db_pw.text())
+                    save_data_nm = utility.update_empty_value(_db_data.text())
+                    self.output_info["extract"]["file"] = customized_settings.get_output_settings()["extract"]["file"]
+                    self.output_info["extract"]["file"]["enabled"]          = False
+                    self.output_info["extract"]["db"]["enabled"]            = True
+                    self.output_info["extract"]["db"]["db_env"]             = db_env
+                    self.output_info["extract"]["db"]["host"]               = db_host
+                    self.output_info["extract"]["db"]["port"]               = db_port
+                    self.output_info["extract"]["db"]["schema"]             = db_schema
+                    self.output_info["extract"]["db"]["database"]           = db_name
+                    self.output_info["extract"]["db"]["user"]               = db_user
+                    self.output_info["extract"]["db"]["password"]           = db_pass
+                    self.output_info["extract"]["db"]["save_data_nm"]       = save_data_nm
+                dlg.accept()
+            except Exception as e:
+                QMessageBox.critical(dlg, "설정 저장 오류", f"추출 설정 저장 중 오류가 발생했습니다.\n\n{e}")
+
+        apply_btn  = parts.action_btn("적용")
+        apply_btn.clicked.connect(_apply_file)
+        cancel_btn = parts.outline_btn("취소")
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(cancel_btn)
+        vl.addLayout(btn_row)
+
+        update_dialog_size()
+        dlg.adjustSize()
+        dlg.exec()
+
+    def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None):
+        """
+        source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
+        호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
+        않았다면 먼저 _run_refine()을 실행한 뒤 그 결과를 추출합니다.
+        silent: True면 데이터가 없을 때 모달 대신 로그만 남기고 조용히 스킵합니다
+            (스케줄 자동 저장 등 무인 실행 경로 전용, 이슈 ⑱). 이 경우 "refined"여도
+            _run_refine() 폴백을 호출하지 않습니다 — 호출부가 이미 알맞은 고정
+            규칙으로 _run_refine()을 실행한 뒤이므로, 여기서 화면 상태 기반으로
+            다시 실행하면 무인 실행 취지에 어긋납니다.
+        extract_override: 전달되면 self.output_info["extract"] 대신 이 dict를 저장
+            목적지/DB 접속정보 소스로 사용합니다(스케줄 자신의 저장 설정 — 대시보드의
+            실시간 output_info와는 무관). 이 경우 "schedule_save_type"(새로 만들기/
+            덮어쓰기/추가하기)에 따라 모달 없이 결정론적으로 저장합니다. None이면
+            (수동 추출 버튼 등) 기존과 동일하게 self.output_info와 확인 모달을 사용합니다.
+        """
+        lm = getattr(self.window(), 'log_manager', None)
+
+        if source == "refined":
+            if not self._refined_data and not silent:
+                self._run_refine()
+            data = self._refined_data
+            if not data:
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
+                # else: _run_refine()이 이미 "정제 불가" 경고를 띄웠음
+                return
+        else:
+            data = self._collected_data
+            if not data:
+                if silent:
+                    if lm:
+                        lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
+                else:
+                    QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                return
+        headers = list(data[0].keys())
+
+        extract_cfg = extract_override if extract_override is not None else self.output_info["extract"]
+        save_type = _normalize_save_type(extract_cfg.get("schedule_save_type")) if extract_override is not None else None
+
+        try:
+            if extract_cfg["file"]["enabled"] is True:
+                file_path   = extract_cfg["file"]["file_path"]
+                file_name   = extract_cfg["file"]["file_name"]
+                file_format = extract_cfg["file"]["file_format"]
+
+                if file_format == "CSV":
+                    delimiter = extract_cfg["file"]["file_delimiter"]
+                    if save_type is None:
+                        final_file_name = file_name
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.csv")):
+                            count = 1
+                            while True:
+                                new_file_name = f"{file_name} ({count})"
+                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
+                                    break
+                                count += 1
+                            final_file_name = new_file_name
+                        with open(os.path.join(file_path, f"{final_file_name}.csv"),
+                                  mode='w', encoding='utf-8-sig', newline='') as f:
+                            writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
+                            writer.writeheader()
+                            writer.writerows(data)
+                    else:
+                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type)
+
+                elif file_format == "JSON":
+                    if save_type is None:
+                        if os.path.exists(os.path.join(file_path, f"{file_name}.json")):
+                            reply = QMessageBox.question(
+                                self, '덮어쓰기 확인',
+                                f"'{file_name}.json' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?",
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                QMessageBox.StandardButton.No
+                            )
+                            if reply == QMessageBox.StandardButton.No:
+                                return
+                        with open(os.path.join(file_path, f"{file_name}.json"), 'w', encoding='utf-8') as f:
+                            json.dump(data, f, ensure_ascii=False, indent=4)
+                    else:
+                        self._write_json_unattended(file_path, file_name, data, save_type, lm)
+
+                # 스케줄(무인) 실행은 저장 폴더를 여는 사람이 없으므로 설정값과
+                # 무관하게 항상 열지 않는다 — 고정값으로 강제. 스케줄 자체 저장
+                # 설정(extract_override)에는 이 키가 애초에 없으므로(대시보드
+                # output_info에만 존재) get()으로 안전하게 조회한다.
+                is_open_save_path = extract_cfg["file"].get("is_open_save_path", False)
+                if file_path and is_open_save_path and not silent:
+                    if sys.platform == 'win32':
+                        os.startfile(file_path)
+                    elif sys.platform == 'darwin':
+                        subprocess.Popen(['open', file_path])
+                    else:
+                        subprocess.Popen(['xdg-open', file_path])
+
+            elif extract_cfg["db"]["enabled"] is True:
+                db_info = extract_cfg["db"]
+                try:
+                    if save_type is None:
+                        is_exist  = db_conn._check_db_table_exists(db_info)
+                        save_mode = 'append'
+                        if is_exist:
+                            msg_box = QMessageBox(self)
+                            msg_box.setWindowTitle("DB 데이터 처리 선택")
+                            msg_box.setText(
+                                f"'{db_info['save_data_nm']}' 테이블이 이미 존재합니다.\n어떻게 처리하시겠습니까?")
+                            msg_box.setIcon(QMessageBox.Icon.Question)
+                            btn_overwrite = msg_box.addButton("덮어쓰기(새로 생성)",
+                                                              QMessageBox.ButtonRole.DestructiveRole)
+                            btn_append    = msg_box.addButton("추가 적재(이어 쓰기)",
+                                                              QMessageBox.ButtonRole.AcceptRole)
+                            msg_box.addButton("취소", QMessageBox.ButtonRole.RejectRole)
+                            msg_box.setDefaultButton(btn_append)
+                            msg_box.exec()
+                            clicked = msg_box.clickedButton()
+                            if clicked == btn_overwrite:
+                                save_mode = 'overwrite'
+                            elif clicked == btn_append:
+                                save_mode = 'append'
+                            else:
+                                return
+                        db_conn.save_db(db_info, data, mode=save_mode)
+                    else:
+                        self._save_db_unattended(db_info, data, save_type, lm)
+                except Exception as e:
+                    QMessageBox.critical(
+                        self, "DB 저장 실패",
+                        f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "추출 오류", str(e))
+
+    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
+        full_path = os.path.join(file_path, f"{file_name}.csv")
+        if save_type == "new":
+            final_file_name = file_name
+            if os.path.exists(full_path):
+                count = 1
+                while True:
+                    new_file_name = f"{file_name} ({count})"
+                    if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
+                        break
+                    count += 1
+                final_file_name = new_file_name
+            full_path = os.path.join(file_path, f"{final_file_name}.csv")
+            mode, write_header = 'w', True
+        elif save_type == "overwrite":
+            mode, write_header = 'w', True
+        else:  # "append"
+            write_header = not os.path.exists(full_path)
+            mode = 'a'
+        with open(full_path, mode=mode, encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
+            if write_header:
+                writer.writeheader()
+            writer.writerows(data)
+
+    def _write_json_unattended(self, file_path, file_name, data, save_type, lm):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
+        full_path = os.path.join(file_path, f"{file_name}.json")
+        if save_type == "new" and os.path.exists(full_path):
+            count = 1
+            while True:
+                candidate = os.path.join(file_path, f"{file_name} ({count}).json")
+                if not os.path.exists(candidate):
+                    break
+                count += 1
+            full_path = candidate
+            out_data = data
+        elif save_type == "append" and os.path.exists(full_path):
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+                if isinstance(existing, list):
+                    out_data = existing + data
+                else:
+                    out_data = data
+                    if lm:
+                        lm.append_log("warn", f"'{file_name}.json' 기존 내용이 배열이 아니어서 새 데이터로 대체합니다.")
+            except Exception as e:
+                out_data = data
+                if lm:
+                    lm.append_log("warn", f"'{file_name}.json' 읽기 실패, 새로 씁니다: {e}")
+        else:  # "overwrite", 또는 파일이 없는 "new"/"append"
+            out_data = data
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(out_data, f, ensure_ascii=False, indent=4)
+
+    def _save_db_unattended(self, db_info, data, save_type, lm):
+        """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 DB에 모달 없이 저장합니다."""
+        if save_type == "overwrite":
+            db_conn.save_db(db_info, data, mode='overwrite')
+        elif save_type == "append":
+            db_conn.save_db(db_info, data, mode='append')
+        else:  # "new" — 기존 테이블은 건드리지 않고 이름에 접미사를 붙여 새로 생성
+            target = dict(db_info)
+            base_name = target["save_data_nm"]
+            count = 1
+            while db_conn._check_db_table_exists(target):
+                target["save_data_nm"] = f"{base_name}_{count}"
+                count += 1
+            if target["save_data_nm"] != base_name and lm:
+                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{target['save_data_nm']}'(으)로 새로 생성합니다.")
+            db_conn.save_db(target, data, mode='overwrite')

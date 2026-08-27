@@ -1,40 +1,31 @@
 import time
-import scrapy
 import glean
 import engine
 import conf
 
 from selenium.webdriver.common.by import By
 from scrapy.selector import Selector
+from spiders.base import BaseExtractorSpider
 
 # Chrome WebDriver로 렌더링한 페이지를 두 경로로 처리합니다:
-# custom_rules/render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
+# render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를
 # 그대로 넘기고, 없으면 driver.page_source를 Selector로 감싸 범용 XPath 추출로 폴백합니다.
 
 PAGE_LOAD_WAIT_SECONDS = 3  # 렌더링 대기 시간 (페이지 로드/로그인/DOM 렌더링 완료 대기)
 
 
-class HtmlSeleniumSpider(scrapy.Spider):
+class HtmlSeleniumSpider(BaseExtractorSpider):
 
     name = "spider_html_selenium"
 
-    # CONCURRENT_REQUESTS는 Scrapy 요청에만 적용됩니다.
-    # Selenium은 자원 소모가 크므로 동시 요청 수를 낮추는 것이 일반적입니다.
-    custom_settings = {
-        'CONCURRENT_REQUESTS': 8, # Scrapy 요청의 동시성 (여기서는 Selenium 요청을 사용하므로, 낮게 유지)
-        'DOWNLOAD_DELAY': 1,  # 렌더링 전 상태 확인용 요청의 다운로드 지연 시간 설정
-    }
+    # Threads/Delay 안전 상한·하한은 대시보드(layout_single.py)와 스케줄 다이얼로그
+    # (trigger/scheduler.py)의 스핀박스 범위(setMaximum/setMinimum)에서만 강제한다. 스케줄로
+    # 저장된 작업은 저장 당시 값을 그대로 재실행하므로(대상 블루프린트가 나중에
+    # html_render로 바뀌어도 갱신되지 않음) 이 스파이더 자체는 값을 재검증하지
+    # 않는다 — 알려진 트레이드오프이며 의도적으로 UI 강제만 채택한 것이다.
 
-    # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
     def __init__(self, request_info=None, *args, **kwargs):
-        super(HtmlSeleniumSpider, self).__init__(*args, **kwargs)
-
-        # main.py에서 전달받은 수집 목록 리스트 (딕셔너리 리스트 형태)
-        if request_info is None:
-            self.request_info = {}
-            self.logger.error("❌ 수집 목록 리스트가 main.py로부터 전달되지 않았습니다.")
-        else:
-            self.request_info = request_info
+        super().__init__(request_info, *args, **kwargs)
 
         # 이 스파이더 실행(수집 세션) 전체에서 재사용하는 단일 브라우저 세션.
         # start_requests()에서 생성하고, closed()에서 한 번만 종료합니다 —
@@ -54,13 +45,8 @@ class HtmlSeleniumSpider(scrapy.Spider):
             # 만들기 전에 반드시 먼저 로그인을 완료합니다. (로그인 전에 인증이
             # 필요한 URL을 요청하면 서버가 로그인 페이지로 리다이렉트시켜 실제
             # 타겟 URL을 잃어버리는 문제를 방지하기 위함)
-            if engine.requires_login(conditions):
-                login_info = conditions["login"]
-                if not engine.perform_login(self.driver, login_info, seq_no):
-                    self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
-                    return
-
-                self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+            if not self._try_login(conditions, seq_no):
+                return
 
             url_list = glean.get_grains(self.request_info)
             for url in url_list:
@@ -69,6 +55,20 @@ class HtmlSeleniumSpider(scrapy.Spider):
 
         except Exception as e:
             self.logger.error('Exception during start_requests: %s', e)
+
+    def _try_login(self, conditions, seq_no) -> bool:
+        """로그인이 필요 없는 사이트는 즉시 True. 필요한 사이트는 login/{seq_no}.py로
+        로그인을 시도하고 성공 여부를 반환합니다(수집 흐름을 계속할지 결정하는 게이트)."""
+        if not engine.requires_login(conditions):
+            return True
+
+        login_info = conditions["login"]
+        if not engine.perform_login(self.driver, login_info, seq_no):
+            self.logger.error(f'❌ 로그인 인증 실패로 수집을 시작하지 않습니다 (seq_no={seq_no})')
+            return False
+
+        self.logger.info(f'✅ 로그인 인증 완료 (seq_no={seq_no}) — 타겟 URL 수집을 시작합니다.')
+        return True
 
     def parse(self, response):
         try:
@@ -96,11 +96,11 @@ class HtmlSeleniumSpider(scrapy.Spider):
 
             # 렌더링 결과 추출
             # JS 렌더링 수집은 HTML 기반 수집이므로, 클릭 등 커스텀 인터랙션이 필요한
-            # 경우에만 custom_rules/render/{seq_no}.py의 render()를 사용하고, 없으면
+            # 경우에만 render/{seq_no}.py의 render()를 사용하고, 없으면
             # 범용 root/items 추출(html 스파이더와 동일한 로직)로 폴백합니다.
             render_fn = conf.CustomModuleStorage().load_render(seq_no) if conditions.get("rendering") else None
             if render_fn is not None:
-                self.logger.info(f'ℹ️ custom_rules/render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
+                self.logger.info(f'ℹ️ render/{seq_no}.py의 render()로 커스텀 인터랙션 수집을 진행합니다.')
                 selectors = self.driver.find_elements(By.XPATH, root)
                 result = render_fn(self.driver, selectors, _items)
             else:

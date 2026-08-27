@@ -130,8 +130,11 @@ class BlueprintStorage:
         # 파일 시스템 초기화
         self._initialize_storage()
 
-        # 수집 정보 로드
-        self._blueprint = self._load()
+        # 수집 정보 로드 — 항상 list[dict]로 정규화하고, 그중 하나를
+        # "활성 블루프린트"로 가리킨다. read()는 기존 계약(단일 dict 반환)을
+        # 유지하되 활성 블루프린트를 반환한다.
+        self._blueprints = self._load()
+        self._active_seq_no = self._blueprints[0].get("seq_no")
 
     # ── 파일 시스템 초기화 ──────────────────────────────
     def _initialize_storage(self) -> None:
@@ -147,52 +150,69 @@ class BlueprintStorage:
             logger.error("[BlueprintStorage] 초기화 오류: %s", e)
 
     # ── 로드 ──────────────────────────────────────────
-    def _load(self) -> dict:
+    def _load(self) -> list:
         """
-        JSON 파일을 로드하여 blueprint dict를 반환합니다.
+        JSON 파일을 로드하여 blueprint 리스트(list[dict])를 반환합니다.
 
-        [수정 사항]
-        1. list / dict 타입을 명시적으로 분기하여 len() 오동작 방지.
-           - 루트가 list이고 요소가 1개인 경우에만 unwrap.
-           - 루트가 dict인 경우 그대로 반환.
-        2. fallback 반환값의 구조 검증 추가.
+        - 루트가 dict(구버전 단일 포맷)이면 원소 1개짜리 리스트로 감쌉니다.
+        - 루트가 list이면 길이와 무관하게 원소 단위로 검증합니다 —
+          일부 원소가 깨져도 나머지 정상 블루프린트는 살아남습니다.
+        - 검증을 통과한 원소가 하나도 없으면 fallback 1개짜리 리스트를 반환합니다
+          (반환 리스트는 항상 최소 1개 원소를 보장).
         """
         target = self.file_path if os.path.exists(self.file_path) else self.default_source
 
         if not os.path.exists(target):
             logger.warning("[BlueprintStorage] JSON 파일 없음, 기본값 사용: %s", target)
-            return self._safe_fallback()
+            return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
         try:
             with open(target, "r", encoding="utf-8") as f:
                 raw = json.load(f)
 
-            # [수정] 타입 분기로 len() 오동작 방지
-            if isinstance(raw, list):
-                if len(raw) == 0:
-                    logger.warning("[BlueprintStorage] JSON 배열이 비어 있음, 기본값 사용")
-                    return self._safe_fallback()
-                # 요소가 1개인 경우에만 unwrap
-                result = raw[0] if len(raw) == 1 else raw
-            elif isinstance(raw, dict):
-                result = raw
+            if isinstance(raw, dict):
+                candidates = [raw]
+            elif isinstance(raw, list):
+                candidates = raw
             else:
                 logger.error("[BlueprintStorage] 지원하지 않는 JSON 루트 타입: %s", type(raw))
-                return self._safe_fallback()
+                return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
-            # [수정] 로드된 구조 최소 검증
-            if not self._validate(result):
-                logger.error("[BlueprintStorage] 구조 검증 실패, 기본값 사용")
-                return self._safe_fallback()
+            validated = []
+            for i, item in enumerate(candidates):
+                if not isinstance(item, dict) or not self._validate(item):
+                    logger.warning("[BlueprintStorage] 블루프린트 #%d 검증 실패, 건너뜀", i)
+                    continue
+                validated.append(self._ensure_seq_no(item, i, validated))
 
-            return result
+            if not validated:
+                logger.error("[BlueprintStorage] 유효한 블루프린트 없음, 기본값 사용")
+                return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
+            return validated
 
         except json.JSONDecodeError as e:
             logger.error("[BlueprintStorage] JSON 파싱 실패 (%s): %s", target, e)
-            return self._safe_fallback()
+            return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
         except Exception as e:
             logger.error("[BlueprintStorage] 로드 실패: %s", e)
-            return self._safe_fallback()
+            return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
+
+    @staticmethod
+    def _ensure_seq_no(item: dict, index: int, accepted: list) -> dict:
+        """
+        seq_no 고유성 불변식을 보장합니다 — 사이드바 목록·페이지 번들 캐시·
+        워커 라우팅이 모두 seq_no를 키로 쓰므로, 없거나 중복이면 위치 기반
+        식별자로 보정합니다.
+        """
+        seq_no = item.get("seq_no")
+        if not seq_no or any(b.get("seq_no") == seq_no for b in accepted):
+            item = dict(item)
+            item["seq_no"] = f"__unnamed_{index}"
+            logger.warning(
+                "[BlueprintStorage] 블루프린트 #%d의 seq_no 누락/중복 — '%s'로 보정",
+                index, item["seq_no"]
+            )
+        return item
 
     def _safe_fallback(self) -> dict:
         """
@@ -224,33 +244,71 @@ class BlueprintStorage:
             return False
         return True
 
-    # ── Public API ────────────────────────────────────
+    # ── Public API (단일 블루프린트 — 기존 계약 유지) ──
     def read(self) -> dict:
         """
-        내부 _blueprint dict의 참조(reference)를 반환합니다.
+        현재 활성 블루프린트 dict의 참조(reference)를 반환합니다.
 
         [주의] 반환값은 복사본이 아닌 내부 객체 자체입니다.
         외부에서 키를 재할당하거나 .clear()를 호출하면 전역 상태가 오염됩니다.
-
         읽기 전용으로 사용하거나, in-place 수정(값 업데이트)만 허용하세요.
-        완전히 독립된 사본이 필요한 경우 read_copy()를 사용하세요.
-        """
-        return self._blueprint
 
-    def read_copy(self) -> dict:
+        블루프린트가 1개뿐이던 구버전에서는 "유일한 블루프린트"를 반환했으며,
+        다중 블루프린트 도입 후에는 set_active()로 지정된 활성 블루프린트를
+        반환합니다(기본값: 첫 번째). 기존 호출부는 수정 없이 동작합니다.
         """
-        내부 _blueprint의 깊은 복사본을 반환합니다.
-        반환된 dict를 수정해도 원본 _blueprint에 영향을 주지 않습니다.
-        """
-        return deepcopy(self._blueprint)
+        return self._active()
 
-    def reload(self) -> dict:
+    # ── Public API (다중 블루프린트) ───────────────────
+    def list_blueprints(self) -> list:
+        """전체 블루프린트의 깊은 복사본 리스트를 반환합니다 (사이드바 목록용)."""
+        return deepcopy(self._blueprints)
+
+    def list_seq_nos(self) -> list:
+        """파일 순서를 보존한 seq_no 목록을 반환합니다."""
+        return [b.get("seq_no") for b in self._blueprints]
+
+    def get(self, seq_no):
+        """seq_no에 해당하는 블루프린트의 깊은 복사본을 반환합니다. 없으면 None."""
+        found = self._find(seq_no)
+        return deepcopy(found) if found is not None else None
+
+    @property
+    def active_seq_no(self):
+        return self._active_seq_no
+
+    def set_active(self, seq_no) -> dict:
         """
-        파일에서 blueprint를 다시 로드하고 내부 상태를 갱신합니다.
-        반환값은 갱신된 _blueprint의 참조입니다.
+        활성 블루프린트를 변경합니다. 존재하지 않는 seq_no면 ValueError.
+
+        [주의] 싱글턴의 전역 상태를 바꾸므로 반드시 Qt 메인 스레드
+        (시그널/슬롯 경로)에서만 호출해야 합니다. 크롤링 자식 프로세스는
+        별도 메모리 공간이라 영향을 받지 않습니다.
         """
-        self._blueprint = self._load()
-        return self._blueprint
+        if self._find(seq_no) is None:
+            raise ValueError(f"존재하지 않는 블루프린트 seq_no: {seq_no}")
+        self._active_seq_no = seq_no
+        return self._active()
+
+    def _find(self, seq_no):
+        """seq_no에 해당하는 내부 dict 참조(deepcopy 아님)를 반환. 없으면 None."""
+        for b in self._blueprints:
+            if b.get("seq_no") == seq_no:
+                return b
+        return None
+
+    def _active(self) -> dict:
+        """활성 seq_no가 가리키는 내부 dict 참조. _load()가 최소 1개를 보장."""
+        return self._find(self._active_seq_no) or self._blueprints[0]
+
+
+def get_spider_mode(blueprint: dict):
+    """블루프린트의 스파이더 모드(conditions.spiders 값)를 반환한다.
+    conditions 내부를 우선하고, 없으면 최상위 spiders로 폴백한다
+    (현행 request_info.json 호환 — engine.get_spider()와 동일 규칙을 여기 하나로 통합)."""
+    blueprint = blueprint or {}
+    conditions = blueprint.get("conditions") or {}
+    return conditions.get("spiders", blueprint.get("spiders"))
 
 
 # ══════════════════════════════════════════════════════
@@ -265,23 +323,24 @@ class CustomModuleStorage:
     같은 seq_no라도 kind별로 물리적으로 다른 파일에 둡니다. exec 단위(=장애
     단위)도 함께 분리되어, 한쪽 파일의 버그나 무거운 import가 다른 kind의
     로드에 영향을 주지 않습니다.
-      - kind="render" → custom_rules/render/{seq_no}.py:
-            login(driver, login_info: dict) -> None
+      - kind="render" → render/{seq_no}.py:
             render(driver, selectors, items: dict) -> list[dict]
-      - kind="refine" → custom_rules/refine/{seq_no}.py:
+      - kind="login" → login/{seq_no}.py:
+            login(driver, login_info: dict) -> None
+      - kind="refine" → refine/{seq_no}.py:
             refine(data: list[dict]) -> list[dict]
             refine_row(row: dict) -> dict
 
     앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 kind별 서브폴더
     구성이며, seed-on-first-run 정책도 동일합니다. 번들 리소스 경로
-    (default_source)는 실제 소스가 `custom_rules/{kind}/` 서브폴더에 있으므로
+    (default_source)는 실제 소스가 프로젝트 루트의 `{kind}/` 폴더에 있으므로
     그 하위를 가리킵니다. 파일이 seq_no마다 다르므로 BlueprintStorage처럼
     단일 값을 메모리에 캐싱하지 않고, 매 호출마다 해당 파일을 새로 읽습니다 —
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
     반영됩니다.
     """
     _instance = None
-    _KINDS = ("render", "refine")
+    _KINDS = ("render", "login", "refine")
 
     # ── 싱글턴 ────────────────────────────────────────
     def __new__(cls, *args, **kwargs):
@@ -312,8 +371,8 @@ class CustomModuleStorage:
             raise ValueError(f"지원하지 않는 kind 값입니다: {kind!r} ({self._KINDS}만 지원)")
 
         filename       = f"{seq_no}.py"
-        file_path      = os.path.join(self.app_dir, "custom_rules", kind, filename)
-        default_source = os.path.join(utility.resource_path(), "custom_rules", kind, filename)
+        file_path      = os.path.join(self.app_dir, kind, filename)
+        default_source = os.path.join(utility.resource_path(), kind, filename)
 
         # 개발(.py) 환경에선 file_path == default_source(둘 다 저장소)라 시딩 불필요 —
         # 같은 경로 복사(SameFileError) 방지 겸, 저장소 파일을 그대로 사용.
@@ -355,14 +414,6 @@ class CustomModuleStorage:
     def has_refine(self, seq_no) -> bool:
         """`refine/{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다."""
         return self._defines(seq_no, "refine", "refine", "refine_row")
-
-    def has_render(self, seq_no) -> bool:
-        """`render/{seq_no}.py`에 render()가 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "render", "render")
-
-    def has_login(self, seq_no) -> bool:
-        """`render/{seq_no}.py`에 login()이 정의돼 있는지 확인합니다."""
-        return self._defines(seq_no, "render", "login")
 
     # ── 로드 (exec 실행) ────────────────────────────────
     def _load_module(self, seq_no, kind: str):
@@ -423,13 +474,13 @@ class CustomModuleStorage:
 
     def load_login(self, seq_no):
         """
-        `render/{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
+        `login/{seq_no}.py`를 로드하여 사용자 정의 로그인 함수를 반환합니다.
 
         Returns:
             callable(driver, login_info) -> None | None — 파일이 없거나
             login()이 없으면 None.
         """
-        module = self._load_module(seq_no, "render")
+        module = self._load_module(seq_no, "login")
         if module is None:
             return None
         return getattr(module, "login", None)

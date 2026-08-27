@@ -2,10 +2,11 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget,
     QFrame, QCheckBox, QLineEdit,
-    QHeaderView
+    QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
+    QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
 )
 
-from PyQt6.QtCore import ( Qt, QTimer )
+from PyQt6.QtCore import ( Qt, QTimer, QPoint )
 from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics )
 
 
@@ -324,6 +325,22 @@ class StatCard(QWidget):
 
 
 # ──────────────────────────────────────────────────────
+#  NoFocusDelegate
+# ──────────────────────────────────────────────────────
+class NoFocusDelegate(QStyledItemDelegate):
+    """셀이 '현재 셀'이 되어도 점선 포커스 사각형을 그리지 않는 델리게이트.
+
+    체크박스만 보여야 하는 컬럼(다중 수집의 수집 목록 선택 컬럼, 단일 수집의
+    프록시 목록 활성 컬럼 등)에 setItemDelegateForColumn()으로 적용한다.
+    """
+
+    def paint(self, painter, option, index):
+        option = QStyleOptionViewItem(option)
+        option.state &= ~QStyle.StateFlag.State_HasFocus
+        super().paint(painter, option, index)
+
+
+# ──────────────────────────────────────────────────────
 #  EqualSpacingTable
 #  — Initial Equal distribution · Free resize + H-scroll · Double-click auto-fit
 # ──────────────────────────────────────────────────────
@@ -597,6 +614,80 @@ class Divider(QFrame):
         else:
             self.setFixedWidth(1)
 
+class BoundNoticeMixin:
+    """상한/하한에서 더 못 움직일 때 QToolTip 말풍선으로 알려주는 스핀박스 동작.
+    QSpinBox/QDoubleSpinBox 등 stepBy()를 갖는 베이스와 다중 상속으로 합성해서 쓴다.
+    상한 초과와 하한 미만은 서로 별개의 규칙일 수 있으므로 메시지를 방향별로 따로
+    설정한다(set_upper_bound_message/set_lower_bound_message). 메시지를 설정하지
+    않은 방향은 그 경계가 특별히 제한된 게 아니라는 뜻이므로 Qt 기본 동작(경계에서
+    비활성화, 알림 없음)을 그대로 따른다."""
+
+    _upper_bound_message = None
+    _lower_bound_message = None
+
+    def set_upper_bound_message(self, message):
+        self._upper_bound_message = message
+
+    def set_lower_bound_message(self, message):
+        self._lower_bound_message = message
+
+    def stepEnabled(self):
+        # Qt는 value()가 maximum()/minimum()에 닿으면 해당 방향 스텝을 자동으로
+        # 비활성화하는데, 이 플래그는 버튼 클릭·↑/↓ 키·휠 이벤트가 stepBy()를
+        # 호출할지 자체를 막는 게이트다 — 그대로 두면 이미 경계에 있을 때 클릭해도
+        # stepBy()가 호출되지 않아 말풍선을 띄울 기회 자체가 없다. 메시지가 설정된
+        # 방향만 항상 활성 상태로 둬서 클릭이 stepBy()까지 도달하게 한다.
+        flags = super().stepEnabled()
+        if self._upper_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepUpEnabled
+        if self._lower_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepDownEnabled
+        return flags
+
+    def stepBy(self, steps):
+        message = None
+        if steps > 0 and self._upper_bound_message and self.value() >= self.maximum():
+            message = self._upper_bound_message
+        elif steps < 0 and self._lower_bound_message and self.value() <= self.minimum():
+            message = self._lower_bound_message
+        super().stepBy(steps)
+        if message:
+            QToolTip.showText(self.mapToGlobal(QPoint(0, self.height())), message, self)
+
+
+class BoundNoticeSpinBox(BoundNoticeMixin, QSpinBox):
+    pass
+
+
+class BoundNoticeDoubleSpinBox(BoundNoticeMixin, QDoubleSpinBox):
+    """BoundNoticeSpinBox의 실수(Delay) 버전 — 로직 동일."""
+    pass
+
+
+def apply_render_safety_limits(thread_spin, delay_spin, limits: dict) -> None:
+    """thread_spin/delay_spin(둘 다 BoundNoticeMixin 계열)에 렌더링(html_render)
+    안전 상한/하한을 적용한다. limits는 customized_settings.get_render_safety_limits()
+    의 반환값 — style.py는 설정값을 직접 읽지 않고 호출부가 넘겨준 값만 사용한다."""
+    thread_spin.setMaximum(limits['max_threads'])
+    delay_spin.setMinimum(limits['min_delay'])
+    thread_spin.set_upper_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Threads를 최대 {limits['max_threads']}개까지만 허용합니다."
+    )
+    delay_spin.set_lower_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Delay를 최소 {limits['min_delay']}s까지만 허용합니다."
+    )
+    thread_spin.setToolTip(f"병렬 수집 스레드 수 (렌더링 수집은 최대 {limits['max_threads']}개로 제한)")
+    delay_spin.setToolTip(f"요청 간 대기 시간 (렌더링 수집은 최소 {limits['min_delay']}s로 제한)")
+
+
+def reset_render_safety_limits(thread_spin, delay_spin, default_max_threads, default_min_delay) -> None:
+    """apply_render_safety_limits()로 좁힌 범위를 원래 기본 범위로 되돌린다."""
+    thread_spin.setMaximum(default_max_threads)
+    delay_spin.setMinimum(default_min_delay)
+    thread_spin.set_upper_bound_message(None)
+    delay_spin.set_lower_bound_message(None)
+
+
 class Parts:
     def __init__(self):
         self.theme = THEME()
@@ -633,7 +724,7 @@ class Parts:
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
         if title:
-            lbl = self.make_label(title.upper(), self.theme.TEXT_MUTED, 10)
+            lbl = self.make_label(title.upper(), self.theme.TEXT_SECONDARY, 12)
             lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1px;")
             outer.addWidget(lbl)
             outer.addWidget(Divider())
@@ -726,7 +817,7 @@ class ClickableRuleRow(QWidget):
 
 
 # ══════════════════════════════════════════════════════
-#  정제 규칙 체크박스 행 빌더 — MonitorPage "② 정제 규칙 설정" 탭과
+#  정제 규칙 체크박스 행 빌더 — MonitorPageSingle "② 정제 규칙 설정" 탭과
 #  스케줄 등록 다이얼로그의 정제 규칙 설정이 공유하는 빌더
 # ══════════════════════════════════════════════════════
 # 이 리스트 순서는 화면 표시(위→아래) 순서일 뿐, preprocess.DataRefiner의 실제
@@ -784,7 +875,7 @@ def build_refine_rule_rows(
         drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
         fit_desc_one_line: True면 컨트롤이 붙는 행(drop_columns/fill_null)의
             설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로 표시되도록 합니다.
-            컨테이너 폭이 넉넉한 호출부(MonitorPage 탭)에서만 켜야 합니다 —
+            컨테이너 폭이 넉넉한 호출부(MonitorPageSingle 탭)에서만 켜야 합니다 —
             폭이 좁게 제한된 호출부(스케줄 등록 패널, 260~400px)에서 켜면
             최소폭 요구가 패널 최대폭을 넘어 레이아웃이 깨질 수 있습니다.
 
@@ -828,7 +919,7 @@ def build_refine_rule_rows(
             f"color:{theme.TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
         )
         # 좁은 컨테이너(스케줄 등록의 정제 규칙 패널 등)에서 텍스트가 잘리지
-        # 않도록 줄바꿈 허용 — MonitorPage 탭처럼 폭이 넉넉한 곳에서도 무해함
+        # 않도록 줄바꿈 허용 — MonitorPageSingle 탭처럼 폭이 넉넉한 곳에서도 무해함
         desc_lbl.setWordWrap(True)
         text_col.addWidget(title_lbl)
         text_col.addWidget(desc_lbl)

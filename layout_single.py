@@ -3,25 +3,26 @@ import utility
 from datetime import datetime
 import customized_settings
 
-from conf import DataStore, BlueprintStorage
+from conf import DataStore, BlueprintStorage, get_spider_mode
 from trigger import (
     GlobalToolbarTriggers, DashboardPageTriggers, MonitorPageTriggers,
     StatisticsPageTriggers, SchedulerPageTriggers,
     SessionSettingsPageTriggers, AuthManagerPageTriggers,
-    TrayManagerTriggers, MainWindowTriggers,
+    TrayManagerTriggers, MainWindowTriggersSingle,
     LogViewerDialog,
 )
 from style import (
     THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton,
-    ClickableRuleRow, build_refine_rule_rows,
+    build_refine_rule_rows, NoFocusDelegate, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox,
+    apply_render_safety_limits,
 )
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit,
     QTableWidgetItem, QFrame, QProgressBar,
     QScrollArea, QStackedWidget,
-    QSpinBox, QDoubleSpinBox, QMessageBox,
+    QSpinBox, QMessageBox,
     QCheckBox, QSizePolicy, QSystemTrayIcon,
     QMenu, QTabWidget
 )
@@ -79,9 +80,9 @@ PURPLE        = theme.PURPLE
 # ══════════════════════════════════════════════════════
 #  GLOBAL TOOLBAR  (모든 페이지 공통 상단 툴바)
 # ══════════════════════════════════════════════════════
-class GlobalToolbar(QWidget, GlobalToolbarTriggers):
+class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     """
-    Sidebar 오른쪽 콘텐츠 영역 최상단에 고정 표시되는 공통 툴바.
+    SidebarSingle 오른쪽 콘텐츠 영역 최상단에 고정 표시되는 공통 툴바.
     - URL 라벨 / URL 입력창 / URL 복사 버튼 / 시작·중지 버튼
     - start_requested : 시작 버튼 클릭 시 emit (request_info dict)
     - stop_requested  : 중지 버튼 클릭 시 emit
@@ -95,12 +96,12 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
         super().__init__(parent)
         self._running = False
         self._start_cancelled = False   # 중지 시 QTimer 예약 콜백을 막는 플래그
-        # 실제 페이지 인스턴스는 MainWindow._build()에서 set_pages()로 주입됩니다.
+        # 실제 페이지 인스턴스는 MainWindowSingle._build()에서 set_pages()로 주입됩니다.
         self.dashboard = None
         self.monitor_page = None
         self.session_page = None
         self.auth_page = None
-        self.log_manager = None  # MainWindow 생성 후 set_log_manager()로 주입
+        self.log_manager = None  # MainWindowSingle 생성 후 set_log_manager()로 주입
         self._build()
         self.task = {}
 
@@ -135,16 +136,38 @@ class GlobalToolbar(QWidget, GlobalToolbarTriggers):
         self._style_run_btn(False)
         lay.addWidget(self.run_btn)
 
+        # 추출 설정 버튼 (Raw/정제 탭에 각각 있던 동일 다이얼로그 진입점을 통합)
+        self._output_settings_btn = parts.settings_btn("⚙  추출 설정")
+        self._output_settings_btn.clicked.connect(self._open_output_settings)
+        lay.addWidget(self._output_settings_btn)
+
 
 # ══════════════════════════════════════════════════════
 #  SIDEBAR
 # ══════════════════════════════════════════════════════
-class Sidebar(QWidget):
+class SidebarSingle(QWidget):
+    """
+    사이드바 뼈대(로고·구분선·NAVIGATOR/SETTINGS 섹션·하단 연결 상태줄)를 구성한다.
+    SidebarMulti(layout_multi.py)가 이 클래스를 상속해 항목 목록(_nav_items/
+    _settings_items)만 오버라이드하므로, 뼈대를 고치면 양쪽에 함께 반영된다.
+    """
     page_changed = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
         self._build()
+
+    def _nav_items(self) -> list:
+        """(아이콘, 라벨, 스택 인덱스) 목록 — 상단 NAVIGATOR 섹션."""
+        return [("⬡", "대시보드", 0), ("≡", "모니터링", 1), ("◷", "스케줄러", 2), ("▲", "통계 분석", 3)]
+
+    def _settings_items(self) -> list:
+        """(아이콘, 라벨, 스택 인덱스) 목록 — 하단 SETTINGS 섹션.
+        첫번째 수집 정보 기준으로 인증 관리 항목 포함 여부를 결정한다."""
+        items = [("◎", "세션 설정", 4)]
+        if _blueprint_requires_auth(request_info):
+            items.append(("⬡", "인증 관리", 5))
+        return items
 
     def _build(self):
 
@@ -163,17 +186,10 @@ class Sidebar(QWidget):
         nav_lbl.setStyleSheet(nav_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
         lay.addWidget(nav_lbl)
 
-        PAGES = [("⬡", "대시보드"), ("≡", "모니터링"), ("◷", "스케줄러"), ("▲", "통계 분석")]
-
-        # 첫번째 수집 정보 기준으로 SETTINGS 빌드
-        SETTINGS = [("◎", "세션 설정"), ("⬡", "인증 관리")] if _blueprint_requires_auth(request_info) else [("◎", "세션 설정")]
-
         self._btns = []
-        for i, (icon, label) in enumerate(PAGES):
-            btn = NavItem(icon, label)
-            btn.clicked.connect(lambda _, idx=i: self._on_nav(idx))
-            lay.addWidget(btn)
-            self._btns.append(btn)
+        self._nav_idx_by_btn = {}   # NavItem -> 그 버튼이 가리키는 스택 인덱스
+        for icon, label, stack_idx in self._nav_items():
+            self._add_nav_btn(lay, icon, label, stack_idx)
 
         lay.addSpacing(8)
         lay.addWidget(Divider())
@@ -182,12 +198,8 @@ class Sidebar(QWidget):
         set_lbl.setStyleSheet(set_lbl.styleSheet() + " letter-spacing:2px; padding:12px 16px 4px;")
         lay.addWidget(set_lbl)
 
-        for j, (icon, label) in enumerate(SETTINGS):
-            btn = NavItem(icon, label)
-            page_idx = len(PAGES) + j  # 4, 5
-            btn.clicked.connect(lambda _, idx=page_idx: self._on_nav(idx))
-            lay.addWidget(btn)
-            self._btns.append(btn)
+        for icon, label, stack_idx in self._settings_items():
+            self._add_nav_btn(lay, icon, label, stack_idx)
 
         lay.addStretch()
         lay.addWidget(Divider())
@@ -203,15 +215,26 @@ class Sidebar(QWidget):
 
         self._btns[0].setChecked(True)
 
+    def _add_nav_btn(self, lay, icon, label, stack_idx) -> NavItem:
+        """NavItem을 만들어 레이아웃에 추가하고, 클릭 시 이동할 스택 인덱스를
+        버튼 자체에 매핑해둔다 — SidebarMulti처럼 표시 순서와 스택 인덱스가
+        다른 항목("수집 목록" 등)도 안전하게 지원하기 위함."""
+        btn = NavItem(icon, label)
+        btn.clicked.connect(lambda _, idx=stack_idx: self._on_nav(idx))
+        lay.addWidget(btn)
+        self._btns.append(btn)
+        self._nav_idx_by_btn[btn] = stack_idx
+        return btn
+
     def _on_nav(self, idx):
-        for i, b in enumerate(self._btns):
-            b.setChecked(i == idx)
+        for b in self._btns:
+            b.setChecked(self._nav_idx_by_btn[b] == idx)
         self.page_changed.emit(idx)
 
 # ══════════════════════════════════════════════════════
 #  DASHBOARD PAGE
 # ══════════════════════════════════════════════════════
-class DashboardPage(QWidget, DashboardPageTriggers):
+class DashboardPageSingle(QWidget, DashboardPageTriggers):
 
     def __init__(self):
         super().__init__()
@@ -222,6 +245,9 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self._out_mode = None
         self.output_info = customized_settings.get_output_settings()
         self._running = False
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
         self._build()
 
     def _build(self):
@@ -296,7 +322,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r1 = QHBoxLayout()
         r1.setSpacing(8)
         r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
-        self.delay_spin = QDoubleSpinBox()
+        self.delay_spin = BoundNoticeDoubleSpinBox()
         self.delay_spin.setRange(0.5, 10.0)
         self.delay_spin.setValue(0.5)
         self.delay_spin.setSingleStep(0.5)
@@ -305,7 +331,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r1.addWidget(self.delay_spin)
         r1.addSpacing(6)
         r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
-        self.thread_spin = QSpinBox()
+        self.thread_spin = BoundNoticeSpinBox()
         self.thread_spin.setRange(1, 16)
         self.thread_spin.setValue(4)
         self.thread_spin.setToolTip("병렬 수집 스레드 수")
@@ -313,6 +339,15 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r1.addSpacing(6)
         r1.addStretch()
         c1.addLayout(r1)
+
+        # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전
+        # 상한/하한을 강제한다(spirenderer.py는 더 이상 런타임 보정을 하지 않음).
+        # 상한/하한을 넘으려는 시도는 상시 문구 대신 QToolTip 말풍선으로만 안내한다.
+        if self._get_active_spider_mode() == "html_render":
+            apply_render_safety_limits(
+                self.thread_spin, self.delay_spin,
+                customized_settings.get_render_safety_limits(),
+            )
 
         # Row 2 — 타임 아웃 / 재시도
         r2 = QHBoxLayout()
@@ -342,6 +377,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         r3.setSpacing(8)
         self.auto_save_chk = QCheckBox("Auto Save")
         self.auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
+        self.auto_save_chk.setChecked(True)
         r3.addWidget(self.auto_save_chk)
         r3.addSpacing(6)
 
@@ -409,7 +445,7 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         stl.addLayout(sg)
         bl.addWidget(stw)
 
-        # ── 수집 모니터링 테이블 (MonitorPage에서 이동) ──────────
+        # ── 수집 모니터링 테이블 (MonitorPageSingle에서 이동) ──────────
         mon_tcw, mon_tc = parts.card_widget("수집 모니터링")
         mon_tcw.setMinimumHeight(300)  # 최소 높이를 300으로 제한
         mon_tbl_ctrl = QHBoxLayout()
@@ -467,6 +503,9 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self.s_err.update_value(0)
         self.s_pages.update_value(0)
         self.s_speed.update_value("—")
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
 
         # 수집 모니터링 테이블 초기화
         self.monitor_table.setSortingEnabled(False)
@@ -482,11 +521,11 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         self._update_step_ui(0)
 
     def set_running(self, v: bool):
-        """GlobalToolbar 에서 상태를 받아 내부 플래그만 동기화합니다."""
+        """GlobalToolbarSingle 에서 상태를 받아 내부 플래그만 동기화합니다."""
         self._running = v
 
     def _get_result_columns(self):
-        """동적 컬럼 목록 — MonitorPage에서도 사용하므로 유지."""
+        """동적 컬럼 목록 — MonitorPageSingle에서도 사용하므로 유지."""
         # [수정] request_info 구조 불완전 시 KeyError 방지
         try:
             items = list(request_info["conditions"]["items"].keys())
@@ -494,14 +533,20 @@ class DashboardPage(QWidget, DashboardPageTriggers):
         except (KeyError, TypeError):
             return []
 
+    def _get_active_spider_mode(self):
+        """이 대시보드가 대상으로 하는 블루프린트의 스파이더 모드.
+        DashboardPageMulti는 전역 request_info 대신 self.blueprint_info를 쓰도록 오버라이드한다."""
+        return get_spider_mode(request_info)
+
 # ══════════════════════════════════════════════════════
 #  MONITOR PAGE
 # ══════════════════════════════════════════════════════
-class MonitorPage(QWidget, MonitorPageTriggers):
+class MonitorPageSingle(QWidget, MonitorPageTriggers):
     def __init__(self):
         super().__init__()
         self._all_rows       = []
         self._collected_data = []   # raw 수집 데이터
+        self._existing_keys  = set()   # _collected_data 중복판정용 캐시(증분 갱신)
         self._refined_data   = []   # 정제 후 데이터
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._cleaning_warned = False   # 이번 수집에 대해 "규칙 없음" 팝업을 이미 띄웠는지
@@ -617,10 +662,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         raw_exp_btn = parts.action_btn("EXTRACT")
         raw_exp_btn.clicked.connect(lambda: self._extract_result_table(source="raw"))
         tbl_ctrl.addWidget(raw_exp_btn)
-
-        raw_out_cfg_btn = parts.settings_btn("⚙  추출 설정")
-        raw_out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
-        tbl_ctrl.addWidget(raw_out_cfg_btn)
         tc.addLayout(tbl_ctrl)
 
         # null·중복 안내
@@ -631,8 +672,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         tc.addWidget(info_lbl)
 
         self.result_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
-        self.result_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.result_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         self.result_table.itemClicked.connect(self._show_detail)
         self.result_table.currentItemChanged.connect(self._on_current_item_changed)
         tc.addWidget(self.result_table)
@@ -757,15 +796,9 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         exp_btn = parts.action_btn("EXTRACT")
         exp_btn.clicked.connect(lambda: self._extract_result_table(source="refined"))
         ref_ctrl.addWidget(exp_btn)
-
-        out_cfg_btn = parts.settings_btn("⚙  추출 설정")
-        out_cfg_btn.clicked.connect(self._open_output_settings_dialog)
-        ref_ctrl.addWidget(out_cfg_btn)
         rtc.addLayout(ref_ctrl)
 
         self.refined_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
-        self.refined_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.refined_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         self.refined_table.itemClicked.connect(self._show_refined_detail)
         self.refined_table.currentItemChanged.connect(self._on_refined_current_item_changed)
         rtc.addWidget(self.refined_table)
@@ -821,8 +854,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             f"color:{AMBER}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
-        self.cmp_raw_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         raw_cmp_l.addWidget(self.cmp_raw_table)
         side_l.addWidget(raw_cmp_w, 1)
 
@@ -833,8 +864,6 @@ class MonitorPage(QWidget, MonitorPageTriggers):
             f"color:{GREEN}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
-        self.cmp_ref_table.setColumnCount(len(self._get_result_columns()) + 1)
-        self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + self._get_result_columns())
         ref_cmp_l.addWidget(self.cmp_ref_table)
         side_l.addWidget(ref_cmp_w, 1)
 
@@ -869,9 +898,11 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         # ① Raw 탭
         self.result_table.setSortingEnabled(False)
         self.result_table.setRowCount(0)
+        self.result_table.setColumnCount(0)
         self.result_table.setSortingEnabled(True)
         self._all_rows       = []
         self._collected_data = []
+        self._existing_keys  = set()
         self.count_lbl.setText("0 rows")
         self.sum_total.update_value(0)
         self.sum_ok.update_value(0)
@@ -883,6 +914,7 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         self._refined_data = []
         self.refined_table.setSortingEnabled(False)
         self.refined_table.setRowCount(0)
+        self.refined_table.setColumnCount(0)
         self.refined_table.setSortingEnabled(True)
         self.refined_count_lbl.setText("— rows")
         self.ref_total.update_value("—")
@@ -894,9 +926,11 @@ class MonitorPage(QWidget, MonitorPageTriggers):
         # ③ 비교 탭
         self.cmp_raw_table.setSortingEnabled(False)
         self.cmp_raw_table.setRowCount(0)
+        self.cmp_raw_table.setColumnCount(0)
         self.cmp_raw_table.setSortingEnabled(True)
         self.cmp_ref_table.setSortingEnabled(False)
         self.cmp_ref_table.setRowCount(0)
+        self.cmp_ref_table.setColumnCount(0)
         self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_raw_count.setText("— rows")
         self.cmp_ref_count.setText("— rows")
@@ -1230,7 +1264,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         self._load_schedules_from_json()   # ← 앱 시작 시 저장된 스케줄 로드
         self._refresh_table()
         self.sched_task = {}
-        self.session_page = None  # MainWindow가 실제 SessionSettingsPage 인스턴스를 주입
+        self.session_page = None  # MainWindowSingle가 실제 SessionSettingsPage 인스턴스를 주입
 
     # ────────────────────────────────────────────────
     def _build(self):
@@ -1259,11 +1293,11 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         # ──────────────────────────────────────────────
 
         # ══ Schedule Table ════════════════════════════
-        tw, tl = parts.card_widget("등록된 작업")
+        tw, tl = parts.card_widget("스케줄 목록")
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
-        self.sched_table.setColumnCount(7)
+        self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(
-            ["NO", "Task Name", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
+            ["NO", "Task Name", "대상", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
         tl.addWidget(self.sched_table)
         bl.addWidget(tw, 1)
 
@@ -1323,10 +1357,21 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             idx_item.setForeground(QColor(TEXT_MUTED))
             self.sched_table.setItem(r, 0, idx_item)
 
-            # Task Name / URL / Execution Time (설정 주기 문자열)
-            vals = [s["task_nm"], s.get("callback_url", ""), s["schedule"]["exec_str"]]
-            colors = [TEXT_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY]
-            for col, (val, color) in enumerate(zip(vals, colors), start=1):
+            # Task Name
+            name_item = QTableWidgetItem(s["task_nm"])
+            name_item.setForeground(QColor(TEXT_PRIMARY))
+            self.sched_table.setItem(r, 1, name_item)
+
+            # 대상 (스케줄이 지정한 블루프린트의 title)
+            target_bp = BlueprintStorage().get(s.get("seq_no"))
+            target_item = QTableWidgetItem(target_bp.get("title") if target_bp else "—")
+            target_item.setForeground(QColor(TEXT_SECONDARY))
+            self.sched_table.setItem(r, 2, target_item)
+
+            # URL / Execution Time (설정 주기 문자열)
+            vals = [s.get("callback_url", ""), s["schedule"]["exec_str"]]
+            colors = [ACCENT_LIGHT, TEXT_PRIMARY]
+            for col, (val, color) in enumerate(zip(vals, colors), start=3):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))
                 self.sched_table.setItem(r, col, item)
@@ -1339,13 +1384,13 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
                 remaining_txt = "—"
             nr_item = QTableWidgetItem(remaining_txt)
             nr_item.setForeground(QColor(PURPLE))
-            self.sched_table.setItem(r, 4, nr_item)
+            self.sched_table.setItem(r, 5, nr_item)
 
             # Status
             status = s["schedule"]["status"]
             si = QTableWidgetItem(status)
             si.setForeground(QColor(STATUS_COLOR.get(status, TEXT_MUTED)))
-            self.sched_table.setItem(r, 5, si)
+            self.sched_table.setItem(r, 6, si)
 
             # Action (수정 / 삭제)
             action_w = QWidget()
@@ -1363,7 +1408,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             del_btn.clicked.connect(lambda _, i=idx: self._delete_schedule(i))
             al.addWidget(edit_btn)
             al.addWidget(del_btn)
-            self.sched_table.setCellWidget(r, 6, action_w)
+            self.sched_table.setCellWidget(r, 7, action_w)
 
 
 # ══════════════════════════════════════════════════════
@@ -1373,6 +1418,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
     def __init__(self):
         super().__init__()
         self._proxy_rows = []  # list of dict
+        self._proxy_test_thread = None  # "연결 테스트" 진행 중인 QThread(없으면 None)
         self._build()
 
     def _build(self):
@@ -1411,20 +1457,11 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         row0.addWidget(self.ua_check)
         row0.addWidget(self.cookie_check)
         row0.addWidget(self._global_cb)
+        row0.addStretch()
         gl1.addLayout(row0)
         bl.addWidget(gw1)
 
         self.gw2, gl2 = parts.card_widget("프록시 옵션")
-        row0 = QHBoxLayout()
-        row0.setSpacing(16)
-        self._rotate_cb = QCheckBox("자동 로테이션")
-        self._rotate_cb.setChecked(False)
-        row0.addWidget(self._rotate_cb)
-        self._test_cb = QCheckBox("연결 전 헬스체크")
-        self._test_cb.setChecked(False)
-        row0.addWidget(self._test_cb)
-        row0.addStretch()
-        gl2.addLayout(row0)
         row1 = QHBoxLayout()
         row1.setSpacing(10)
         row1.addWidget(parts.make_label("분당 IP 허용 갯수", TEXT_SECONDARY, 12))
@@ -1449,13 +1486,15 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         hdr_row.setSpacing(8)
         hdr_row.addStretch()
 
-        self._import_lbl = parts.make_label("", TEXT_MUTED, 10)
+        self._test_btn = parts.outline_btn("🔌 연결 테스트")
+        self._test_btn.setToolTip("프록시 목록의 모든 IP에 연결을 시도해 상태를 확인합니다")
+        self._test_btn.clicked.connect(self._test_all_proxies)
         self._import_btn = parts.outline_btn("📂 Import")
         self._import_btn.setToolTip("텍스트/CSV 파일에서 IP:PORT 형식의 프록시 목록을 불러옵니다")
         self._import_btn.clicked.connect(self._import_proxy_file)
         self._add_btn = parts.action_btn("+ 추가", ACCENT, ACCENT_HOVER)
         self._add_btn.clicked.connect(self._add_proxy_dialog)
-        hdr_row.addWidget(self._import_lbl)
+        hdr_row.addWidget(self._test_btn)
         hdr_row.addWidget(self._import_btn)
         hdr_row.addWidget(self._add_btn)
         pl.addLayout(hdr_row)
@@ -1479,7 +1518,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
             card.setStyleSheet(theme.PROXY_CARD_DISABLED_QSS)
 
     def _make_proxy_table(self):
-        headers = ["활성", "프로토콜", "호스트", "포트", "레이턴시", "상태"]
+        headers = ["NO", "프로토콜", "호스트", "포트", "상태"]
         t = EqualSpacingTable(
             parent=self,
             row_height=36,
@@ -1495,6 +1534,8 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         # itemClicked: 행 어디를 클릭해도 활성/비활성 토글
         t.itemClicked.connect(self._on_proxy_row_clicked)
         t.setStyleSheet(t.styleSheet() + theme.PROXY_TABLE_INDICATOR_QSS)
+        # "상태" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
+        t.setItemDelegateForColumn(4, NoFocusDelegate(t))
         return t
 
     def _insert_table_row(self, data: dict):
@@ -1510,18 +1551,12 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
         align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
 
-        # col 0 — 활성 여부 (ItemIsUserCheckable — setCellWidget 없이 체크박스 렌더링)
-        # setItem() 1회로 완결되어 대량 삽입 성능에 영향 없음
-        enabled_item = QTableWidgetItem()
-        enabled_item.setFlags(
-            Qt.ItemFlag.ItemIsEnabled |
-            Qt.ItemFlag.ItemIsSelectable |
-            Qt.ItemFlag.ItemIsUserCheckable   # 체크박스 렌더링 플래그
-        )
-        enabled_item.setCheckState(
-            Qt.CheckState.Checked if data["enabled"] else Qt.CheckState.Unchecked
-        )
-        t.setItem(r, 0, enabled_item)
+        # col 0 — NO (테이블 내 순번, 1-base). _delete_row에서 삭제 시 재넘버링됨.
+        no_item = QTableWidgetItem(str(r + 1))
+        no_item.setForeground(QColor(TEXT_SECONDARY))
+        no_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        no_item.setFlags(no_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        t.setItem(r, 0, no_item)
 
         # col 1 — 프로토콜
         color_map = {"HTTP": BLUE, "HTTPS": BLUE, "SOCKS5": PURPLE, "SOCKS4": AMBER}
@@ -1545,19 +1580,16 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         port_item.setFlags(port_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 3, port_item)
 
-        # col 4 — 레이턴시
-        lat_item = QTableWidgetItem(data["latency"])
-        lat_item.setForeground(QColor(GREEN if data["latency"] != "—" else TEXT_MUTED))
-        lat_item.setTextAlignment(align)
-        lat_item.setFlags(lat_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        t.setItem(r, 4, lat_item)
-
-        # col 5 — 상태
-        status_item = QTableWidgetItem(data["status"])
-        status_item.setForeground(QColor(GREEN if data["status"] == "활성" else TEXT_MUTED))
-        status_item.setTextAlignment(align)
-        status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        t.setItem(r, 5, status_item)
+        # col 4 — 상태 (사용 여부 체크박스. ItemIsUserCheckable — setCellWidget 없이 렌더링)
+        status_item = QTableWidgetItem()
+        status_item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled |
+            Qt.ItemFlag.ItemIsUserCheckable   # 체크박스 렌더링 플래그
+        )
+        status_item.setCheckState(
+            Qt.CheckState.Checked if data["enabled"] else Qt.CheckState.Unchecked
+        )
+        t.setItem(r, 4, status_item)
 
 
 # ══════════════════════════════════════════════════════
@@ -1769,7 +1801,7 @@ class TrayManager(QObject, TrayManagerTriggers):
 
         quit_action = QAction("종료", self.main_window)
         # QApplication.quit() 직접 연결 시 closeEvent를 우회하므로
-        # 반드시 MainWindow.exit_app()을 통해 저장 후 종료해야 합니다.
+        # 반드시 MainWindowSingle.exit_app()을 통해 저장 후 종료해야 합니다.
         quit_action.triggered.connect(self.main_window.exit_app)
 
         tray_menu.addAction(show_action)
@@ -1784,10 +1816,45 @@ class TrayManager(QObject, TrayManagerTriggers):
         """트레이 알림 메시지 표시"""
         self.tray_icon.showMessage(title, message, icon, 3000)
 
+def build_status_bar(open_log_viewer_callback):
+    """메인 창 최하단 상태바(최신 로그 한 줄 + 전체 로그 보기 버튼)를 만든다.
+    MainWindowSingle/MainWindowMulti가 동일하게 사용한다.
+
+    Returns:
+        (status_bar 위젯, status_level 라벨, status_msg 라벨) — 호출부가
+        self.status_level/self.status_msg에 직접 대입해 보관한다.
+    """
+    status_bar = QWidget()
+    status_bar.setFixedHeight(41)
+    status_bar.setStyleSheet(
+        f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
+    )
+    sbl = QHBoxLayout(status_bar)
+    sbl.setContentsMargins(14, 0, 14, 0)
+    sbl.setSpacing(8)
+
+    # 레벨 태그 (색상 표시)
+    status_level = parts.make_label("", TEXT_MUTED, 11)
+    status_level.setFixedWidth(48)
+    sbl.addWidget(status_level)
+
+    # 최신 로그 메시지 한 줄
+    status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
+    status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    sbl.addWidget(status_msg, 1)
+
+    # 전체 로그 보기 버튼
+    log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
+    log_view_btn.clicked.connect(open_log_viewer_callback)
+    sbl.addWidget(log_view_btn)
+
+    return status_bar, status_level, status_msg
+
+
 # ══════════════════════════════════════════════════════
 #  MAIN WINDOW
 # ══════════════════════════════════════════════════════
-class MainWindow(QMainWindow, MainWindowTriggers):
+class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DataCrawler v2.0")
@@ -1806,32 +1873,32 @@ class MainWindow(QMainWindow, MainWindowTriggers):
 
     def _build(self):
 
-        # ──  왼쪽 컨텐츠 영역: Sidebar ──
+        # ──  왼쪽 컨텐츠 영역: SidebarSingle ──
         left_widget = QWidget()
         self.setCentralWidget(left_widget)
         layout = QHBoxLayout(left_widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.sidebar = Sidebar()
+        self.sidebar = SidebarSingle()
         self.sidebar.page_changed.connect(self._switch_page)
         layout.addWidget(self.sidebar)
 
-        # ── 오른쪽 컨텐츠 영역: GlobalToolbar + QStackedWidget ──
+        # ── 오른쪽 컨텐츠 영역: GlobalToolbarSingle + QStackedWidget ──
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
         # 공통 Toolbar (모든 페이지 공유)
-        self.global_toolbar = GlobalToolbar()
+        self.global_toolbar = GlobalToolbarSingle()
         self.global_toolbar.start_requested.connect(self._start_crawl)
         self.global_toolbar.stop_requested.connect(self._stop_crawl)
         right_layout.addWidget(self.global_toolbar)
 
         self.stack = QStackedWidget()
-        self.dashboard = DashboardPage()
-        self.monitor_page = MonitorPage()
+        self.dashboard = DashboardPageSingle()
+        self.monitor_page = MonitorPageSingle()
         self.schedule_page = SchedulerPage()
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()
@@ -1852,7 +1919,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
             )
             self.stack.addWidget(self.auth_page)  # 5
 
-        # GlobalToolbar에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
+        # GlobalToolbarSingle에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
         self.global_toolbar.set_log_manager(self.log_manager)
         self.global_toolbar.set_pages(
             dashboard=self.dashboard,
@@ -1864,31 +1931,7 @@ class MainWindow(QMainWindow, MainWindowTriggers):
         right_layout.addWidget(self.stack, 1)
 
         # ── 메인 창 최하단 상태바 (최신 로그 한 줄 + 전체 로그 보기 버튼) ──
-
-        status_bar = QWidget()
-        status_bar.setFixedHeight(41)
-        status_bar.setStyleSheet(
-            f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
-        )
-        sbl = QHBoxLayout(status_bar)
-        sbl.setContentsMargins(14, 0, 14, 0)
-        sbl.setSpacing(8)
-
-        # 레벨 태그 (색상 표시)
-        self.status_level = parts.make_label("", TEXT_MUTED, 11)
-        self.status_level.setFixedWidth(48)
-        sbl.addWidget(self.status_level)
-
-        # 최신 로그 메시지 한 줄
-        self.status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
-        self.status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        sbl.addWidget(self.status_msg, 1)
-
-        # 전체 로그 보기 버튼
-        log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
-        log_view_btn.clicked.connect(self._open_log_viewer)
-        sbl.addWidget(log_view_btn)
-
+        status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
         right_layout.addWidget(status_bar)
 
         # log_manager.last_log 시그널 → 상태바 업데이트 연결

@@ -6,7 +6,7 @@
 > - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
 > - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
 
-- **최신 갱신**: 2026-07-30
+- **최신 갱신**: 2026-08-26 02:01
 
 ---
 
@@ -22,6 +22,11 @@
   .\.venv\Scripts\Activate.ps1
   pip install -r requirements.txt
   ```
+  **주의**: WSL 네이티브 경로(`/home/...`)의 저장소 클론에서는 `.venv`가 WSL 실행/테스트용
+  가상환경(Python 3.12, `guidelines/STUDY_WSL_DB_CONNECT.md` 등 참고)으로 이미 쓰이고
+  있습니다 — 이 클론에서 위 명령을 그대로 실행하면 그 가상환경을 덮어씁니다. Windows
+  빌드는 반드시 Windows 네이티브 경로(`/mnt/c`, `/mnt/d` 등)의 별도 클론에서, 또는 최소한
+  다른 이름(`.venv-win` 등)의 가상환경으로 진행하세요.
 - 설치 프로그램(`Setup.exe`)까지 만들려면 [Inno Setup](https://jrsoftware.org/isinfo.php)이
   추가로 필요합니다(무료, Windows 전용 외부 도구 — Python 패키지 아님).
 
@@ -33,13 +38,13 @@
 
 1. **`request_info.json`** — 배포할 고객의 수집 설정. `.gitignore` 대상이라 각자 로컬에
    준비해야 합니다. `seq_no` 필드가 이번에 빌드할 고객 번호와 일치해야 합니다.
-2. **(필요 시) 커스텀 규칙** — `custom_rules/render/{seq_no}.py`(로그인/렌더링) 또는
-   `custom_rules/refine/{seq_no}.py`(정제) 중 해당 고객에게 필요한 파일. 규칙 작성법은
+2. **(필요 시) 커스텀 규칙** — `render/{seq_no}.py`(렌더링), `login/{seq_no}.py`(로그인),
+   `refine/{seq_no}.py`(정제) 중 해당 고객에게 필요한 파일. 규칙 작성법은
    `PREPROCESS.md` §3.1a 참고.
 
-> `custom_rules/`는 여러 고객의 규칙 파일을 함께 보관하는 개발자용 폴더입니다. 다음 단계의
-> 빌드 스크립트가 **지정한 `seq_no` 파일만** 골라 담기 때문에, 이 폴더에 다른 고객 파일이
-> 섞여 있어도 이번 빌드에는 포함되지 않습니다.
+> `render/`·`login/`·`refine/`은 여러 고객의 규칙 파일을 함께 보관하는 개발자용 폴더입니다.
+> 다음 단계의 빌드 스크립트가 **지정한 `seq_no` 파일만** 골라 담기 때문에, 이 폴더에 다른
+> 고객 파일이 섞여 있어도 이번 빌드에는 포함되지 않습니다.
 
 ---
 
@@ -56,7 +61,7 @@
 
 **스크립트가 하는 일 (요약)**
 1. `request_info.json` 존재 및 `seq_no` 일치 검증
-2. 해당 `seq_no`의 `custom_rules/{render,refine}/{SeqNo}.py`만 임시 스테이징 폴더로 격리
+2. 해당 `seq_no`의 `{render,login,refine}/{SeqNo}.py`만 임시 스테이징 폴더로 격리
 3. PyInstaller `--onefile --windowed`로 `main.py`를 빌드하면서, 동적 import라 자동 탐지되지
    않는 `scrapy.cfg`/`settings.py`/`pipelines.py`/`middlewares.py`/`spiders/`/아이콘 파일,
    그리고 Scrapy/Twisted 계열이 필요로 하는 패키지 메타데이터(`--copy-metadata`)를 함께 번들
@@ -91,11 +96,11 @@ Inno Setup의 커맨드라인 컴파일러 `ISCC.exe`를 PATH → `Program Files
 
 ## 4. 실행 후 확인
 
-- 최초 실행 시 `request_info.json`/`custom_rules`가 `%LOCALAPPDATA%\<AppName>\`로 자동
-  복사(시딩)됩니다. 이후 실행부터는 그 위치의 파일을 읽습니다.
+- 최초 실행 시 `request_info.json`/`render`/`login`/`refine`이 `%LOCALAPPDATA%\<AppName>\`로
+  자동 복사(시딩)됩니다. 이후 실행부터는 그 위치의 파일을 읽습니다.
 - exe 파일명을 빌드 후 **직접 바꾸지 마세요** — `utility.get_app_name()`이 실행 파일명으로
   데이터 폴더명을 결정하므로, 이름을 바꾸면 다음 실행부터 새 이름의 빈 데이터 폴더를 찾아
-  기존 `request_info.json`/`custom_rules`를 못 찾는 것처럼 보일 수 있습니다.
+  기존 `request_info.json`/`render`/`login`/`refine`을 못 찾는 것처럼 보일 수 있습니다.
 
 ---
 

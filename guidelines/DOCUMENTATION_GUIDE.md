@@ -268,7 +268,7 @@ were describing dead code that couldn't even be reached anymore.
 When you change a function/variable's behavior, default value, count, or what it refers to
 (another function/class, a config key, a file path), update every comment/docstring describing
 that code **within that same change**. Putting it off for "cleanup later" leaves two mutually
-contradictory comments coexisting in the same file (an actual case: in `layout.py`, one line
+contradictory comments coexisting in the same file (an actual case: in `layout_single.py`, one line
 described the `fill_null` default as `""` (empty), while five lines above it still said `"—"`).
 
 Watch especially closely for missed comment updates when changing:

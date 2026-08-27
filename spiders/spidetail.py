@@ -1,25 +1,15 @@
 import json
-import scrapy
 import glean
 import engine
 import utility
+from spiders.base import BaseExtractorSpider
 
-class DetailExtractorSpider(scrapy.Spider):
+class DetailExtractorSpider(BaseExtractorSpider):
 
     name = "spider_detail"
 
-    # 1. __init__: main.py로부터 로드된 수집 목록 리스트를 받습니다.
-    def __init__(self, request_info=None, *args, **kwargs):
-        super(DetailExtractorSpider, self).__init__(*args, **kwargs)
-
-        # main.py에서 전달받은 수집 목록 리스트 (딕셔너리 리스트 형태)
-        if request_info is None:
-            self.request_info = {}
-            self.logger.error("❌ 수집 목록 리스트가 main.py로부터 전달되지 않았습니다.")
-        else:
-            self.request_info = request_info
-
-    # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
+    # start_requests: 콜백이 self.parse가 아닌 self.start_requests_detail이므로
+    # BaseExtractorSpider의 기본 구현을 그대로 쓰지 않고 오버라이드한다.
     def start_requests(self):
         try:
             url_list = glean.get_grains(self.request_info)

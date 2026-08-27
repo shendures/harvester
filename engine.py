@@ -3,12 +3,10 @@ import json
 import logging
 import scrapy
 from scrapy.http import JsonRequest
-from furl import furl
 from typing import List, Dict, Any
 import utility
 import conf
 from http import HTTPStatus
-import glean
 
 from items import DonasItem, DonasItemLoader
 from scrapy.selector import Selector
@@ -16,6 +14,8 @@ from scrapy.selector import Selector
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.remote_connection import RemoteConnection
+from selenium.common.exceptions import NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -26,6 +26,10 @@ from spiders.spixml import XmlExtractorSpider
 from spiders.spidetail import DetailExtractorSpider
 
 logger = logging.getLogger(__name__)
+
+# 개별 WebDriver 명령(페이지 로드 포함)의 최대 대기 시간 — 기본값은 사실상 무제한이라
+# 사이트 응답이 느리거나 멈추면 perform_login()/parse()가 영영 리턴하지 않게 됨.
+SELENIUM_COMMAND_TIMEOUT_SECONDS = 30
 
 def get_login_failure_phrases():
     """로그인 실패 시 사이트에서 흔히 쓰는 문구(사이트 무관 공통 판별용, 소문자 비교)"""
@@ -49,8 +53,7 @@ def get_json_form(url, payload_yn):
 
 def get_spider(request_info: dict):
 
-    # conditions 내부 spiders 우선, 없으면 최상위 fallback (현행 request_info.json 호환)
-    spiders = (request_info.get("conditions") or {}).get("spiders", request_info.get("spiders"))
+    spiders = conf.get_spider_mode(request_info)
 
     if spiders == "html":
         return HtmlExtractorSpider
@@ -72,12 +75,6 @@ def get_spider(request_info: dict):
 
     else:
         raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
-
-
-def set_requests(collect_info, callback):
-    url_list = glean.get_grains(collect_info)
-    for url in url_list:
-        yield get_scrapy_request(url, collect_info["conditions"], callback)
 
 
 def get_scrapy_request(url, conditions, callback):
@@ -132,10 +129,43 @@ def set_chrome_webdriver(headless=False):
         options.add_argument('headless')
     options.add_argument('window-size=1920x1080')
     options.add_argument("disable-gpu")
+
+    # 크롬 네이티브 "알림 허용" 등 권한 요청 팝업 차단(2=차단). 사이트 자체가
+    # DOM으로 그리는 공지사항/이벤트 모달은 이 설정으로 막을 수 없음 —
+    # 그런 경우는 render()/login() 커스텀 스크립트에서 닫기 버튼을 클릭해야 함.
+    options.add_experimental_option("prefs", {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.geolocation": 2,
+    })
+    options.add_argument("--disable-notifications")
+
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
 
+    # RemoteConnection은 driver 생성 시점에 자기 _client_config로 클래스 속성을
+    # 새로 덮어쓰므로, 타임아웃 설정은 반드시 driver 생성 "이후"에 호출해야 함
+    # (생성 전에 호출하면 무시되거나 최초 호출 시 AttributeError 발생).
+    RemoteConnection.set_timeout(SELENIUM_COMMAND_TIMEOUT_SECONDS)
+    driver.set_page_load_timeout(SELENIUM_COMMAND_TIMEOUT_SECONDS)
+
     return driver
+
+
+def dismiss_popup(driver, button_text: str) -> bool:
+    """
+    페이지 로드 시 뜨는 공지/이벤트 팝업 등을 닫습니다.
+
+    button_text와 텍스트가 정확히 일치하는 button 요소를 찾아 클릭합니다.
+    팝업이 없어 해당 버튼을 못 찾으면 아무 것도 하지 않습니다.
+
+    Returns:
+        bool — 버튼을 찾아 클릭했으면 True, 없었으면 False.
+    """
+    try:
+        driver.find_element(By.XPATH, f"//button[normalize-space()='{button_text}']").click()
+        return True
+    except NoSuchElementException:
+        return False
 
 
 def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names) -> bool:
@@ -158,7 +188,13 @@ def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_name
         {c["name"] for c in driver.get_cookies()} - pre_login_cookie_names
     )
     password_field_gone = len(driver.find_elements(By.CSS_SELECTOR, "input[type='password']")) == 0
-    url_changed = driver.current_url != pre_login_url
+    # pre_login_url은 login() 호출 전(driver 생성 직후 "data:," 등 미탐색 상태)이라,
+    # login()이 내부에서 loginUrl로 자체 이동하는 사이트는 로그인 성공 여부와 무관하게
+    # "로그인 페이지 도착"만으로 url_changed가 항상 True가 되어 무의미해짐. loginUrl이
+    # 있으면 "로그인 페이지 자체에서 벗어났는가"로 비교 기준을 보정하고, 없는 사이트
+    # (대상 페이지에서 바로 로그인 박스를 클릭하는 방식)는 기존처럼 pre_login_url을 씀.
+    baseline_url = login_info.get("loginUrl") or pre_login_url
+    url_changed = driver.current_url != baseline_url
 
     return new_cookie_appeared or password_field_gone or url_changed
 
@@ -178,19 +214,24 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
     추출·재주입할 필요가 없습니다.
 
     Returns:
-        bool — 로그인 성공 여부. custom_rules/render/{seq_no}.py에 login()이
-        정의돼 있지 않거나 로그인에 실패하면 False.
+        bool — 로그인 성공 여부. login/{seq_no}.py에 login()이
+        정의돼 있지 않거나 로그인에 실패(응답 지연·타임아웃 포함)하면 False.
     """
     login_fn = conf.CustomModuleStorage().load_login(seq_no)
     if login_fn is None:
-        logger.error("[perform_login] custom_rules/render/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
+        logger.error("[perform_login] login/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
         return False
 
     pre_login_url = driver.current_url
     pre_login_cookie_names = {c["name"] for c in driver.get_cookies()}
-    login_fn(driver, login_info)
-
-    return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
+    try:
+        login_fn(driver, login_info)
+        return check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names)
+    except Exception as e:
+        # SELENIUM_COMMAND_TIMEOUT_SECONDS 초과(응답 지연·행) 등으로 로그인
+        # 처리 중 예외가 나면, 이후 수집 자체를 시작하지 않도록 실패로 처리.
+        logger.error("[perform_login] 로그인 처리 중 오류 발생(seq_no=%s): %s", seq_no, e)
+        return False
 
 
 def perform_logout(seq_no: str) -> None:
@@ -198,7 +239,7 @@ def perform_logout(seq_no: str) -> None:
     수집 종료 후 로그인 인증 상태를 정리합니다.
 
     현재는 로컬 정리(로그 기록)만 수행합니다 — 사이트에 실제 로그아웃 요청을
-    보내는 것은 범위 밖입니다(추후 필요 시 custom_rules/render/{seq_no}.py에
+    보내는 것은 범위 밖입니다(추후 필요 시 login/{seq_no}.py에
     logout(driver) 훅을 추가하는 방향으로 확장 가능). 캐시된 쿠키 자체를
     비우는 것은 호출 측(스파이더)의 책임입니다.
     """
@@ -237,8 +278,8 @@ def get_response_status(response):
     return response_status
 
 
-# run_login() / get_render_result()의 seq_no 하드코딩 분기는 custom_rules/render/{seq_no}.py의
-# login() / render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
+# run_login() / get_render_result()의 seq_no 하드코딩 분기는 login/{seq_no}.py의
+# login() 훅과 render/{seq_no}.py의 render() 훅(conf.CustomModuleStorage)으로 대체되었습니다 — spirenderer.py 참고.
 
 
 def get_result(collect_info, target, _items):
@@ -365,38 +406,4 @@ def set_cookies(response):
         cookie = cookie + code + " "
     return cookie.strip()
 
-
-def requests_info(response, collect_info, time):
-
-    # 요청 결과
-    result = "success" if response.status == 200 else "fail"
-
-    requests_info_dict = {
-                            "seq_no": collect_info["seq_no"],
-                            "titles": collect_info["title"],
-                            "callback_url": response.url,
-                            "ip": response.ip_address.compressed,
-                            "user_agents": response.request.headers.get('User-Agent').decode('utf-8'),
-                            "cookies": set_cookies(response),
-                            "time": time,
-                            "results" : result
-                         }
-
-    return requests_info_dict
-
-
-def make_form_data_for_url_args(url):
-    result_dict = {}
-    args = furl(url).args
-    keys = args.keys()
-    for key in keys:
-        try:
-            if type(json.loads(args.get(key))) is int:
-                result_dict[key] = str(json.loads(args.get(key)))
-            else:
-                result_dict[key] = json.loads(args.get(key))
-        except Exception as e:
-            print(e)
-            result_dict[key] = args.get(key)
-    return result_dict
 

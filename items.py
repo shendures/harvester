@@ -5,13 +5,7 @@
 
 import scrapy
 from scrapy.loader import ItemLoader
-from itemloaders.processors import TakeFirst, Identity
-
-
-class DefaultItem(scrapy.Item):
-    # define the fields for your item here like:
-    # name = scrapy.Field()
-    pass
+from itemloaders.processors import TakeFirst
 
 
 class DonasItem(scrapy.Item):
@@ -46,29 +40,3 @@ class DonasItemLoader(ItemLoader):
 
         # 부모 클래스의 add_value 호출
         super().add_value(field_name, value, *processors, **kw)
-
-
-class StoreItem(scrapy.Item):
-    # 딕셔너리 객체들을 담을 리스트 필드
-    # Identity()를 사용하여 입력된 딕셔너리를 가공하지 않고(문자열 변환 방지)
-    # 그대로 리스트에 쌓이도록 설정합니다.
-    data = scrapy.Field(
-        input_processor=Identity(),
-        output_processor=Identity()
-    )
-
-
-class DonasBatchItem(scrapy.Item):
-    # 미사용(ISSUES.md §5 참고) — 현재 모니터링 탭 데이터는 DonasItem.result_info를
-    # "RESULT_INFO:" 로그 라인으로 전달하는 방식으로 대체되어 이 클래스는 어디서도
-    # import/인스턴스화되지 않는다. 아래 필드 설명은 과거 파이프라인 기준 서술.
-    response = scrapy.Field()
-    collect_info = scrapy.Field()
-
-    # 데이터 테이블용 (딕셔너리 리스트)
-    # Identity()를 사용하여 리스트 구조를 유지합니다. ( scrapy.Field()만 했을 경우 이중 리스트가 되는 것을 방지하기 위함. )
-    # 만약 result가 [{'a': 1}, {'b': 2}]인 리스트라면 ItemLoader에 그냥 넣었을 때 내부적으로 [[{'a': 1}, {'b': 2}]] 처럼 이중 리스트가 되버림
-    data_list = scrapy.Field(
-        input_processor=Identity(),
-        output_processor=Identity()
-    )

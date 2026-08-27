@@ -213,6 +213,7 @@ $RECYCLE.BIN/
 
 # 개인 학습 노트 (HISTORY.md/ISSUES.md와 별개, 저장소에 커밋하지 않음)
 guidelines/STUDY.md
+guidelines/STUDY_WSL_DB_CONNECT.md
 
 # uv 로컬 개발환경 (requirements.txt가 공식 의존성 목록, uv는 로컬 설치 효율화 목적)
 pyproject.toml
@@ -221,5 +222,8 @@ uv.lock
 # build-exe.ps1 임시 스테이징 폴더 (고객별 custom_rules 선별 패키징용)
 _build_staging/
 
-# 고객별 커스텀 정제/렌더링 규칙 (개발 필수 요소 아님, git 미추적으로 전환 — 2026-07-21)
-custom_rules/
+# 고객별 커스텀 정제/렌더링/로그인 규칙 (개발 필수 요소 아님, git 미추적 — 2026-07-21,
+# 2026-08-19에 custom_rules/{render,refine}/에서 루트 render/·refine/·login/으로 이동)
+/render/
+/refine/
+/login/

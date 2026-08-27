@@ -9,7 +9,8 @@ import multiprocessing
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from layout import MainWindow, theme
+from layout_single import MainWindowSingle, theme
+from conf import BlueprintStorage
 import utility
 
 # Windows 작업 표시줄 아이콘 해결을 위한 코드
@@ -38,7 +39,56 @@ def main():
     if not local_server.listen(myappid):  # 지정한 이름으로 서버 시작
         sys.exit(1)
 
-    win = MainWindow()
+    # 레이아웃 선택: request_info.json의 블루프린트 개수로 자동 판단
+    # (1개 = 단일 수집, 2개 이상 = 다중 수집 순차 배치). --multi/--single
+    # 플래그로 수동 오버라이드 가능(크로스체크·디버깅용 — 개수와 무관하게 특정
+    # 레이아웃을 강제 지정)하되, 그 플래그가 실제 블루프린트 개수와 모순되면
+    # (예: 1개인데 --multi, 2개 이상인데 --single) 잘못된 레이아웃으로 조용히
+    # 기동되지 않도록 여기서 즉시 중단한다.
+    forced_multi = "--multi" in sys.argv
+    forced_single = "--single" in sys.argv
+    # 개수만 필요하므로 list_blueprints()(전체 deepcopy)가 아니라
+    # list_seq_nos()(deepcopy 없음)로 가볍게 조회한다.
+    blueprint_count = len(BlueprintStorage().list_seq_nos())
+
+    # 플래그와 실제 개수가 모순되면(예: 1개인데 --multi, 2개 이상인데 --single)
+    # 잘못된 레이아웃으로 조용히 기동되지 않도록 즉시 중단한다.
+    mismatch = None
+    if forced_multi and blueprint_count < 2:
+        mismatch = (
+            "--multi", blueprint_count,
+            "다중 수집 레이아웃은 블루프린트가 2개 이상일 때만 사용할 수 있습니다.",
+            "단일", "--single",
+        )
+    elif forced_single and blueprint_count >= 2:
+        mismatch = (
+            "--single", blueprint_count,
+            f"단일 수집 레이아웃은 1개만 다룰 수 있어 나머지 {blueprint_count - 1}개가 무시됩니다.",
+            "다중", "--multi",
+        )
+
+    if mismatch:
+        bad_flag, count, reason, correct_layout, correct_flag = mismatch
+        # --multi/--single은 터미널에서만 쓰는 플래그이므로 알림창 없이
+        # 콘솔 로그만 남기고 중단한다.
+        print(
+            f"[Harvest] 실행 중단\n"
+            f"[원인] {bad_flag} 플래그를 지정했지만 request_info.json의 블루프린트가 "
+            f"{count}개입니다 — {reason}\n"
+            f"  [올바른 실행] python main.py            "
+            f"(플래그 없이 실행 — 개수에 맞춰 자동으로 {correct_layout} 수집 레이아웃 선택)\n"
+            f"               또는 python main.py {correct_flag}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    use_multi = forced_multi or (not forced_single and blueprint_count >= 2)
+
+    if use_multi:
+        from layout_multi import MainWindowMulti
+        win = MainWindowMulti()
+    else:
+        win = MainWindowSingle()
 
     local_server.newConnection.connect(win.tray_manager.restore_window)
 

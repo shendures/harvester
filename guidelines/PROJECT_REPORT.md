@@ -5,7 +5,7 @@
 > - **진행 이력**: `HISTORY.md`
 > - **exe/설치 프로그램 빌드 절차**: `BUILD_GUIDE.md`
 
-- **최신 갱신**: 2026-07-30 16:15
+- **최신 갱신**: 2026-08-28 00:59
 
 ---
 
@@ -24,8 +24,8 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout.py` | 1,965줄 |
-| 이벤트 핸들러 (Mixin) | `trigger.py` | 3,996줄 |
+| GUI 레이아웃 | `layout_single.py` | 1,899줄 |
+| 이벤트 핸들러 (Mixin, 단일+다중 수집 공용) | `trigger/` 패키지 | 4,667줄 (11개 파일) |
 | 테마·공용 위젯·정제 규칙 UI 빌더 | `style.py` | 881줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 320줄 |
@@ -39,11 +39,11 @@
 
 ```
 [사용자 GUI]
-    main.py → layout.py
+    main.py → layout_single.py
         │
-        ├── GlobalToolbar (시작/중지 버튼)
-        ├── DashboardPage (대시보드)
-        ├── MonitorPage (수집 결과)
+        ├── GlobalToolbarSingle (시작/중지 버튼)
+        ├── DashboardPageSingle (대시보드)
+        ├── MonitorPageSingle (수집 결과)
         ├── StatisticsPage (통계 분석)
         ├── SchedulerPage (스케줄러)
         ├── SessionSettingsPage (세션 설정)
@@ -62,7 +62,7 @@
 
 [설정 관리]
     request_info.json  →  BlueprintStorage (싱글턴)
-    custom_rules/{render,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
+    {render,login,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
     customized_settings.py (기본값 정의)
     settings.py (Scrapy 설정)
 ```
@@ -72,12 +72,12 @@
 ```
 GUI 시작 버튼
   → GlobalToolbarTriggers._actual_start()      # blueprint + UI 설정으로 task 구성
-  → MainWindow._launch_worker()                 # MultiprocessWorker(QThread) 시작
+  → MainWindowSingle._launch_worker()                 # MultiprocessWorker(QThread) 시작
   → multiprocessing.Process(run_spider)         # Scrapy 격리 실행
       → CrawlerProcess → spiders/*.py
       → LoadItemPipeline: "RESULT_INFO:{json}" → stdout → Queue
   → MultiprocessWorker._handle_line()           # 파싱 → 시그널 emit
-  → DashboardPage / MonitorPage 실시간 갱신
+  → DashboardPageSingle / MonitorPageSingle 실시간 갱신
 ```
 
 설계 강점: 프로세스 경계(DataStore는 메인 프로세스 전용)가 docstring에 명시됨,
@@ -91,7 +91,7 @@ GUI 시작 버튼
 ### 진입점
 
 #### `main.py`
-애플리케이션 진입점. PyQt6 앱을 초기화하고 `MainWindow`를 시작합니다.
+애플리케이션 진입점. PyQt6 앱을 초기화하고 `MainWindowSingle`를 시작합니다.
 - `QLocalServer` / `QLocalSocket`으로 중복 실행을 방지합니다.
 - Windows 작업 표시줄 아이콘 등록(`SetCurrentProcessExplicitAppUserModelID`)을 처리합니다.
   실제 아이콘 이미지는 `app.setWindowIcon(QIcon(...))`(`combine-harvester.ico`)로 별도 지정합니다 —
@@ -102,16 +102,16 @@ GUI 시작 버튼
 
 ### GUI 레이어
 
-#### `layout.py`
+#### `layout_single.py`
 GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ 줄).
 
 | 클래스 | 역할 |
 |---|---|
-| `MainWindow` | 전체 윈도우 컨테이너. Sidebar + GlobalToolbar + 페이지 스택 조합 |
-| `Sidebar` | 좌측 내비게이션 메뉴 (대시보드, 모니터링, 스케줄러, 통계분석, 세션설정, 인증관리) |
-| `GlobalToolbar` | 상단 고정 툴바. URL 입력, 시작/중지 버튼 |
-| `DashboardPage` | 수집 진행 상태(Step Tracker), 수집 설정(딜레이·스레드), 세션 통계, 실시간 모니터링 테이블 |
-| `MonitorPage` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교(좌우 테이블 스크롤·정렬 동기화) |
+| `MainWindowSingle` | 전체 윈도우 컨테이너. SidebarSingle + GlobalToolbarSingle + 페이지 스택 조합 |
+| `SidebarSingle` | 좌측 내비게이션 메뉴 (대시보드, 모니터링, 스케줄러, 통계분석, 세션설정, 인증관리) |
+| `GlobalToolbarSingle` | 상단 고정 툴바. URL 입력, 시작/중지 버튼 |
+| `DashboardPageSingle` | 수집 진행 상태(Step Tracker), 수집 설정(딜레이·스레드), 세션 통계, 실시간 모니터링 테이블 |
+| `MonitorPageSingle` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교(좌우 테이블 스크롤·정렬 동기화) |
 | `StatisticsPage` | KPI 카드, 상태코드 도넛 차트, 응답시간 바 차트, 시간대별 추이 선 그래프, 세션 이력 테이블 |
 | `SchedulerPage` | 스케줄 작업 등록/수정/삭제. 주기: 매일/주간/월간/특정일. "저장 대상"이 "정제"일 때 스케줄별 정제 규칙을 구성하는 가로 인라인 패널 포함(2026-07-17) |
 | `SessionSettingsPage` | 수집 딜레이, 스레드, 타임아웃, 재시도, User-Agent, 쿠키, 프록시 설정 |
@@ -123,29 +123,41 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
 - `THEME` 클래스: 모든 색상의 단일 정의 소스 (BG_PRIMARY, ACCENT, GREEN, RED 등)
 - `Parts`: 반복 사용되는 위젯(버튼, 카드, 레이블)을 생성하는 팩토리 메서드 모음
 - `NavItem`, `TagButton`, `StatCard`, `Divider`, `EqualSpacingTable`, `ClickableRuleRow`:
-  재사용 가능한 커스텀 위젯(`ClickableRuleRow`는 2026-07-17 `layout.py`에서 이전)
+  재사용 가능한 커스텀 위젯(`ClickableRuleRow`는 2026-07-17 `layout_single.py`에서 이전)
 - `REFINE_RULE_DEFS`/`build_refine_rule_rows()`: 정제 규칙 체크박스 행 정의·빌더
-  (2026-07-17 신설) — MonitorPage "② 정제 규칙 설정" 탭과 "새 스케줄 등록"의
-  정제 규칙 패널이 공유(`layout.py`가 `trigger.py`를 import하는 구조상, 두 곳이
+  (2026-07-17 신설) — MonitorPageSingle "② 정제 규칙 설정" 탭과 "새 스케줄 등록"의
+  정제 규칙 패널이 공유(`layout_single.py`가 `trigger` 패키지를 import하는 구조상, 두 곳이
   공유할 UI 빌더는 순환 import 없이 양쪽이 모두 import 가능한 `style.py`에
   둠). 상세는 `guidelines/PREPROCESS.md` §2·§2.3 참고.
 
-#### `trigger.py`
-`layout.py`의 각 페이지 클래스에 **Mixin** 형태로 주입되는 이벤트 핸들러 모음.
+#### `trigger/` 패키지
+`layout_single.py`의 각 페이지 클래스에 **Mixin** 형태로 주입되는 이벤트 핸들러 모음.
 레이아웃 코드(UI 구성)와 비즈니스 로직(버튼 클릭 처리)을 분리하기 위해 사용됩니다.
+`MainWindowTriggersMulti(MainWindowTriggersSingle)`가 다중 블루프린트(순차 배치)
+레이아웃(`layout_multi.py`)에서만 쓰여, 단일 수집과 다중 수집 레이아웃이 이 패키지
+하나를 공유합니다.
 
-| 클래스 | 연결 대상 |
-|---|---|
-| `GlobalToolbarTriggers` | 시작/중지 버튼, URL 복사 |
-| `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 |
-| `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 |
-| `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 |
-| `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행, 스케줄별 정제 규칙 패널 구성(`_open_schedule_refine_rules_dialog`는 2026-07-17 인라인 패널 도입으로 제거됨) |
-| `SessionSettingsPageTriggers` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글 |
-| `AuthManagerPageTriggers` | 인증 정보 저장 |
-| `TrayManagerTriggers` | 시스템 트레이 아이콘 관리 |
-| `MainWindowTriggers` | 윈도우 레벨 이벤트 |
-| `LogViewerDialog` | 수집 로그 뷰어 다이얼로그 |
+원래 단일 파일(`trigger.py`, 4,592줄)이었으나 2026-08-28 같은 유형(페이지 단위)끼리
+묶어 아래처럼 패키지로 분리했습니다 — 기능·동작은 100% 동일하며, `layout_single.py`/
+`layout_multi.py`의 `from trigger import ...` 호출부는 `__init__.py`가 기존 이름을
+그대로 재-export하므로 수정되지 않았습니다.
+
+| 파일 | 클래스 | 연결 대상 | 규모 |
+|---|---|---|---|
+| `__init__.py` | — | 서브모듈 공개 클래스 재-export (facade) | 35줄 |
+| `common.py` | — | 싱글턴(`store`/`theme`/`parts`)·테마 상수·2개 이상 페이지가 공유하는 헬퍼(DB 설정 그리드, 출력 FILE 페이지, 로그 매니저 조회 등) | 376줄 |
+| `log_viewer.py` | `LogViewerDialog`, `SearchLineEdit` | 수집 로그 뷰어 다이얼로그 | 445줄 |
+| `toolbar.py` | `GlobalToolbarTriggers` | 시작/중지 버튼, URL 복사 | 167줄 |
+| `dashboard.py` | `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 | 116줄 |
+| `monitor.py` | `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 | 1,028줄 |
+| `statistics.py` | `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 | 114줄 |
+| `scheduler.py` | `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행, 스케줄별 정제 규칙 패널 구성(`_open_schedule_refine_rules_dialog`는 2026-07-17 인라인 패널 도입으로 제거됨) | 1,199줄 |
+| `session.py` | `SessionSettingsPageTriggers`, `ProxyHealthCheckThread`, `ProxyTestProgressDialog` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글, 프록시 연결 테스트 | 487줄 |
+| `auth.py` | `AuthManagerPageTriggers` | 인증 정보 저장 | 124줄 |
+| `main_window.py` | `MainWindowTriggersSingle`, `MainWindowTriggersMulti`, `TrayManagerTriggers` | 윈도우 레벨 이벤트, 시스템 트레이 아이콘 관리 | 576줄 |
+
+`monitor.py`/`scheduler.py`가 분리 후에도 가장 큰 이유는 중복이 아니라 각 페이지
+고유 로직이 그만큼 많기 때문입니다(스케줄 등록/수정 다이얼로그 하나가 약 800줄).
 
 ---
 
@@ -181,10 +193,10 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 
 `run_login()`/`get_render_result()`처럼 사이트별(seq_no) 로그인·렌더링 로직을
 `engine.py`에 하드코딩하던 옛 함수들은 제거되었습니다 — 현재는
-`custom_rules/render/{seq_no}.py`의 `login(driver, login_info)`/
-`render(driver, selectors, items)`를 `conf.CustomModuleStorage.load_login()`/
-`load_render()`가 로드해 대체합니다(`engine.py:158` 주석 참고, §데이터 정제
-및 `PREPROCESS.md` §3.1a 참고).
+`login/{seq_no}.py`의 `login(driver, login_info)`와
+`render/{seq_no}.py`의 `render(driver, selectors, items)`를
+`conf.CustomModuleStorage.load_login()`/`load_render()`가 로드해 대체합니다
+(`engine.py:158` 주석 참고, §데이터 정제 및 `PREPROCESS.md` §3.1a 참고).
 
 ---
 
@@ -241,7 +253,7 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **커스텀 정제 규칙 (`custom_rule`, "7번째 규칙")**: 수집물(blueprint)마다 원시
   데이터 형식이 달라 범용 규칙만으로 커버되지 않는 경우를 위한 플러그인 메커니즘.
-  `custom_rules/refine/{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를
+  `refine/{seq_no}.py`에 `refine(data)` 또는 `refine_row(row)`를
   정의하면 `preprocess.load_custom_rule(seq_no)`가 로드해 `DataRefiner`에
   전달합니다. 경로 해석·시딩·실제 로드는 `conf.CustomModuleStorage`가
   전담(§`conf.py` 참고). 상세 규약·개발 프로세스는 `PREPROCESS.md` 참고.
@@ -263,12 +275,13 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 
 - **`CustomModuleStorage`**: seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을
   로드합니다 (`53978d0`, render/refine 분리 리팩터링으로 옛 `CustomRuleStorage`를
-  대체). 수집 단계(Selenium 자식 프로세스)와 정제 단계(메인 GUI 프로세스)는
-  실행 컨텍스트가 달라 `kind` 파라미터(`"render"` / `"refine"`)로 물리적으로
-  다른 서브폴더를 씁니다:
-  - `kind="render"` → `custom_rules/render/{seq_no}.py`: `login(driver, login_info)`,
-    `render(driver, selectors, items)`
-  - `kind="refine"` → `custom_rules/refine/{seq_no}.py`: `refine(data)` 또는
+  대체; 2026-08-19에 render에서 login()을 분리하고 프로젝트 루트로 폴더를
+  이동). 수집 단계(Selenium 자식 프로세스)와 정제 단계(메인 GUI 프로세스)는
+  실행 컨텍스트가 달라 `kind` 파라미터(`"render"` / `"login"` / `"refine"`)로
+  물리적으로 다른 폴더를 씁니다:
+  - `kind="render"` → `render/{seq_no}.py`: `render(driver, selectors, items)`
+  - `kind="login"` → `login/{seq_no}.py`: `login(driver, login_info)`
+  - `kind="refine"` → `refine/{seq_no}.py`: `refine(data)` 또는
     `refine_row(row)`
 
   `BlueprintStorage`와 동일한 경로 정책을 씁니다 — 데이터 폴더(`app_dir`)는
@@ -396,7 +409,7 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
             │
             └── MultiprocessWorker._handle_line()
                     ├── DataStore.add_row()
-                    ├── new_row.emit()   → DashboardPage / MonitorPage 테이블 갱신
+                    ├── new_row.emit()   → DashboardPageSingle / MonitorPageSingle 테이블 갱신
                     ├── progress.emit()  → 프로그레스 바 갱신
                     └── stats_update.emit() → 세션 통계 갱신
 ```
@@ -462,7 +475,7 @@ MultiprocessWorker.run()           ← QThread (UI 비블로킹)
 | `SQLAlchemy` | ORM (DB 추상화) |
 | `furl` | URL 파싱/조작 |
 | `python-dotenv` | 환경 변수 로드 |
-| `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `custom_rules/`·`request_info.json`을 선별 번들 |
+| `pyinstaller` | 실행 파일(.exe) 빌드 — 레포 루트 `build-exe.ps1 -SeqNo {seq_no}`로 seq_no별 `render/`·`login/`·`refine/`·`request_info.json`을 선별 번들 |
 | Inno Setup | (Python 패키지 아님, Windows 전용 외부 도구) `build-installer.ps1`이 `build-exe.ps1`로 만든 `dist\{AppName}.exe`를 `installer.iss`로 감싸 설치 프로그램(`dist\{AppName}-Setup.exe`)으로 패키징 — 파일 배포 대신 설치/제거·바로가기 생성을 지원 |
 
 > exe/설치 프로그램 빌드 절차 전체(사전 준비물, 단계별 명령, 트러블슈팅)는 `BUILD_GUIDE.md` 참고.

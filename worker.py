@@ -57,13 +57,6 @@ class MultiprocessWorker(QThread):
     stats_update = pyqtSignal(dict)
     finished     = pyqtSignal(dict, dict) # (task, summary)
 
-    LOG_TEMPLATES = {
-        "ok":   ["수집 성공 ({url}) — {time}s", "파싱 완료: {title}", "데이터 저장 완료 #{idx}"],
-        "warn": ["응답 지연 감지 ({time}s), 딜레이 조정 중", "Rate limit 감지 — 재시도 대기"],
-        "err":  ["연결 타임아웃: {url}", "파싱 오류: 셀렉터 매칭 실패 ({url})"],
-        "info": ["페이지 {page} 진입 중", "셀렉터 재적용 완료", "프록시 전환 ({proxy})"],
-    }
-
     def __init__(self, task: dict, job_name: str = "수동 실행"):
         super().__init__()
         self.task      = task
@@ -75,6 +68,7 @@ class MultiprocessWorker(QThread):
         self._done     = 0
         self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
         self._resp_times: list[float] = []
+        self._resp_time_sum = 0.0   # _resp_times의 누적 합 — 매 응답마다 sum() 재계산 방지
         self.total        = None
         self._started_at: datetime | None = None
         self.store     = DataStore()
@@ -296,8 +290,9 @@ class MultiprocessWorker(QThread):
 
         if isinstance(resp_time, (int, float)):
             self._resp_times.append(float(resp_time))
+            self._resp_time_sum += float(resp_time)
 
-        avg = sum(self._resp_times) / len(self._resp_times) if self._resp_times else 0.0
+        avg = self._resp_time_sum / len(self._resp_times) if self._resp_times else 0.0
 
         self.progress.emit(self._done, total)
         self.stats_update.emit({
@@ -448,6 +443,7 @@ def set_scrapy_settings(settings_dict: dict):
         if proxy_req_info:
             settings.set("ip_list",       proxy_req_info["ip_list"])
             settings.set("allow_ip_cnts", proxy_req_info["allow_ip_cnts"])
+            settings.set("rotate",        proxy_req_info["rotate"])
     except Exception as e:
         logger.error("[set_scrapy_settings] 프록시 설정 적용 중 오류(프록시 없이 진행): %s", e)
 

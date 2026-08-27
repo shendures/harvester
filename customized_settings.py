@@ -35,18 +35,11 @@ def get_task_settings():
         'retry': 3
     }
 
-def get_session_settings():
+def get_render_safety_limits():
     return {
-        'ua_ra': True,
-        'cookie_ra': True,
-        'proxy': {
-            'enabled': False,
-            'rotate': True,  # IP 자동 로테이션
-            'allow_ip_cnts': 0,  # 분당 ip 허용 갯수
-            'ip_list': []  # ip 리스트
-        }
+        'max_threads': 2,
+        'min_delay': 1.0,
     }
-
 
 def get_output_settings():
     return {
@@ -58,7 +51,7 @@ def get_output_settings():
                             'file_format': 'CSV',
                             'file_encoding': 'UTF-8 BOM',
                             'file_delimiter': ',',
-                            'is_open_save_path': False
+                            'is_open_save_path': True
                         },
                         'db': {
                             'enabled': False,
@@ -92,106 +85,6 @@ def get_schedule_settings():
                             }
     return task_info
 
-def auth_settings():
-
-    return {
-        'auth': {
-            # 로그인
-            'login': {
-                'enabled': False,
-                'user_id': None,
-                'pwd': None
-            },
-
-            # 라이선스 키 ( api_key ... )
-            'license': {
-                'enabled': False,
-                'token': None
-
-            }
-        }
-
-    }
-
-
-def get_settting_frame(task_id: str | None = None):
-
-    return {
-                'global':
-                    {
-                        'seq_no': None,
-                        'title': None,
-                        'url':None,
-                        'callback_url': None,
-                        'conditions': None,
-                        'spiders': None,                                                
-                        'auth': {
-                                    # 로그인
-                                    'login': {
-                                        'enabled': False,
-                                        'user_id': None,
-                                        'pwd': None
-                                        },
-
-                                    # 라이선스 키 ( api_key ... )
-                                    'license': {
-                                        'enabled': False,
-                                        'token': None
-
-                                    }
-                                }
-                    },
-                'tasks':[
-                            {
-                                'task_id': task_id,
-                                'delays': 0.0,
-                                'threads': 8,
-                                'timeout': 10,
-                                'retry': 3,
-                                'ua_ra': True,
-                                'cookie_ra': True,
-                                'proxy': {
-                                        'enabled': False,
-                                        'rotate': True,  # IP 자동 로테이션
-                                        'allow_ip_cnts': 0,  # 분당 ip 허용 갯수
-                                        'ip_list': []  # ip 리스트
-                                    },
-                                'extract': {
-                                        'file': {
-                                            'enabled': True,
-                                            'file_path': QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation),
-                                            'file_name': 'untitled0',
-                                            'file_format': 'CSV',
-                                            'file_encoding': 'UTF-8 BOM',
-                                            'file_delimiter': ',',
-                                            'is_open_save_path': True
-                                        },
-                                        'db': {
-                                            'enabled': False,
-                                            'db_env': "MySQL",
-                                            'host': "localhost",
-                                            'port': "3306",
-                                            'database': None,
-                                            'schema': None,
-                                            'user': None,
-                                            'password': None,
-                                            'save_data_nm': None
-                                        },
-                                        'auto_save': True
-                                },
-                                'schedule': {
-                                            'enabled': False,
-                                            'schedule_nm': None,  # 작업명
-                                            'interval': None,  # 매일(daily), 주간(weekly), 월간(monthly), 일일(specific)
-                                            'run_at': None,  # datetime ( 다음 실행 시각 )
-                                            'exec_str': None,  # 사람이 읽기 좋은 실행 주기 문자열
-                                            'schedule_save_type': None  # 저장 설정
-                                }
-                            }
-                        ]
-            }
-
-
 def set_ip_settings(request_info):
 
     if "proxy" in request_info.keys():
@@ -211,6 +104,8 @@ def set_ip_settings(request_info):
             proxy_req_info = {}
             proxy_req_info["ip_list"] = ip_list
             proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
+            # 이전에 저장된 schedule_info에는 rotate 키가 없을 수 있어 기본값(True=무작위)으로 보완
+            proxy_req_info["rotate"] = request_info["proxy"].get("rotate", True)
 
             return proxy_req_info
         elif not request_info["proxy"]["enabled"]:
