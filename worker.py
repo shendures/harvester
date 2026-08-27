@@ -443,6 +443,7 @@ def set_scrapy_settings(settings_dict: dict):
         if proxy_req_info:
             settings.set("ip_list",       proxy_req_info["ip_list"])
             settings.set("allow_ip_cnts", proxy_req_info["allow_ip_cnts"])
+            settings.set("rotate",        proxy_req_info["rotate"])
     except Exception as e:
         logger.error("[set_scrapy_settings] 프록시 설정 적용 중 오류(프록시 없이 진행): %s", e)
 

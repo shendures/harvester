@@ -98,6 +98,8 @@ def set_ip_settings(request_info):
             proxy_req_info = {}
             proxy_req_info["ip_list"] = ip_list
             proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
+            # 이전에 저장된 schedule_info에는 rotate 키가 없을 수 있어 기본값(True=무작위)으로 보완
+            proxy_req_info["rotate"] = request_info["proxy"].get("rotate", True)
 
             return proxy_req_info
         elif not request_info["proxy"]["enabled"]:

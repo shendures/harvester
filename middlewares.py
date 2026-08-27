@@ -175,6 +175,8 @@ class RateLimitedProxyMiddleware:
     def __init__(self, settings, crawler):
         self.proxies = settings.getlist('ip_list')
         self.req_per_minute = settings.get('allow_ip_cnts', 0)
+        # True(기본값) = 매 요청마다 무작위 프록시, False = 목록 순서대로 순차 사용
+        self.rotate = settings.getbool('rotate', True)
         if not self.proxies:
             print("⚠️ ip_list 설정이 누락되었습니다. 프록시가 적용되지 않습니다.")
 
@@ -183,6 +185,7 @@ class RateLimitedProxyMiddleware:
         self.proxy_usage = defaultdict(list)
         self.stats = crawler.stats
         self.rescheduler = _DelayedRescheduler(crawler)
+        self._next_index = 0  # 순차(rotate=False) 모드에서 다음에 시도할 프록시 인덱스
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -194,14 +197,23 @@ class RateLimitedProxyMiddleware:
             return
 
         current_time = time.time()
+        n = len(self.proxies)
 
-        # rate limit 미설정(0 이하)이면 무제한으로 취급하고 무작위 할당만 수행
+        # rate limit 미설정(0 이하)이면 무제한으로 취급하고 rotate 설정에 따라서만 할당
         if self.req_per_minute <= 0:
-            request.meta['proxy'] = random.choice(self.proxies)
+            if self.rotate:
+                request.meta['proxy'] = random.choice(self.proxies)
+            else:
+                request.meta['proxy'] = self.proxies[self._next_index % n]
+                self._next_index += 1
             return None
 
-        # 프록시를 무작위 순서로 순회하며, 제한에 걸리지 않은 첫 프록시를 할당
-        for proxy in random.sample(self.proxies, len(self.proxies)):
+        # rotate=True: 무작위 순서, rotate=False: 다음 인덱스부터 목록 순서대로 순회
+        order = random.sample(range(n), n) if self.rotate else \
+            [(self._next_index + i) % n for i in range(n)]
+
+        for idx in order:
+            proxy = self.proxies[idx]
             usage_list = self.proxy_usage[proxy]
 
             # 60초(TIME_WINDOW) 이전에 발생한 기록은 모두 제거합니다. (슬라이딩 윈도우)
@@ -210,6 +222,8 @@ class RateLimitedProxyMiddleware:
             if len(usage_list) < self.req_per_minute:
                 # 요청 시각을 기록하고 프록시를 할당합니다.
                 usage_list.append(current_time)
+                if not self.rotate:
+                    self._next_index = idx + 1
                 request.meta['proxy'] = proxy
                 spider.logger.debug(f"🌐 Requesting {request.url} using {proxy}. Count: {len(usage_list)}")
                 return None
