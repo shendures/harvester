@@ -329,7 +329,7 @@ class DataRefiner:
 
 # ── 사용자 정의 정제 규칙 로더 ─────────────────────────────────────────
 # 경로 해석·시딩·로드 실행은 conf.CustomModuleStorage가 전담합니다(BlueprintStorage와
-# 동일한 정책). 아래 두 함수는 기존 호출부(trigger.py 등)와의 호환을 위한 얇은 위임이며,
+# 동일한 정책). 아래 두 함수는 기존 호출부(trigger 패키지 등)와의 호환을 위한 얇은 위임이며,
 # 정제 단계(refine/refine_row)만 다룹니다 — 같은 파일의 render()/login()은 다루지 않습니다.
 def custom_rule_exists(seq_no) -> bool:
     """`{seq_no}.py`에 refine() 또는 refine_row()가 정의돼 있는지 확인합니다 (exec 안 함)."""

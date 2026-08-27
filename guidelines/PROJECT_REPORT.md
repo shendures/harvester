@@ -5,7 +5,7 @@
 > - **진행 이력**: `HISTORY.md`
 > - **exe/설치 프로그램 빌드 절차**: `BUILD_GUIDE.md`
 
-- **최신 갱신**: 2026-08-25 18:09
+- **최신 갱신**: 2026-08-28 00:59
 
 ---
 
@@ -25,7 +25,7 @@
 | 영역 | 파일 | 규모 |
 |---|---|---|
 | GUI 레이아웃 | `layout_single.py` | 1,899줄 |
-| 이벤트 핸들러 (Mixin, 단일+다중 수집 공용) | `trigger.py` | 4,402줄 |
+| 이벤트 핸들러 (Mixin, 단일+다중 수집 공용) | `trigger/` 패키지 | 4,667줄 (11개 파일) |
 | 테마·공용 위젯·정제 규칙 UI 빌더 | `style.py` | 881줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 320줄 |
@@ -126,29 +126,38 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
   재사용 가능한 커스텀 위젯(`ClickableRuleRow`는 2026-07-17 `layout_single.py`에서 이전)
 - `REFINE_RULE_DEFS`/`build_refine_rule_rows()`: 정제 규칙 체크박스 행 정의·빌더
   (2026-07-17 신설) — MonitorPageSingle "② 정제 규칙 설정" 탭과 "새 스케줄 등록"의
-  정제 규칙 패널이 공유(`layout_single.py`가 `trigger.py`를 import하는 구조상, 두 곳이
+  정제 규칙 패널이 공유(`layout_single.py`가 `trigger` 패키지를 import하는 구조상, 두 곳이
   공유할 UI 빌더는 순환 import 없이 양쪽이 모두 import 가능한 `style.py`에
   둠). 상세는 `guidelines/PREPROCESS.md` §2·§2.3 참고.
 
-#### `trigger.py`
+#### `trigger/` 패키지
 `layout_single.py`의 각 페이지 클래스에 **Mixin** 형태로 주입되는 이벤트 핸들러 모음.
 레이아웃 코드(UI 구성)와 비즈니스 로직(버튼 클릭 처리)을 분리하기 위해 사용됩니다.
-파일 끝에는 다중 블루프린트(순차 배치) 레이아웃(`layout_multi.py`)만 쓰는
-`MainWindowTriggersMulti(MainWindowTriggersSingle)`가 별도 절로 추가돼 있어, 단일 수집과
-다중 수집 레이아웃이 이 트리거 스크립트 하나를 공유합니다.
+`MainWindowTriggersMulti(MainWindowTriggersSingle)`가 다중 블루프린트(순차 배치)
+레이아웃(`layout_multi.py`)에서만 쓰여, 단일 수집과 다중 수집 레이아웃이 이 패키지
+하나를 공유합니다.
 
-| 클래스 | 연결 대상 |
-|---|---|
-| `GlobalToolbarTriggers` | 시작/중지 버튼, URL 복사 |
-| `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 |
-| `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 |
-| `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 |
-| `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행, 스케줄별 정제 규칙 패널 구성(`_open_schedule_refine_rules_dialog`는 2026-07-17 인라인 패널 도입으로 제거됨) |
-| `SessionSettingsPageTriggers` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글 |
-| `AuthManagerPageTriggers` | 인증 정보 저장 |
-| `TrayManagerTriggers` | 시스템 트레이 아이콘 관리 |
-| `MainWindowTriggersSingle` | 윈도우 레벨 이벤트 |
-| `LogViewerDialog` | 수집 로그 뷰어 다이얼로그 |
+원래 단일 파일(`trigger.py`, 4,592줄)이었으나 2026-08-28 같은 유형(페이지 단위)끼리
+묶어 아래처럼 패키지로 분리했습니다 — 기능·동작은 100% 동일하며, `layout_single.py`/
+`layout_multi.py`의 `from trigger import ...` 호출부는 `__init__.py`가 기존 이름을
+그대로 재-export하므로 수정되지 않았습니다.
+
+| 파일 | 클래스 | 연결 대상 | 규모 |
+|---|---|---|---|
+| `__init__.py` | — | 서브모듈 공개 클래스 재-export (facade) | 35줄 |
+| `common.py` | — | 싱글턴(`store`/`theme`/`parts`)·테마 상수·2개 이상 페이지가 공유하는 헬퍼(DB 설정 그리드, 출력 FILE 페이지, 로그 매니저 조회 등) | 376줄 |
+| `log_viewer.py` | `LogViewerDialog`, `SearchLineEdit` | 수집 로그 뷰어 다이얼로그 | 445줄 |
+| `toolbar.py` | `GlobalToolbarTriggers` | 시작/중지 버튼, URL 복사 | 167줄 |
+| `dashboard.py` | `DashboardPageTriggers` | 수집 시작, CSV 내보내기, 진행률 업데이트 | 116줄 |
+| `monitor.py` | `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 | 1,028줄 |
+| `statistics.py` | `StatisticsPageTriggers` | 통계 데이터 리로드/내보내기 | 114줄 |
+| `scheduler.py` | `SchedulerPageTriggers` | 스케줄 등록/수정/삭제/실행, 스케줄별 정제 규칙 패널 구성(`_open_schedule_refine_rules_dialog`는 2026-07-17 인라인 패널 도입으로 제거됨) | 1,199줄 |
+| `session.py` | `SessionSettingsPageTriggers`, `ProxyHealthCheckThread`, `ProxyTestProgressDialog` | 세션 설정 저장, 프록시 추가/삭제/Import/활성화 토글, 프록시 연결 테스트 | 487줄 |
+| `auth.py` | `AuthManagerPageTriggers` | 인증 정보 저장 | 124줄 |
+| `main_window.py` | `MainWindowTriggersSingle`, `MainWindowTriggersMulti`, `TrayManagerTriggers` | 윈도우 레벨 이벤트, 시스템 트레이 아이콘 관리 | 576줄 |
+
+`monitor.py`/`scheduler.py`가 분리 후에도 가장 큰 이유는 중복이 아니라 각 페이지
+고유 로직이 그만큼 많기 때문입니다(스케줄 등록/수정 다이얼로그 하나가 약 800줄).
 
 ---
 

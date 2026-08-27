@@ -1,0 +1,376 @@
+# trigger/common.py
+# trigger 패키지의 모든 서브모듈이 공유하는 싱글턴·테마 상수·설정값과,
+# 2개 이상의 페이지에서 반복되던 로직을 통합한 모듈 함수들.
+
+from copy import deepcopy
+import socket
+
+from PyQt6.QtWidgets import (
+    QApplication, QFileDialog, QMessageBox,
+    QVBoxLayout, QHBoxLayout, QLineEdit,
+    QComboBox, QWidget, QGridLayout,
+)
+
+import db_conn
+from conf import DataStore
+from style import THEME, Parts
+from preprocess import DEFAULT_RULES
+
+store    = DataStore()
+theme    = THEME()
+parts    = Parts()
+
+BG_PRIMARY    = theme.BG_PRIMARY
+BG_SECONDARY  = theme.BG_SECONDARY
+BG_HOVER      = theme.BG_HOVER
+ACCENT        = theme.ACCENT
+ACCENT_LIGHT  = theme.ACCENT_LIGHT
+ACCENT_HOVER  = theme.ACCENT_HOVER
+TEXT_PRIMARY  = theme.TEXT_PRIMARY
+TEXT_SECONDARY= theme.TEXT_SECONDARY
+TEXT_MUTED    = theme.TEXT_MUTED
+BORDER        = theme.BORDER
+BORDER_LIGHT  = theme.BORDER_LIGHT
+GREEN         = theme.GREEN
+AMBER         = theme.AMBER
+RED           = theme.RED
+BLUE          = theme.BLUE
+PURPLE        = theme.PURPLE
+
+# 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
+VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
+
+# DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
+DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
+
+# 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 규칙 — 원래는 모든
+# 스케줄에 고정 적용되는 상수였으나(2026-07-17 이전), 이제 "새 스케줄 등록"
+# 다이얼로그의 "⚙ 정제 규칙 설정"에서 스케줄별로 구성 가능해졌다. 이 상수는
+# ①해당 다이얼로그를 아직 한 번도 열지 않은 신규 등록의 기본값, ②"refine_rules"
+# 키가 없는 기존(구버전) 스케줄의 실행 시 폴백값으로만 쓰인다(_on_finished() 참고).
+# "② 커스텀 정제 규칙 적용" 체크 시 자동으로 켜지는 조합(①③④)과는 별개 설정이다
+# (2026-07-17, fill_null을 자동 연동 대상에서 제외하며 분리 — 이 상수의 fill_null
+# 값은 그대로 유지해 이미 저장된 스케줄의 동작이 조용히 바뀌지 않도록 함).
+SCHEDULED_REFINE_RULES = {
+    "remove_null_row":  True,
+    "custom_rule":      True,
+    "trim_whitespace":  True,
+    "remove_duplicate": True,
+    "drop_columns":     False,
+    "fill_null":        True,
+    "cast_numeric":     False,
+}
+
+# "새 스케줄 등록"의 "저장 방식" 콤보 표시 문자열 → 내부 canonical 값 매핑.
+# 구버전 schedules.json(필드 도입 이전)이나 "선택하세요" 잔존값 등 알 수 없는
+# 값은 모두 "new"로 폴백한다 — 기존 파일/DB를 절대 건드리지 않는 가장
+# 비파괴적인 기본 동작이기 때문.
+_SAVE_TYPE_MAP = {"새로 만들기": "new", "덮어쓰기": "overwrite", "추가하기": "append"}
+
+
+def _normalize_save_type(raw):
+    """schedule_save_type 원문자열을 canonical 값("new"/"overwrite"/"append")으로 정규화."""
+    return _SAVE_TYPE_MAP.get((raw or "").strip(), "new")
+
+# 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
+# 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPageSingle "②
+# 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
+# "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
+# 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
+# "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다(Raw 수집
+# 결과를 봐야 설정 가능한 규칙이라 무인 실행에는 애초에 노출하지 않음 —
+# preprocess.DataRefiner는 누락된 키를 DEFAULT_RULES 기준으로 취급하므로 문제
+# 없음). SCHEDULED_REFINE_RULES(실행 시 폴백값)와는 이제 별개 값이다 — fill_null이
+# DEFAULT_RULES 기준 False인 반면 SCHEDULED_REFINE_RULES는 True로 유지된다.
+SCHEDULED_REFINE_RULES_DIALOG_DEFAULT = {
+    k: v for k, v in DEFAULT_RULES.items() if k != "drop_columns"
+}
+
+
+def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_page,
+                          auth_page, job_name: str) -> None:
+    """
+    실행 태스크(task)에 공통 설정(딜레이/스레드/타임아웃/재시도/UA/쿠키/프록시/
+    추출 설정/로그인 정보 오버라이드)을 채워 넣는다.
+    `GlobalToolbarTriggers._actual_start()`가 self.task를 채울 때 사용하는
+    로직 — 모듈 함수로 분리해 두어 향후 다른 호출부에서도 재사용 가능하다.
+    """
+    # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
+    # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
+    auth_conditions = task.get("conditions") or {}
+    if (auth_conditions.get("authMethod") == "login"
+            and auth_page is not None
+            and getattr(auth_page, "_auth_method", None) == "login"):
+        auth_conditions["login"] = {
+            "loginUrl": auth_page._login_url.text().strip() or None,
+            "id": auth_page._login_id.text().strip() or None,
+            "password": auth_page._login_pw.text() or None,
+            "login_method": (auth_conditions.get("login") or {}).get("login_method"),
+        }
+
+    task["job"]        = job_name
+    task["delay"]      = dashboard_page.delay_spin.value()
+    task["threads"]    = dashboard_page.thread_spin.value()
+    task["timeout"]    = dashboard_page.timeout_spin.value()
+    task["retry"]      = dashboard_page.retry_spin.value()
+    task["user_agent"] = session_page.ua_check.isChecked()
+    task["cookie"]     = session_page.cookie_check.isChecked()
+    task["proxy"] = {
+        "enabled":       session_page._global_cb.isChecked(),
+        # "자동 로테이션" 체크박스 제거 — 전역 프록시 사용 시 항상 로테이션을 사용한다.
+        "rotate":        session_page._global_cb.isChecked(),
+        "allow_ip_cnts": session_page._allow_ip_cnts.value(),
+        "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
+    }
+    task["extract"] = monitor_page.output_info["extract"]
+    task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
+    task["extract"]["auto_save_source"] = (
+        "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+    )
+
+
+def _reset_pages(dashboard, monitor_page) -> None:
+    """대시보드·모니터링 페이지의 세션 상태를 함께 초기화한다 (여러 곳에서 반복되던 2줄 패턴)."""
+    if dashboard is not None:
+        dashboard._reset_dashboard()
+    if monitor_page is not None:
+        monitor_page._reset_monitor_page()
+
+
+def _default_msgbox_qss(label_font_size: int = 12) -> str:
+    """앱 전역에서 반복 사용되는 QMessageBox 스타일시트 (여러 다이얼로그에 그대로 복사돼 있던 블록)"""
+    return f"""
+        QMessageBox {{ background:{BG_SECONDARY}; color:{TEXT_PRIMARY}; }}
+        QMessageBox QLabel {{ color:{TEXT_PRIMARY}; font-size:{label_font_size}px; }}
+        QPushButton {{
+            background:{ACCENT}; color:white; border:none;
+            border-radius:5px; padding:5px 14px; font-size:12px;
+        }}
+        QPushButton:hover {{ background:{ACCENT_HOVER}; }}
+    """
+
+
+def _show_db_conn_fail_dialog(parent, reason: str) -> None:
+    """DB 연결 실패 안내 다이얼로그 (출력 설정 / 스케줄 등록 양쪽에서 동일하게 사용)"""
+    msg = QMessageBox(parent)
+    msg.setWindowTitle("연결 실패")
+    msg.setIcon(QMessageBox.Icon.Critical)
+    msg.setText("<b>DB 연결에 실패했습니다.</b>")
+    msg.setInformativeText(reason)
+    msg.setStyleSheet(_default_msgbox_qss(12))
+    msg.exec()
+
+
+def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
+    """'수집 결과 없음' 안내 다이얼로그 (단일/다중 _on_finished에서 동일하게 사용)"""
+    msg = QMessageBox(parent)
+    msg.setWindowTitle("수집 결과 없음")
+    msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
+                f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+                "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setStyleSheet(_default_msgbox_qss(13))
+    msg.exec()
+
+
+def _stop_worker_if_running(worker) -> None:
+    """실행 중인 워커가 있으면 중단 신호를 보내고 최대 1.5초 대기한다 (여러 곳에 반복되던 가드)."""
+    if worker and worker.isRunning():
+        worker.stop()
+        worker.wait(1500)
+
+
+def _get_log_manager(widget):
+    """
+    최상위 MainWindowSingle의 log_manager(LogViewerDialog 싱글턴)를 반환한다.
+    QWidget.window()는 위젯 트리 최상단 QMainWindow를 반환하므로
+    별도의 부모 순회 없이 안전하게 참조할 수 있다.
+    log_manager가 아직 준비되지 않은 경우 None을 반환한다.
+    (SessionSettingsPageTriggers/AuthManagerPageTriggers에 동일하게 복제돼 있던 메서드를 통합)
+    """
+    return getattr(widget.window(), 'log_manager', None)
+
+
+def _build_db_settings_fields(grid: QGridLayout, db_info: dict) -> dict:
+    """DB Type/Host/Port/... 8행 그리드를 만들어 grid에 채우고 위젯 딕셔너리를 반환한다.
+    db_info: db_env/host/port/database/schema/user/password/save_data_nm 키(값은 이미
+    호출부에서 등록/수정 모드에 맞게 해석된 상태여야 함)."""
+    def _lbl(t):
+        return parts.make_label(t, TEXT_SECONDARY, 11)
+
+    def _inp(txt="", ph=""):
+        e = QLineEdit(txt)
+        e.setPlaceholderText(ph)
+        return e
+
+    db_type = QComboBox()
+    db_type.addItems(["MySQL", "PostgreSQL", "MongoDB"])
+    db_type.setCurrentText(db_info.get("db_env") or "MySQL")
+    widgets = {
+        "db_type": db_type,
+        "host":    _inp(txt=db_info.get("host") or ""),
+        "port":    _inp(txt=db_info.get("port") or ""),
+        "name":    _inp(db_info.get("database") or ""),
+        "schema":  _inp(db_info.get("schema") or ""),
+        "user":    _inp(db_info.get("user") or ""),
+        "password": _inp(db_info.get("password") or ""),
+        "save_data_nm": _inp(db_info.get("save_data_nm") or ""),
+    }
+    widgets["password"].setEchoMode(QLineEdit.EchoMode.Password)
+
+    for row_i, (label, widget) in enumerate([
+        ("DB Type", widgets["db_type"]), ("HOST", widgets["host"]), ("PORT", widgets["port"]),
+        ("DB Name", widgets["name"]), ("SCHEMA", widgets["schema"]),
+        ("USER", widgets["user"]), ("PASSWORD", widgets["password"]), ("DATA Name", widgets["save_data_nm"]),
+    ]):
+        grid.addWidget(_lbl(label), row_i, 0)
+        grid.addWidget(widget, row_i, 1)
+
+    def _on_db_type_changed(t):
+        widgets["port"].setText(DB_PORTS.get(t, ""))
+        widgets["port"].setCursorPosition(0)
+    db_type.currentTextChanged.connect(_on_db_type_changed)
+
+    return widgets
+
+
+def _build_output_file_page(defaults: dict, dlg) -> tuple:
+    """FILE 설정 페이지(경로/파일명/포맷·인코딩·구분자)를 만들어 (페이지 위젯,
+    위젯 딕셔너리, CSV 전용 필드 표시 토글 콜백)을 반환한다. defaults의 각 값은
+    호출부가 이미 자신의 등록/수정 모드 규칙에 맞게 완전히 해석해 넘겨야 한다 —
+    이 함수는 값을 그대로 위젯에 채울 뿐 자체적인 기본값 로직을 갖지 않는다
+    (출력 설정 / 스케줄 등록 다이얼로그에 통째로 복제돼 있던 FILE 페이지 구성을 통합
+    — DB 페이지 쪽 _build_db_settings_fields와 동일한 패턴).
+    "저장 완료 후 폴더 열기" 체크박스는 출력 설정 다이얼로그에만 있고 스케줄
+    다이얼로그에는 없으므로(무인 실행은 항상 무시 — _extract_result_table의
+    `not silent` 조건 참고) 이 함수에 포함하지 않는다 — 필요한 호출부가
+    file_page.layout()에 직접 addWidget()한다.
+    fmt 변경 시 다이얼로그 리사이즈까지 하려면 호출부가 반환된 토글 콜백을
+    fmt_combo.currentTextChanged에 직접 연결한 뒤 자신의 리사이즈 로직을 이어 호출한다."""
+    file_page = QWidget()
+    fp = QVBoxLayout(file_page)
+    fp.setContentsMargins(14, 14, 14, 14)
+    fp.setSpacing(10)
+
+    path_lay = QHBoxLayout()
+    path_lay.setSpacing(8)
+    path_lay.addWidget(parts.make_label("경로", TEXT_SECONDARY, 12))
+    path_edit = QLineEdit(defaults.get("file_path") or "")
+    path_edit.setReadOnly(True)
+    path_lay.addWidget(path_edit, 1)
+    browse_btn = parts.outline_btn("Browse")
+    browse_btn.setFixedWidth(72)
+
+    def _browse():
+        folder = QFileDialog.getExistingDirectory(dlg, "저장 폴더 선택", path_edit.text() or "")
+        if folder:
+            path_edit.setText(folder)
+
+    browse_btn.clicked.connect(_browse)
+    path_lay.addWidget(browse_btn)
+    fp.addLayout(path_lay)
+
+    file_nm_lay = QHBoxLayout()
+    file_nm_lay.setSpacing(10)
+    file_nm_lay.addWidget(parts.make_label("파일명", TEXT_SECONDARY, 12))
+    file_nm = QLineEdit(defaults.get("file_name") or "")
+    file_nm_lay.addWidget(file_nm)
+    fp.addLayout(file_nm_lay)
+
+    opt_lay = QHBoxLayout()
+    opt_lay.setSpacing(10)
+    opt_lay.addWidget(parts.make_label("형식", TEXT_SECONDARY, 12))
+    fmt_combo = QComboBox()
+    fmt_combo.addItems(["CSV", "JSON", "Excel"])
+    fmt_combo.setCurrentText(defaults.get("file_format") or "")
+    opt_lay.addWidget(fmt_combo)
+    opt_lay.addSpacing(10)
+
+    enc_widget = QWidget()
+    enc_lay = QHBoxLayout(enc_widget)
+    enc_lay.setContentsMargins(0, 0, 0, 0)
+    enc_lay.setSpacing(10)
+    enc_combo = QComboBox()
+    enc_combo.addItems(["UTF-8", "UTF-8 BOM", "CP949 (EUC-KR)"])
+    enc_combo.setCurrentText(defaults.get("file_encoding") or "")
+    enc_lay.addWidget(parts.make_label("인코딩", TEXT_SECONDARY, 12))
+    enc_lay.addWidget(enc_combo)
+    opt_lay.addWidget(enc_widget)
+    opt_lay.addSpacing(10)
+
+    delim_widget = QWidget()
+    delim_lay = QHBoxLayout(delim_widget)
+    delim_lay.setContentsMargins(0, 0, 0, 0)
+    delim_lay.setSpacing(10)
+    csv_delimeter = QLineEdit(defaults.get("file_delimiter") or "")
+    delim_lay.addWidget(parts.make_label("구분자", TEXT_SECONDARY, 12))
+    delim_lay.addWidget(csv_delimeter)
+    opt_lay.addWidget(delim_widget)
+    opt_lay.addStretch()
+    fp.addLayout(opt_lay)
+
+    def _toggle_csv_fields(fmt_text: str):
+        is_csv = (fmt_text == "CSV")
+        enc_widget.setVisible(is_csv)
+        delim_widget.setVisible(is_csv)
+
+    widgets = {
+        "path_edit": path_edit, "file_nm": file_nm, "fmt_combo": fmt_combo,
+        "enc_combo": enc_combo, "csv_delimeter": csv_delimeter,
+    }
+    return file_page, widgets, _toggle_csv_fields
+
+
+def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:
+    """TEST CONNECTION 버튼 클릭 시 공통 DB 연결 테스트 로직을 수행한다
+    (출력 설정 / 스케줄 등록 다이얼로그에서 통째로 복제돼 있던 로직을 통합)."""
+    def _test_conn():
+        host = widgets["host"].text().strip() or "localhost"
+        try:
+            port = int(widgets["port"].text().strip())
+        except ValueError:
+            test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
+            test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            _show_db_conn_fail_dialog(
+                parent_dialog, "포트 번호에 숫자가 아닌 값이 입력되어 있습니다.\n올바른 포트 번호를 입력하세요."
+            )
+            return
+        test_result_lbl.setText("⏳ 연결 중...")
+        test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        test_btn.setEnabled(False)
+        QApplication.processEvents()
+        info = {
+            "db_env": widgets["db_type"].currentText(), "host": host, "port": str(port),
+            "database": widgets["name"].text().strip(), "schema": widgets["schema"].text().strip(),
+            "user": widgets["user"].text().strip(), "password": widgets["password"].text(),
+            "save_data_nm": widgets["save_data_nm"].text().strip() or "results",
+        }
+        try:
+            ok, reason = db_conn._check_db_connect_info(info)
+            if ok:
+                test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
+                test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
+            else:
+                test_result_lbl.setText("❌ 연결 실패")
+                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _show_db_conn_fail_dialog(parent_dialog, reason)
+        except ImportError:
+            try:
+                with socket.create_connection((host, port), timeout=3):
+                    test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
+                    test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            except OSError as e:
+                test_result_lbl.setText("❌ 연결 실패")
+                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _show_db_conn_fail_dialog(
+                    parent_dialog,
+                    f"DB 드라이버가 설치되어 있지 않아 소켓 연결을 시도했으나 실패했습니다.\n\n원인: {e}"
+                )
+        except Exception as e:
+            test_result_lbl.setText("❌ 연결 실패")
+            test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            _show_db_conn_fail_dialog(parent_dialog, str(e))
+        finally:
+            test_btn.setEnabled(True)
+
+    test_btn.clicked.connect(_test_conn)
