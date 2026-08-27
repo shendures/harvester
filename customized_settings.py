@@ -45,7 +45,7 @@ def get_output_settings():
                             'file_format': 'CSV',
                             'file_encoding': 'UTF-8 BOM',
                             'file_delimiter': ',',
-                            'is_open_save_path': False
+                            'is_open_save_path': True
                         },
                         'db': {
                             'enabled': False,
