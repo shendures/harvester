@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from conf import BlueprintStorage
+from conf import BlueprintStorage, get_spider_mode
 from style import NavItem, EqualSpacingTable
 from trigger import LogViewerDialog, MainWindowTriggersMulti
 from layout_single import (
@@ -63,6 +63,9 @@ class DashboardPageMulti(DashboardPageSingle):
 
     def _get_result_columns(self):
         return result_columns_from_blueprint(self.blueprint_info)
+
+    def _get_active_spider_mode(self):
+        return get_spider_mode(self.blueprint_info)
 
 
 class MonitorPageMulti(MonitorPageSingle):
@@ -412,7 +415,7 @@ class SidebarMulti(SidebarSingle):
     상속하고, 항목 목록만 다중 수집에 맞게 오버라이드한다.
     """
 
-    # (아이콘, 라벨, 스택 인덱스) — 스택 인덱스는 단일 공유 코드(trigger.py의
+    # (아이콘, 라벨, 스택 인덱스) — 스택 인덱스는 단일 공유 코드(trigger/main_window.py의
     # _switch_page가 idx==3일 때 stats_page.reload()를 호출하는 등)가 전제하는
     # 고정값(0 대시보드/1 모니터링/2 스케줄러/3 통계 분석/4 세션 설정/5 인증
     # 관리)과 반드시 일치해야 한다. "수집 목록"은 그 전제를 건드리지 않도록

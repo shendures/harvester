@@ -3,7 +3,7 @@ import utility
 from datetime import datetime
 import customized_settings
 
-from conf import DataStore, BlueprintStorage
+from conf import DataStore, BlueprintStorage, get_spider_mode
 from trigger import (
     GlobalToolbarTriggers, DashboardPageTriggers, MonitorPageTriggers,
     StatisticsPageTriggers, SchedulerPageTriggers,
@@ -13,7 +13,8 @@ from trigger import (
 )
 from style import (
     THEME, NavItem, StatCard, Divider, Parts, EqualSpacingTable, TagButton,
-    build_refine_rule_rows, NoFocusDelegate,
+    build_refine_rule_rows, NoFocusDelegate, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox,
+    apply_render_safety_limits,
 )
 
 from PyQt6.QtWidgets import (
@@ -21,7 +22,7 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QLineEdit,
     QTableWidgetItem, QFrame, QProgressBar,
     QScrollArea, QStackedWidget,
-    QSpinBox, QDoubleSpinBox, QMessageBox,
+    QSpinBox, QMessageBox,
     QCheckBox, QSizePolicy, QSystemTrayIcon,
     QMenu, QTabWidget
 )
@@ -95,7 +96,6 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         super().__init__(parent)
         self._running = False
         self._start_cancelled = False   # 중지 시 QTimer 예약 콜백을 막는 플래그
-        self._health_check_thread = None  # 프록시 헬스체크 진행 중인 QThread(없으면 None)
         # 실제 페이지 인스턴스는 MainWindowSingle._build()에서 set_pages()로 주입됩니다.
         self.dashboard = None
         self.monitor_page = None
@@ -322,7 +322,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
         r1 = QHBoxLayout()
         r1.setSpacing(8)
         r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
-        self.delay_spin = QDoubleSpinBox()
+        self.delay_spin = BoundNoticeDoubleSpinBox()
         self.delay_spin.setRange(0.5, 10.0)
         self.delay_spin.setValue(0.5)
         self.delay_spin.setSingleStep(0.5)
@@ -331,7 +331,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
         r1.addWidget(self.delay_spin)
         r1.addSpacing(6)
         r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
-        self.thread_spin = QSpinBox()
+        self.thread_spin = BoundNoticeSpinBox()
         self.thread_spin.setRange(1, 16)
         self.thread_spin.setValue(4)
         self.thread_spin.setToolTip("병렬 수집 스레드 수")
@@ -339,6 +339,15 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
         r1.addSpacing(6)
         r1.addStretch()
         c1.addLayout(r1)
+
+        # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전
+        # 상한/하한을 강제한다(spirenderer.py는 더 이상 런타임 보정을 하지 않음).
+        # 상한/하한을 넘으려는 시도는 상시 문구 대신 QToolTip 말풍선으로만 안내한다.
+        if self._get_active_spider_mode() == "html_render":
+            apply_render_safety_limits(
+                self.thread_spin, self.delay_spin,
+                customized_settings.get_render_safety_limits(),
+            )
 
         # Row 2 — 타임 아웃 / 재시도
         r2 = QHBoxLayout()
@@ -523,6 +532,11 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers):
             return [c for c in items if c not in ("root", "detail_root", "main_root", "detail")]
         except (KeyError, TypeError):
             return []
+
+    def _get_active_spider_mode(self):
+        """이 대시보드가 대상으로 하는 블루프린트의 스파이더 모드.
+        DashboardPageMulti는 전역 request_info 대신 self.blueprint_info를 쓰도록 오버라이드한다."""
+        return get_spider_mode(request_info)
 
 # ══════════════════════════════════════════════════════
 #  MONITOR PAGE
@@ -1404,6 +1418,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
     def __init__(self):
         super().__init__()
         self._proxy_rows = []  # list of dict
+        self._proxy_test_thread = None  # "연결 테스트" 진행 중인 QThread(없으면 None)
         self._build()
 
     def _build(self):
@@ -1447,17 +1462,6 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         bl.addWidget(gw1)
 
         self.gw2, gl2 = parts.card_widget("프록시 옵션")
-        row0 = QHBoxLayout()
-        row0.setSpacing(16)
-        self._rotate_cb = QCheckBox("자동 로테이션")
-        self._rotate_cb.setChecked(False)
-        row0.addWidget(self._rotate_cb)
-        self._test_cb = QCheckBox("연결 전 헬스체크")
-        self._test_cb.setToolTip("수집 시작 전 프록시 목록 각각에 연결을 시도해, 응답 없는 IP는 자동으로 비활성화합니다")
-        self._test_cb.setChecked(False)
-        row0.addWidget(self._test_cb)
-        row0.addStretch()
-        gl2.addLayout(row0)
         row1 = QHBoxLayout()
         row1.setSpacing(10)
         row1.addWidget(parts.make_label("분당 IP 허용 갯수", TEXT_SECONDARY, 12))
@@ -1482,13 +1486,15 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         hdr_row.setSpacing(8)
         hdr_row.addStretch()
 
-        self._import_lbl = parts.make_label("", TEXT_MUTED, 10)
+        self._test_btn = parts.outline_btn("🔌 연결 테스트")
+        self._test_btn.setToolTip("프록시 목록의 모든 IP에 연결을 시도해 상태를 확인합니다")
+        self._test_btn.clicked.connect(self._test_all_proxies)
         self._import_btn = parts.outline_btn("📂 Import")
         self._import_btn.setToolTip("텍스트/CSV 파일에서 IP:PORT 형식의 프록시 목록을 불러옵니다")
         self._import_btn.clicked.connect(self._import_proxy_file)
         self._add_btn = parts.action_btn("+ 추가", ACCENT, ACCENT_HOVER)
         self._add_btn.clicked.connect(self._add_proxy_dialog)
-        hdr_row.addWidget(self._import_lbl)
+        hdr_row.addWidget(self._test_btn)
         hdr_row.addWidget(self._import_btn)
         hdr_row.addWidget(self._add_btn)
         pl.addLayout(hdr_row)
@@ -1512,7 +1518,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
             card.setStyleSheet(theme.PROXY_CARD_DISABLED_QSS)
 
     def _make_proxy_table(self):
-        headers = ["활성", "프로토콜", "호스트", "포트", "레이턴시", "상태"]
+        headers = ["NO", "프로토콜", "호스트", "포트", "상태"]
         t = EqualSpacingTable(
             parent=self,
             row_height=36,
@@ -1528,8 +1534,8 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         # itemClicked: 행 어디를 클릭해도 활성/비활성 토글
         t.itemClicked.connect(self._on_proxy_row_clicked)
         t.setStyleSheet(t.styleSheet() + theme.PROXY_TABLE_INDICATOR_QSS)
-        # "활성" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
-        t.setItemDelegateForColumn(0, NoFocusDelegate(t))
+        # "상태" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
+        t.setItemDelegateForColumn(4, NoFocusDelegate(t))
         return t
 
     def _insert_table_row(self, data: dict):
@@ -1545,19 +1551,12 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
         align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
 
-        # col 0 — 활성 여부 (ItemIsUserCheckable — setCellWidget 없이 체크박스 렌더링)
-        # setItem() 1회로 완결되어 대량 삽입 성능에 영향 없음. 토글은 itemClicked
-        # (_on_proxy_row_clicked)로 처리되어 선택 가능 여부와 무관하므로
-        # ItemIsSelectable은 주지 않음(체크박스만 보이도록, 포커스 사각형 방지).
-        enabled_item = QTableWidgetItem()
-        enabled_item.setFlags(
-            Qt.ItemFlag.ItemIsEnabled |
-            Qt.ItemFlag.ItemIsUserCheckable   # 체크박스 렌더링 플래그
-        )
-        enabled_item.setCheckState(
-            Qt.CheckState.Checked if data["enabled"] else Qt.CheckState.Unchecked
-        )
-        t.setItem(r, 0, enabled_item)
+        # col 0 — NO (테이블 내 순번, 1-base). _delete_row에서 삭제 시 재넘버링됨.
+        no_item = QTableWidgetItem(str(r + 1))
+        no_item.setForeground(QColor(TEXT_SECONDARY))
+        no_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        no_item.setFlags(no_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        t.setItem(r, 0, no_item)
 
         # col 1 — 프로토콜
         color_map = {"HTTP": BLUE, "HTTPS": BLUE, "SOCKS5": PURPLE, "SOCKS4": AMBER}
@@ -1581,19 +1580,16 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         port_item.setFlags(port_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 3, port_item)
 
-        # col 4 — 레이턴시
-        lat_item = QTableWidgetItem(data["latency"])
-        lat_item.setForeground(QColor(GREEN if data["latency"] != "—" else TEXT_MUTED))
-        lat_item.setTextAlignment(align)
-        lat_item.setFlags(lat_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        t.setItem(r, 4, lat_item)
-
-        # col 5 — 상태
-        status_item = QTableWidgetItem(data["status"])
-        status_item.setForeground(QColor(GREEN if data["status"] == "활성" else TEXT_MUTED))
-        status_item.setTextAlignment(align)
-        status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        t.setItem(r, 5, status_item)
+        # col 4 — 상태 (사용 여부 체크박스. ItemIsUserCheckable — setCellWidget 없이 렌더링)
+        status_item = QTableWidgetItem()
+        status_item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled |
+            Qt.ItemFlag.ItemIsUserCheckable   # 체크박스 렌더링 플래그
+        )
+        status_item.setCheckState(
+            Qt.CheckState.Checked if data["enabled"] else Qt.CheckState.Unchecked
+        )
+        t.setItem(r, 4, status_item)
 
 
 # ══════════════════════════════════════════════════════

@@ -3,9 +3,10 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QTableWidget,
     QFrame, QCheckBox, QLineEdit,
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
+    QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
 )
 
-from PyQt6.QtCore import ( Qt, QTimer )
+from PyQt6.QtCore import ( Qt, QTimer, QPoint )
 from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics )
 
 
@@ -612,6 +613,80 @@ class Divider(QFrame):
             self.setFixedHeight(1)
         else:
             self.setFixedWidth(1)
+
+class BoundNoticeMixin:
+    """상한/하한에서 더 못 움직일 때 QToolTip 말풍선으로 알려주는 스핀박스 동작.
+    QSpinBox/QDoubleSpinBox 등 stepBy()를 갖는 베이스와 다중 상속으로 합성해서 쓴다.
+    상한 초과와 하한 미만은 서로 별개의 규칙일 수 있으므로 메시지를 방향별로 따로
+    설정한다(set_upper_bound_message/set_lower_bound_message). 메시지를 설정하지
+    않은 방향은 그 경계가 특별히 제한된 게 아니라는 뜻이므로 Qt 기본 동작(경계에서
+    비활성화, 알림 없음)을 그대로 따른다."""
+
+    _upper_bound_message = None
+    _lower_bound_message = None
+
+    def set_upper_bound_message(self, message):
+        self._upper_bound_message = message
+
+    def set_lower_bound_message(self, message):
+        self._lower_bound_message = message
+
+    def stepEnabled(self):
+        # Qt는 value()가 maximum()/minimum()에 닿으면 해당 방향 스텝을 자동으로
+        # 비활성화하는데, 이 플래그는 버튼 클릭·↑/↓ 키·휠 이벤트가 stepBy()를
+        # 호출할지 자체를 막는 게이트다 — 그대로 두면 이미 경계에 있을 때 클릭해도
+        # stepBy()가 호출되지 않아 말풍선을 띄울 기회 자체가 없다. 메시지가 설정된
+        # 방향만 항상 활성 상태로 둬서 클릭이 stepBy()까지 도달하게 한다.
+        flags = super().stepEnabled()
+        if self._upper_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepUpEnabled
+        if self._lower_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepDownEnabled
+        return flags
+
+    def stepBy(self, steps):
+        message = None
+        if steps > 0 and self._upper_bound_message and self.value() >= self.maximum():
+            message = self._upper_bound_message
+        elif steps < 0 and self._lower_bound_message and self.value() <= self.minimum():
+            message = self._lower_bound_message
+        super().stepBy(steps)
+        if message:
+            QToolTip.showText(self.mapToGlobal(QPoint(0, self.height())), message, self)
+
+
+class BoundNoticeSpinBox(BoundNoticeMixin, QSpinBox):
+    pass
+
+
+class BoundNoticeDoubleSpinBox(BoundNoticeMixin, QDoubleSpinBox):
+    """BoundNoticeSpinBox의 실수(Delay) 버전 — 로직 동일."""
+    pass
+
+
+def apply_render_safety_limits(thread_spin, delay_spin, limits: dict) -> None:
+    """thread_spin/delay_spin(둘 다 BoundNoticeMixin 계열)에 렌더링(html_render)
+    안전 상한/하한을 적용한다. limits는 customized_settings.get_render_safety_limits()
+    의 반환값 — style.py는 설정값을 직접 읽지 않고 호출부가 넘겨준 값만 사용한다."""
+    thread_spin.setMaximum(limits['max_threads'])
+    delay_spin.setMinimum(limits['min_delay'])
+    thread_spin.set_upper_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Threads를 최대 {limits['max_threads']}개까지만 허용합니다."
+    )
+    delay_spin.set_lower_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Delay를 최소 {limits['min_delay']}s까지만 허용합니다."
+    )
+    thread_spin.setToolTip(f"병렬 수집 스레드 수 (렌더링 수집은 최대 {limits['max_threads']}개로 제한)")
+    delay_spin.setToolTip(f"요청 간 대기 시간 (렌더링 수집은 최소 {limits['min_delay']}s로 제한)")
+
+
+def reset_render_safety_limits(thread_spin, delay_spin, default_max_threads, default_min_delay) -> None:
+    """apply_render_safety_limits()로 좁힌 범위를 원래 기본 범위로 되돌린다."""
+    thread_spin.setMaximum(default_max_threads)
+    delay_spin.setMinimum(default_min_delay)
+    thread_spin.set_upper_bound_message(None)
+    delay_spin.set_lower_bound_message(None)
+
 
 class Parts:
     def __init__(self):
