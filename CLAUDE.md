@@ -8,6 +8,7 @@
   just ones that touch code.
 - Invoke the `coding-guide` skill whenever you write, modify, refactor, or review code, or check the state/correctness of existing code — but not for requests that merely discuss or plan the project at large without reading or touching code.
 - If the task also involves PyQt (widgets, layouts, signals/slots, threading in a GUI, stylesheets, etc.), additionally invoke the `pyqt-uiux` skill on top of `coding-guide`.
+- If the task involves refactoring existing code, additionally invoke the `refactoring` skill on top of `coding-guide`.
 - For commits/branches/PRs and WSL↔Windows sync work, invoke the `git-workflow` skill.
 
 
