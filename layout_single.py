@@ -95,6 +95,7 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         super().__init__(parent)
         self._running = False
         self._start_cancelled = False   # 중지 시 QTimer 예약 콜백을 막는 플래그
+        self._health_check_thread = None  # 프록시 헬스체크 진행 중인 QThread(없으면 None)
         # 실제 페이지 인스턴스는 MainWindowSingle._build()에서 set_pages()로 주입됩니다.
         self.dashboard = None
         self.monitor_page = None
@@ -1452,6 +1453,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         self._rotate_cb.setChecked(False)
         row0.addWidget(self._rotate_cb)
         self._test_cb = QCheckBox("연결 전 헬스체크")
+        self._test_cb.setToolTip("수집 시작 전 프록시 목록 각각에 연결을 시도해, 응답 없는 IP는 자동으로 비활성화합니다")
         self._test_cb.setChecked(False)
         row0.addWidget(self._test_cb)
         row0.addStretch()

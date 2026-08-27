@@ -15,9 +15,13 @@ import json
 import sys
 import socket
 import subprocess
+import time
 from copy import deepcopy
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+
+import requests
 
 from PyQt6.QtWidgets import (
     QApplication, QFileDialog, QMessageBox, QDialog,
@@ -28,7 +32,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QMenu, QSpinBox, QDoubleSpinBox, QDateEdit,
     QScrollArea
 )
-from PyQt6.QtCore import Qt, QTimer, QDate, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QDate, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QTextDocument, QTextCursor
 from worker import MultiprocessWorker
 from conf import BlueprintStorage
@@ -795,8 +799,42 @@ class GlobalToolbarTriggers:
             mw.dashboard._update_step_ui(1)
 
         QApplication.processEvents()
+
+        session_page = self.session_page
+        proxy_enabled = session_page._global_cb.isChecked()
+        health_check_on = session_page._test_cb.isChecked()
+        proxy_rows = [r for r in getattr(session_page, "_proxy_rows", []) if r.get("enabled", True)]
+
+        if proxy_enabled and health_check_on and proxy_rows:
+            self._log("info", f"프록시 {len(proxy_rows)}건의 연결 상태를 사전 점검합니다. (헬스체크 중...)")
+            self._run_proxy_health_check()
+        else:
+            self._log("info", "환경 설정을 로드합니다. (수집 세팅 중...)")
+            QTimer.singleShot(1000, self._actual_start)
+
+    def _run_proxy_health_check(self):
+        """
+        활성화된 프록시들을 ProxyHealthCheckThread로 백그라운드 검사한 뒤,
+        완료되면 _actual_start로 이어갑니다. self._health_check_thread에 보관해
+        스레드가 실행 중 GC되지 않도록 합니다.
+        """
+        session_page = self.session_page
+        rows = deepcopy(session_page._proxy_rows)
+        self._health_check_thread = ProxyHealthCheckThread(rows, parent=self)
+        self._health_check_thread.row_checked.connect(session_page._apply_health_check_result)
+        self._health_check_thread.all_checked.connect(self._on_health_check_finished)
+        self._health_check_thread.start()
+
+    def _on_health_check_finished(self, alive_count: int, dead_count: int):
+        self._health_check_thread = None
+        if self._start_cancelled:
+            return
+        if dead_count:
+            self._log("warn", f"헬스체크 완료 — 정상 {alive_count}건, 응답 없음 {dead_count}건(목록에서 제외됨).")
+        else:
+            self._log("info", f"헬스체크 완료 — 프록시 {alive_count}건 모두 정상.")
         self._log("info", "환경 설정을 로드합니다. (수집 세팅 중...)")
-        QTimer.singleShot(1000, self._actual_start)
+        QTimer.singleShot(300, self._actual_start)
 
     def _actual_start(self):
         """[단계 2: 데이터 수집] 실제 시작"""
@@ -3374,6 +3412,64 @@ class SchedulerPageTriggers:
 
 
 # ══════════════════════════════════════════════════════
+#  Proxy Health Check
+# ══════════════════════════════════════════════════════
+class ProxyHealthCheckThread(QThread):
+    """
+    수집 시작 전 "연결 전 헬스체크"가 켜져 있을 때, 활성화된 프록시 각각에
+    실제로 연결을 시도해 응답 가능 여부를 확인합니다.
+
+    GUI 스레드를 막지 않기 위해 QThread에서 실행되며, 프록시 목록이 많아도
+    전체 대기 시간이 늘어지지 않도록 ThreadPoolExecutor로 병렬 검사합니다.
+    검사 결과는 row_checked 시그널로만 전달하고 위젯은 직접 건드리지 않습니다
+    (Qt 위젯은 GUI 스레드에서만 조작 가능 — 수신 측 슬롯에서 테이블을 갱신).
+    """
+
+    row_checked = pyqtSignal(int, bool, float)  # row_index, is_alive, latency_ms
+    all_checked = pyqtSignal(int, int)  # alive_count, dead_count
+
+    TEST_URL = "http://www.gstatic.com/generate_204"  # body 없이 204만 반환하는 경량 연결성 확인용 엔드포인트
+    TIMEOUT = 5  # 초
+    MAX_WORKERS = 10
+
+    def __init__(self, rows: list, parent=None):
+        super().__init__(parent)
+        # rows: SessionSettingsPage._proxy_rows의 깊은 복사본. 인덱스가 테이블 행 번호와 일치해야 함.
+        self._rows = rows
+
+    def _check_one(self, idx: int, row: dict) -> bool:
+        """단일 프록시를 검사하고 row_checked를 emit한 뒤, 생존 여부를 반환합니다."""
+        protocol = str(row.get("protocol", "http")).lower()
+        proxy_url = f"{protocol}://{row['host']}:{row['port']}"
+        start = time.monotonic()
+        try:
+            requests.get(
+                self.TEST_URL,
+                proxies={"http": proxy_url, "https": proxy_url},
+                timeout=self.TIMEOUT,
+            )
+            latency_ms = (time.monotonic() - start) * 1000
+            self.row_checked.emit(idx, True, latency_ms)
+            return True
+        except requests.RequestException:
+            self.row_checked.emit(idx, False, 0.0)
+            return False
+
+    def run(self) -> None:
+        targets = [(idx, row) for idx, row in enumerate(self._rows) if row.get("enabled", True)]
+        alive_count = dead_count = 0
+        if targets:
+            with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(targets))) as pool:
+                futures = [pool.submit(self._check_one, idx, row) for idx, row in targets]
+                for f in futures:
+                    if f.result():
+                        alive_count += 1
+                    else:
+                        dead_count += 1
+        self.all_checked.emit(alive_count, dead_count)
+
+
+# ══════════════════════════════════════════════════════
 #  SessionSettingsPage Mixin
 # ══════════════════════════════════════════════════════
 class SessionSettingsPageTriggers:
@@ -3598,6 +3694,34 @@ class SessionSettingsPageTriggers:
         if row < len(self._proxy_rows):
             self._proxy_rows[row]["enabled"] = enable
             self._proxy_rows[row]["status"]  = "활성" if enable else "비활성"
+
+    def _apply_health_check_result(self, row: int, is_alive: bool, latency_ms: float) -> None:
+        """
+        ProxyHealthCheckThread.row_checked 수신 시 호출 — 레이턴시 컬럼을 갱신하고,
+        응답 없는 프록시는 _toggle_proxy_enabled()로 비활성화해 실제 수집 대상에서 제외합니다.
+        """
+        t = self._proxy_table
+        if row >= t.rowCount():
+            return
+        t.blockSignals(True)
+        try:
+            lat_item = t.item(row, 4)
+            if lat_item:
+                lat_item.setText(f"{latency_ms:.0f}ms" if is_alive else "—")
+                lat_item.setForeground(QColor(GREEN if is_alive else TEXT_MUTED))
+            if is_alive:
+                if row < len(self._proxy_rows):
+                    self._proxy_rows[row]["latency"] = f"{latency_ms:.0f}ms"
+            else:
+                self._toggle_proxy_enabled(row, False)
+                status_item = t.item(row, 5)
+                if status_item:
+                    status_item.setText("응답없음")
+                    status_item.setForeground(QColor(RED))
+                if row < len(self._proxy_rows):
+                    self._proxy_rows[row]["status"] = "응답없음"
+        finally:
+            t.blockSignals(False)
 
     def _on_proxy_item_changed(self, item):
         """
