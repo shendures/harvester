@@ -35,6 +35,12 @@ def get_task_settings():
         'retry': 3
     }
 
+def get_render_safety_limits():
+    return {
+        'max_threads': 2,
+        'min_delay': 1.0,
+    }
+
 def get_output_settings():
     return {
             'extract': {

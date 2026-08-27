@@ -53,8 +53,7 @@ def get_json_form(url, payload_yn):
 
 def get_spider(request_info: dict):
 
-    # conditions 내부 spiders 우선, 없으면 최상위 fallback (현행 request_info.json 호환)
-    spiders = (request_info.get("conditions") or {}).get("spiders", request_info.get("spiders"))
+    spiders = conf.get_spider_mode(request_info)
 
     if spiders == "html":
         return HtmlExtractorSpider

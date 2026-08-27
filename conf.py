@@ -302,6 +302,15 @@ class BlueprintStorage:
         return self._find(self._active_seq_no) or self._blueprints[0]
 
 
+def get_spider_mode(blueprint: dict):
+    """블루프린트의 스파이더 모드(conditions.spiders 값)를 반환한다.
+    conditions 내부를 우선하고, 없으면 최상위 spiders로 폴백한다
+    (현행 request_info.json 호환 — engine.get_spider()와 동일 규칙을 여기 하나로 통합)."""
+    blueprint = blueprint or {}
+    conditions = blueprint.get("conditions") or {}
+    return conditions.get("spiders", blueprint.get("spiders"))
+
+
 # ══════════════════════════════════════════════════════
 #  CUSTOM MODULE STORAGE
 # ══════════════════════════════════════════════════════
