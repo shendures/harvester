@@ -1277,7 +1277,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         # ──────────────────────────────────────────────
 
         # ══ Schedule Table ════════════════════════════
-        tw, tl = parts.card_widget("등록된 작업")
+        tw, tl = parts.card_widget("스케줄 목록")
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
         self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(

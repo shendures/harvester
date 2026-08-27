@@ -139,7 +139,7 @@ class BlueprintListPage(QWidget):
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
-        tcw, tc = parts.card_widget("등록된 수집 목록")
+        tcw, tc = parts.card_widget("수집 목록")
 
         ctrl_row = QHBoxLayout()
         ctrl_row.addStretch()
