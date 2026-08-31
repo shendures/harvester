@@ -74,9 +74,12 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.monitor_split = QSplitter(Qt.Orientation.Horizontal)
         self.monitor_split.addWidget(self.monitor_nav_list)
         self.monitor_split.addWidget(self.monitor_slot)
-        self.monitor_split.setStretchFactor(0, 0)
-        self.monitor_split.setStretchFactor(1, 1)
-        self.monitor_split.setSizes([220, 1040])
+        # "수집 대상"(좌) : 정제 레이아웃(우) = 3 : 7 비율 — 창 크기가 바뀌어도
+        # 두 창 폭이 늘고 줄 때 이 비율로 함께 움직이도록 스트레치 팩터도 3:7로 맞춘다
+        # (setSizes는 초기 폭만 정하고, 이후 리사이즈 배분은 stretchFactor를 따른다).
+        self.monitor_split.setStretchFactor(0, 3)
+        self.monitor_split.setStretchFactor(1, 7)
+        self.monitor_split.setSizes([300, 700])
         self.monitor_split.setChildrenCollapsible(False)
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
