@@ -413,7 +413,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._worker.start()
 
         self._reset_progress_for(dash)
-        self.blueprint_list_page.set_status(seq_no, "running")
+        self._broadcast_blueprint_status(seq_no, "running")
         self.global_toolbar.set_running(True)
         dash._update_step_ui(2)
 
@@ -472,7 +472,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self.global_toolbar.set_running(False)
         self._reset_progress_for(dash)
         dash.set_running(False)
-        self.blueprint_list_page.set_status(seq_no, "done")
+        self._broadcast_blueprint_status(seq_no, "done")
 
         if summary.get("interrupted"):
             row_count = mon.result_table.rowCount()
@@ -482,7 +482,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 f"(소요: {summary['elapsed']}s)"
             )
             dash._update_step_ui(0)
-            self.blueprint_list_page.set_status(seq_no, "idle")
+            self._broadcast_blueprint_status(seq_no, "idle")
             # 중단은 _stop_crawl()에서 큐를 이미 비웠으므로 큐 소비 불필요
             return
 

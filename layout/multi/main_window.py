@@ -1,10 +1,11 @@
 # layout/multi/main_window.py
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
+from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QSplitter
+from PyQt6.QtCore import Qt
 
 from conf import BlueprintStorage
 from trigger import LogViewerDialog, MainWindowTriggersMulti
-from ..common import build_status_bar
+from ..common import build_status_bar, center_window_on_screen
 from ..scheduler import SchedulerPage
 from ..statistics import StatisticsPage
 from ..session import SessionSettingsPage
@@ -12,13 +13,14 @@ from ..tray import TrayManager
 from .toolbar import GlobalToolbarMulti
 from .sidebar import SidebarMulti
 from .blueprint_list import BlueprintListPage, BlueprintPageBundle
+from .monitor_target_list import MonitorTargetListPage
 
 
 class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DataCrawler v2.0 — Multi Blueprint")
-        self.resize(1280, 800)
+        self.resize(1843, 1152)
         self.setMinimumSize(960, 640)
         self._worker = None
         self._pending_queue = []   # 배치/스케줄 공용 순차 대기 큐 (FIFO)
@@ -28,6 +30,14 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
 
         self._build()
         self.tray_manager = TrayManager(self)
+        self._centered_once = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 트레이에서 창을 복원할 때마다 다시 중앙으로 튀지 않도록 최초 1회만 정렬한다.
+        if not self._centered_once:
+            self._centered_once = True
+            center_window_on_screen(self)
 
     def _build(self):
         storage = BlueprintStorage()
@@ -56,7 +66,16 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         #    블루프린트별 페이지는 각 슬롯(내부 QStackedWidget)에서 교체한다.
         self.stack = QStackedWidget()
         self.dashboard_slot = QStackedWidget()   # 0 — 블루프린트별 대시보드
-        self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 모니터링
+        self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 데이터 정제(4탭)
+        self.monitor_nav_list = MonitorTargetListPage()  # 1 좌측 — 정제 대상 선택용 경량 목록
+        self.monitor_nav_list.blueprint_selected.connect(self._activate_blueprint)
+        self.monitor_split = QSplitter(Qt.Orientation.Horizontal)
+        self.monitor_split.addWidget(self.monitor_nav_list)
+        self.monitor_split.addWidget(self.monitor_slot)
+        self.monitor_split.setStretchFactor(0, 0)
+        self.monitor_split.setStretchFactor(1, 1)
+        self.monitor_split.setSizes([220, 1040])
+        self.monitor_split.setChildrenCollapsible(False)
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()       # 3 — 전역 단일
@@ -71,7 +90,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
 
         self.stack.addWidget(self.dashboard_slot)       # 0
-        self.stack.addWidget(self.monitor_slot)         # 1
+        self.stack.addWidget(self.monitor_split)        # 1
         self.stack.addWidget(self.schedule_page)        # 2
         self.stack.addWidget(self.stats_page)           # 3
         self.stack.addWidget(self.session_page)         # 4
@@ -119,6 +138,11 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
             collect=bundle.collect_settings, auth_page=bundle.auth_page,
         )
 
+    def _broadcast_blueprint_status(self, seq_no, status: str) -> None:
+        """"수집 목록"과 "데이터 정제" 좌측 목록 양쪽의 상태 컬럼을 함께 갱신한다."""
+        self.blueprint_list_page.set_status(seq_no, status)
+        self.monitor_nav_list.set_status(seq_no, status)
+
     # ── 활성 블루프린트 전환 ───────────────────────────
     def _activate_blueprint(self, seq_no):
         """
@@ -129,6 +153,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         seq_no = self._resolve_seq_no(seq_no)
         bundle = self._get_or_create_bundle(seq_no)
         BlueprintStorage().set_active(seq_no)
+        self.monitor_nav_list.set_active_seq_no(seq_no)
 
         self.dashboard_slot.setCurrentWidget(bundle.dashboard)
         self.monitor_slot.setCurrentWidget(bundle.monitor_page)
