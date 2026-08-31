@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from conf import get_spider_mode
+from conf import get_spider_mode, DEFAULT_COLLECT_SETTINGS
 from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
 from style import StatCard, EqualSpacingTable, apply_render_safety_limits
@@ -177,10 +177,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         같은 설정을 "⚙" 다이얼로그 쪽으로 옮겼으므로 대시보드에는 필요 없음)."""
         c1w, c1 = parts.card_widget("수집 & 저장 설정")
 
-        content, widgets = _build_collect_settings_fields({
-            "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
-            "auto_save": True, "auto_save_source": "raw",
-        })
+        content, widgets = _build_collect_settings_fields(
+            self._active_blueprint_info().get("collect_settings") or DEFAULT_COLLECT_SETTINGS
+        )
         c1.addWidget(content)
 
         self.delay_spin       = widgets["delay_spin"]

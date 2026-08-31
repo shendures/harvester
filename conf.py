@@ -301,6 +301,34 @@ class BlueprintStorage:
         """활성 seq_no가 가리키는 내부 dict 참조. _load()가 최소 1개를 보장."""
         return self._find(self._active_seq_no) or self._blueprints[0]
 
+    # ── Public API (블루프린트별 UI 설정 영속화) ─────────
+    def update_settings(self, seq_no, **patch) -> None:
+        """seq_no 블루프린트에 patch(예: collect_settings=..., output_settings=...)를
+        병합하고 즉시 파일에 저장한다 — "⚙" 다이얼로그의 "적용"처럼 값을 확정하는
+        시점에 호출해, 앱을 재시작해도 마지막으로 설정한 값이 그대로 표출되게 한다."""
+        target = self._find(seq_no)
+        if target is None:
+            logger.warning("[BlueprintStorage] update_settings: 존재하지 않는 seq_no (%s)", seq_no)
+            return
+        target.update(patch)
+        self.save()
+
+    def save(self) -> None:
+        """현재 메모리의 전체 블루프린트 리스트를 request_info.json에 그대로 저장한다."""
+        try:
+            with open(self.file_path, "w", encoding="utf-8") as f:
+                json.dump(self._blueprints, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error("[BlueprintStorage] 저장 실패: %s", e)
+
+
+# 수집 설정("수집 & 저장 설정" 카드 / 다중의 "⚙" 다이얼로그) 기본값 — 블루프린트에
+# collect_settings가 저장돼 있지 않은 최초 실행/신규 블루프린트에 쓰인다.
+DEFAULT_COLLECT_SETTINGS = {
+    "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
+    "auto_save": True, "auto_save_source": "raw",
+}
+
 
 def get_spider_mode(blueprint: dict):
     """블루프린트의 스파이더 모드(conditions.spiders 값)를 반환한다.

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from conf import BlueprintStorage
+from conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from style import EqualSpacingTable
 from trigger.common import _default_msgbox_qss
 from ..common import parts, RED, BG_HOVER, ACCENT, ACCENT_LIGHT, _blueprint_auth_method, _blueprint_requires_auth
@@ -425,10 +425,7 @@ class BlueprintPageBundle:
         self.seq_no = blueprint_info.get("seq_no")
         self.dashboard = DashboardPageMulti(blueprint_info)
         self.monitor_page = MonitorPageMulti(blueprint_info)
-        self.collect_settings = {
-            "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
-            "auto_save": True, "auto_save_source": "raw",
-        }
+        self.collect_settings = blueprint_info.get("collect_settings") or dict(DEFAULT_COLLECT_SETTINGS)
         self.auth_page = (
             AuthManagerPage(
                 _blueprint_auth_method(blueprint_info),

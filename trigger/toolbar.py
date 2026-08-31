@@ -101,6 +101,10 @@ class GlobalToolbarTriggers:
                     "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
                 ),
             }
+            # 단일 레이아웃은 다중처럼 별도 "적용" 버튼이 없으므로, 수집 설정 카드의
+            # 값을 실제로 확정 짓는 "시작" 클릭 시점에 블루프린트에 영속화한다 —
+            # 재시작 후에도 마지막으로 수집에 쓰인 값이 그대로 표출된다.
+            BlueprintStorage().update_settings(request_info.get("seq_no"), collect_settings=collect)
 
             self.task.update(deepcopy(request_info))
             _apply_task_settings(

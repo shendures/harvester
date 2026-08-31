@@ -29,7 +29,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._cleaning_warned = False   # 이번 수집에 대해 "규칙 없음" 팝업을 이미 띄웠는지
         self._out_mode       = None
-        self.output_info     = customized_settings.get_output_settings()
+        self.output_info     = self._active_blueprint_info().get("output_settings") or customized_settings.get_output_settings()
 
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {

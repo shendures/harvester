@@ -17,7 +17,7 @@ from PyQt6.QtGui import QColor
 import db_conn
 import utility
 import customized_settings
-from conf import get_spider_mode
+from conf import get_spider_mode, BlueprintStorage
 from style import TagButton, Divider, apply_render_safety_limits
 from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
@@ -894,6 +894,17 @@ class MonitorPageTriggers:
                     collect["auto_save_source"] = (
                         "refined" if collect_widgets["auto_src_ref_btn"].isChecked() else "raw"
                     )
+
+                # 재시작 후에도 방금 적용한 값이 그대로 표출되도록 블루프린트에
+                # 영속화한다(단일/다중 레이아웃이 이 다이얼로그를 공유하므로 두 곳
+                # 모두 여기서 함께 저장된다). collect_widgets가 없으면(단일의 "⚙
+                # 추출 설정" 버튼처럼 collect 인자 없이 열린 경우) 추출 설정만 저장한다.
+                settings_patch = {"output_settings": self.output_info}
+                if collect_widgets is not None:
+                    settings_patch["collect_settings"] = collect
+                BlueprintStorage().update_settings(
+                    self._active_blueprint_info().get("seq_no"), **settings_patch
+                )
 
                 dlg.accept()
             except Exception as e:
