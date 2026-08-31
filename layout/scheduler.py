@@ -5,7 +5,7 @@ import os
 import utility
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QTableWidgetItem
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QTableWidgetItem
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
 
@@ -13,7 +13,7 @@ from conf import BlueprintStorage
 from trigger import SchedulerPageTriggers
 from style import EqualSpacingTable
 from .common import (
-    store, parts,
+    store, parts, build_scroll_body,
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_LIGHT, AMBER, GREEN, BLUE, PURPLE, RED,
 )
 
@@ -40,19 +40,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
     # ────────────────────────────────────────────────
     def _build(self):
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+        bl = build_scroll_body(self, spacing=12)
 
         # ── 본문(bl) 내 상단 버튼 영역 추가 ───────────────
         btn_container = QHBoxLayout()

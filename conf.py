@@ -54,9 +54,6 @@ class DataStore:
             return
         self._rows.append(row)
 
-    def get_rows(self) -> list:
-        return list(self._rows)
-
     def clear_rows(self) -> None:
         self._rows.clear()
 
@@ -100,23 +97,35 @@ class DataStore:
 
 
 # ══════════════════════════════════════════════════════
+#  싱글턴 공통 베이스 (__init__에 무거운 초기화가 있는 경우)
+# ══════════════════════════════════════════════════════
+class _LazyInitSingleton:
+    """
+    BlueprintStorage / CustomModuleStorage가 공유하는 싱글턴 __new__ 보일러플레이트.
+
+    __new__는 최초 1회만 인스턴스를 만들고 _initialized=False로 표시합니다.
+    각 서브클래스의 __init__은 맨 앞에서 `if self._initialized: return` 가드로
+    재호출 시 초기화가 다시 실행되지 않도록 해야 합니다.
+    """
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+
+# ══════════════════════════════════════════════════════
 #  BLUEPRINT STORAGE
 # ══════════════════════════════════════════════════════
-class BlueprintStorage:
+class BlueprintStorage(_LazyInitSingleton):
     """
     request_info.json을 로드해 수집 청사진(blueprint)을 관리하는 싱글턴.
 
     싱글턴 초기화는 최초 1회만 수행됩니다.
     이후 BlueprintStorage()를 다시 호출해도 __init__이 재실행되지 않습니다.
     """
-    _instance = None
-
-    # ── 싱글턴 ────────────────────────────────────────
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
 
     def __init__(self, app_name: str = utility.get_app_name(), filename: str = "request_info.json"):
         # 최초 1회만 초기화
@@ -342,7 +351,7 @@ def get_spider_mode(blueprint: dict):
 # ══════════════════════════════════════════════════════
 #  CUSTOM MODULE STORAGE
 # ══════════════════════════════════════════════════════
-class CustomModuleStorage:
+class CustomModuleStorage(_LazyInitSingleton):
     """
     seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을 로드하는 싱글턴.
 
@@ -367,15 +376,7 @@ class CustomModuleStorage:
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
     반영됩니다.
     """
-    _instance = None
     _KINDS = ("render", "login", "refine")
-
-    # ── 싱글턴 ────────────────────────────────────────
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
 
     def __init__(self, app_name: str = utility.get_app_name()):
         # 최초 1회만 초기화

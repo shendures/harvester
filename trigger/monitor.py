@@ -22,11 +22,38 @@ from style import TagButton, Divider, apply_render_safety_limits
 from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 from .common import (
-    parts, BG_PRIMARY, BG_SECONDARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
+    parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
-    _build_collect_settings_fields,
+    _build_collect_settings_fields, _default_dialog_qss,
 )
+
+
+def _make_cell_item(val) -> QTableWidgetItem:
+    """값이 숫자면 DisplayRole로, 아니면 텍스트로 QTableWidgetItem을 만든다
+    (숫자는 정렬 시 문자열이 아닌 값으로 비교되도록 setData를 사용).
+    전경색/배경색은 호출 측이 필요에 따라 이어서 설정한다."""
+    item = QTableWidgetItem()
+    if isinstance(val, (int, float)):
+        item.setData(Qt.ItemDataRole.DisplayRole, val)
+    else:
+        item.setText(str(val) if val is not None else "—")
+    return item
+
+
+def _next_available_name(base_name: str, suffix_fmt: str, exists) -> str:
+    """base_name이 이미 존재하면(exists) suffix_fmt(예: "{base} ({count})")로
+    접미사를 붙여가며 존재하지 않는 이름을 찾을 때까지 반복합니다.
+    CSV/JSON 파일명, DB 테이블명의 "새로 만들기(중복 회피)" 저장 경로가 공유합니다."""
+    if not exists(base_name):
+        return base_name
+    count = 1
+    while True:
+        candidate = suffix_fmt.format(base=base_name, count=count)
+        if not exists(candidate):
+            return candidate
+        count += 1
+
 
 class MonitorPageTriggers:
     """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
@@ -76,11 +103,7 @@ class MonitorPageTriggers:
 
             for col_idx, col_name in enumerate(columns, start=1):
                 val = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 if row_bg.alpha() > 0:
                     item.setBackground(row_bg)
@@ -347,13 +370,7 @@ class MonitorPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("제외 필드 선택")
         dlg.setFixedWidth(420)
-        dlg.setStyleSheet(f"""
-            QDialog {{
-                background:{BG_SECONDARY};
-                border:1px solid {BORDER};
-                border-radius:10px;
-            }}
-        """)
+        dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
@@ -436,11 +453,7 @@ class MonitorPageTriggers:
             self.refined_table.setItem(row_idx, 0, no_item)
             for col_idx, col_name in enumerate(columns, start=1):
                 val = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 self.refined_table.setItem(row_idx, col_idx, item)
         self.refined_table.setSortingEnabled(True)
@@ -484,9 +497,6 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
-            if is_deleted:
-                # no_item.setBackground(CLR_DEL_BG)
-                pass
             self.cmp_raw_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(columns, start=1):
@@ -495,7 +505,6 @@ class MonitorPageTriggers:
                 item.setText(str(val) if val is not None else "—")
                 if is_deleted:
                     item.setForeground(CLR_DEL_FG)
-                    # item.setBackground(CLR_DEL_BG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_raw_table.setItem(row_idx, col_idx, item)
@@ -514,21 +523,13 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
-            if is_modified:
-                # no_item.setBackground(CLR_REF_BG)
-                pass
             self.cmp_ref_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(ref_columns, start=1):
                 val  = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 if is_modified:
                     item.setForeground(CLR_REF_FG)
-                    # item.setBackground(CLR_REF_BG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
@@ -637,13 +638,7 @@ class MonitorPageTriggers:
         # 호출) 폭을 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px
         # 그대로.
         dlg.setFixedWidth(680 if (collect is not None or auth_page is not None) else 500)
-        dlg.setStyleSheet(f"""
-            QDialog {{
-                background:{BG_SECONDARY};
-                border:1px solid {BORDER};
-                border-radius:10px;
-            }}
-        """)
+        dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
@@ -984,15 +979,10 @@ class MonitorPageTriggers:
                 if file_format == "CSV":
                     delimiter = extract_cfg["file"]["file_delimiter"]
                     if save_type is None:
-                        final_file_name = file_name
-                        if os.path.exists(os.path.join(file_path, f"{file_name}.csv")):
-                            count = 1
-                            while True:
-                                new_file_name = f"{file_name} ({count})"
-                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
-                                    break
-                                count += 1
-                            final_file_name = new_file_name
+                        final_file_name = _next_available_name(
+                            file_name, "{base} ({count})",
+                            lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
+                        )
                         with open(os.path.join(file_path, f"{final_file_name}.csv"),
                                   mode='w', encoding='utf-8-sig', newline='') as f:
                             writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
@@ -1070,15 +1060,10 @@ class MonitorPageTriggers:
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.csv")
         if save_type == "new":
-            final_file_name = file_name
-            if os.path.exists(full_path):
-                count = 1
-                while True:
-                    new_file_name = f"{file_name} ({count})"
-                    if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
-                        break
-                    count += 1
-                final_file_name = new_file_name
+            final_file_name = _next_available_name(
+                file_name, "{base} ({count})",
+                lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
+            )
             full_path = os.path.join(file_path, f"{final_file_name}.csv")
             mode, write_header = 'w', True
         elif save_type == "overwrite":
@@ -1096,13 +1081,11 @@ class MonitorPageTriggers:
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.json")
         if save_type == "new" and os.path.exists(full_path):
-            count = 1
-            while True:
-                candidate = os.path.join(file_path, f"{file_name} ({count}).json")
-                if not os.path.exists(candidate):
-                    break
-                count += 1
-            full_path = candidate
+            final_file_name = _next_available_name(
+                file_name, "{base} ({count})",
+                lambda name: os.path.exists(os.path.join(file_path, f"{name}.json")),
+            )
+            full_path = os.path.join(file_path, f"{final_file_name}.json")
             out_data = data
         elif save_type == "append" and os.path.exists(full_path):
             try:
@@ -1130,12 +1113,13 @@ class MonitorPageTriggers:
         elif save_type == "append":
             db_conn.save_db(db_info, data, mode='append')
         else:  # "new" — 기존 테이블은 건드리지 않고 이름에 접미사를 붙여 새로 생성
+            base_name = db_info["save_data_nm"]
+            final_name = _next_available_name(
+                base_name, "{base}_{count}",
+                lambda name: db_conn._check_db_table_exists({**db_info, "save_data_nm": name}),
+            )
             target = dict(db_info)
-            base_name = target["save_data_nm"]
-            count = 1
-            while db_conn._check_db_table_exists(target):
-                target["save_data_nm"] = f"{base_name}_{count}"
-                count += 1
-            if target["save_data_nm"] != base_name and lm:
-                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{target['save_data_nm']}'(으)로 새로 생성합니다.")
+            target["save_data_nm"] = final_name
+            if final_name != base_name and lm:
+                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{final_name}'(으)로 새로 생성합니다.")
             db_conn.save_db(target, data, mode='overwrite')

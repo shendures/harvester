@@ -10,7 +10,7 @@ from worker import MultiprocessWorker
 from conf import BlueprintStorage
 
 from .common import (
-    store, ACCENT_LIGHT, TEXT_SECONDARY, GREEN, AMBER, RED, SCHEDULED_REFINE_RULES,
+    store, TEXT_SECONDARY, LOG_LEVEL_COLORS, SCHEDULED_REFINE_RULES,
     _apply_task_settings, _reset_pages, _show_no_data_dialog, _stop_worker_if_running,
     _after_delay_unless_cancelled,
     NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
@@ -275,16 +275,9 @@ class MainWindowTriggersSingle:
         self.dashboard.prog_lbl.setText("대기 중")
 
     # ── 하단 상태바 슬롯 ─────────────────────────────
-    _STATUS_COLORS = {
-        "ok":   GREEN,
-        "err":  RED,
-        "warn": AMBER,
-        "info": ACCENT_LIGHT,
-    }
-
     def _update_status_bar(self, level: str, message: str):
         """last_log 시그널 수신 — 하단 상태바에 최신 로그 한 줄 표시"""
-        color = self._STATUS_COLORS.get(level, TEXT_SECONDARY)
+        color = LOG_LEVEL_COLORS.get(level, TEXT_SECONDARY)
         tag   = f"[{level.upper():4s}]"
         self.status_level.setText(tag)
         self.status_level.setStyleSheet(

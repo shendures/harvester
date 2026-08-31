@@ -41,6 +41,10 @@ PURPLE        = theme.PURPLE
 # 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
 VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 
+# 로그 레벨("ok"/"err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
+# 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
+LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
+
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
@@ -148,6 +152,17 @@ def _reset_pages(dashboard, monitor_page) -> None:
         dashboard._reset_dashboard()
     if monitor_page is not None:
         monitor_page._reset_monitor_page()
+
+
+def _default_dialog_qss() -> str:
+    """앱 전역에서 반복 사용되는 QDialog 스타일시트 (여러 다이얼로그에 그대로 복사돼 있던 블록)"""
+    return f"""
+        QDialog {{
+            background:{BG_SECONDARY};
+            border:1px solid {BORDER};
+            border-radius:10px;
+        }}
+    """
 
 
 def _default_msgbox_qss(label_font_size: int = 12) -> str:
@@ -465,19 +480,21 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
 def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:
     """TEST CONNECTION 버튼 클릭 시 공통 DB 연결 테스트 로직을 수행한다
     (출력 설정 / 스케줄 등록 다이얼로그에서 통째로 복제돼 있던 로직을 통합)."""
+    def _set_result(text: str, color: str) -> None:
+        test_result_lbl.setText(text)
+        test_result_lbl.setStyleSheet(f"color:{color}; font-size:11px;")
+
     def _test_conn():
         host = widgets["host"].text().strip() or "localhost"
         try:
             port = int(widgets["port"].text().strip())
         except ValueError:
-            test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
-            test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            _set_result("⚠ 포트 번호가 올바르지 않습니다", AMBER)
             _show_db_conn_fail_dialog(
                 parent_dialog, "포트 번호에 숫자가 아닌 값이 입력되어 있습니다.\n올바른 포트 번호를 입력하세요."
             )
             return
-        test_result_lbl.setText("⏳ 연결 중...")
-        test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        _set_result("⏳ 연결 중...", TEXT_MUTED)
         test_btn.setEnabled(False)
         QApplication.processEvents()
         info = {
@@ -489,27 +506,22 @@ def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog
         try:
             ok, reason = db_conn._check_db_connect_info(info)
             if ok:
-                test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
-                test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
+                _set_result(f"✅ {host}:{port} 연결 성공", GREEN)
             else:
-                test_result_lbl.setText("❌ 연결 실패")
-                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _set_result("❌ 연결 실패", RED)
                 _show_db_conn_fail_dialog(parent_dialog, reason)
         except ImportError:
             try:
                 with socket.create_connection((host, port), timeout=3):
-                    test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
-                    test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+                    _set_result(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)", AMBER)
             except OSError as e:
-                test_result_lbl.setText("❌ 연결 실패")
-                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _set_result("❌ 연결 실패", RED)
                 _show_db_conn_fail_dialog(
                     parent_dialog,
                     f"DB 드라이버가 설치되어 있지 않아 소켓 연결을 시도했으나 실패했습니다.\n\n원인: {e}"
                 )
         except Exception as e:
-            test_result_lbl.setText("❌ 연결 실패")
-            test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            _set_result("❌ 연결 실패", RED)
             _show_db_conn_fail_dialog(parent_dialog, str(e))
         finally:
             test_btn.setEnabled(True)

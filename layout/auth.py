@@ -2,16 +2,16 @@
 # 인증 관리 페이지 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
+    QWidget, QHBoxLayout,
     QCheckBox, QLineEdit, QLabel, QPushButton, QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from trigger import AuthManagerPageTriggers
-from style import Divider, EqualSpacingTable
+from style import Divider
 from .common import (
-    parts,
+    parts, build_scroll_body, make_header_table,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BG_HOVER,
     ACCENT, ACCENT_HOVER, GREEN, AMBER, RED, BLUE, PURPLE,
 )
@@ -27,19 +27,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
     def _build(self):
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(14)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+        bl = build_scroll_body(self)
 
         # ── 전역 인증 옵션 (탭 위 고정) ─────────────────
         global_w, global_l = parts.card_widget("전역 인증 옵션")
@@ -136,15 +124,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
     def _make_cred_table(self):
         headers = ["이름", "타입", "키 (마스킹)", "만료일", "상태", "액션"]
-        t = EqualSpacingTable(
-            parent=self,
-            row_height=36,
-            col_padding=8,
-            hscroll_handle=50,
-        )
-        t.setColumnCount(len(headers))
-        t.setHorizontalHeaderLabels(headers)
-        return t
+        return make_header_table(self, headers)
 
     def _insert_table_row(self, data: dict):
 
@@ -181,7 +161,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
         # 삭제 버튼
         del_btn = QPushButton("삭제")
-        del_btn.setFixedHeight(24)
+        del_btn.setFixedHeight(28)
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.setStyleSheet(f"""
             QPushButton{{background:transparent;color:{RED};border:1px solid {RED};

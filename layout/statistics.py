@@ -1,12 +1,12 @@
 # layout/statistics.py
 # 통계 분석 페이지 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout
 from PyQt6.QtCore import QTimer
 
 from trigger import StatisticsPageTriggers
 from style import StatCard, EqualSpacingTable
-from .common import parts, BG_SECONDARY, BORDER, GREEN, BLUE, PURPLE
+from .common import parts, build_scroll_body, BG_SECONDARY, BORDER, GREEN, BLUE, PURPLE
 from .charts import BarChart, LineChart, DonutChart
 
 
@@ -20,19 +20,7 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         self._timer.start(3000)
 
     def _build(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(14)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+        bl = build_scroll_body(self)
 
         # ── Row 1: KPI cards ──────────────────────
         kpi_row = QHBoxLayout()

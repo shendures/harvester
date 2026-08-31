@@ -5,7 +5,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from conf import BlueprintStorage
 from style import EqualSpacingTable
-from ..common import parts
+from ..common import parts, row_of_seq
 from .blueprint_list import BLUEPRINT_STATUS_LABELS
 
 
@@ -102,11 +102,7 @@ class MonitorTargetListPage(QWidget):
                 item.setSelected(shaded)
 
     def _row_of_seq(self, seq_no) -> int:
-        for row in range(self.table.rowCount()):
-            id_item = self.table.item(row, self._SEQ_NO_COL)
-            if id_item and id_item.data(Qt.ItemDataRole.UserRole) == seq_no:
-                return row
-        return -1
+        return row_of_seq(self.table, seq_no, self._SEQ_NO_COL)
 
     def _on_item_clicked(self, item: QTableWidgetItem) -> None:
         id_item = self.table.item(item.row(), self._SEQ_NO_COL)

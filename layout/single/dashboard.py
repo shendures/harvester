@@ -4,7 +4,6 @@ import customized_settings
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar,
-    QScrollArea,
 )
 from PyQt6.QtCore import Qt
 
@@ -13,14 +12,25 @@ from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
 from style import StatCard, EqualSpacingTable, apply_render_safety_limits
 from ..common import (
-    parts,
+    parts, build_scroll_body,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, RED, GREEN,
+    TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
 )
-from .common import ActiveBlueprintMixin
+from .common import ActiveBlueprintMixin, count_badge_qss
 
 
 class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
+
+    # ── 단계 표시기("작업 진행 상태" 카드) 치수 ──────────────────────
+    # 이 표시기는 카드 안에서만 쓰이는 전용 위젯이라 다른 화면과 공유하는
+    # 여백 규칙이 없다 — 카드 폭 안에서 4단계가 보기 좋게 퍼지도록 튜닝된
+    # 값이므로, 매직 넘버로 흩어놓지 않고 이름 붙여 한 곳에서 관리한다.
+    _STEP_CIRCLE_SIZE = 34                 # 원형 단계 번호 라벨 지름
+    _STEP_ROW_H_MARGIN = 60                # 좌우 여백 — 카드 폭 대비 4단계를 중앙에 모아 배치
+    _STEP_ROW_V_MARGIN = 20                # 상하 여백
+    _STEP_LINE_V_OFFSET = 25               # 연결선을 원 중심 높이로 끌어올리는 하단 여백
+    # (원 34px + 아래 텍스트 라벨 높이만큼 행이 원보다 커서, 연결선을 상단
+    # 정렬 그대로 두면 원의 위쪽에 붙어버린다. 원의 시각적 중심에 맞춘 값.)
 
     def __init__(self):
         super().__init__()
@@ -38,20 +48,8 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
 
     def _build(self):
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
+        bl = build_scroll_body(self, spacing=12)
         self._configure_body_margins(bl)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
 
         # Config row
         cfg = QHBoxLayout()
@@ -61,14 +59,17 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         stw, stl = parts.card_widget("작업 진행 상태")
         step_container = QWidget()
         step_layout = QHBoxLayout(step_container)
-        step_layout.setContentsMargins(60, 20, 60, 20)  # 좌우 마진 조정
+        step_layout.setContentsMargins(
+            self._STEP_ROW_H_MARGIN, self._STEP_ROW_V_MARGIN,
+            self._STEP_ROW_H_MARGIN, self._STEP_ROW_V_MARGIN,
+        )
 
         steps = ["수집 대기", "수집 세팅", "데이터 수집", "결과물 추출"]
 
         for i, text in enumerate(steps):
             # 1. 단계 숫자 원형 레이블
             circle = QLabel(str(i + 1))
-            circle.setFixedSize(34, 34)  # 원 크기
+            circle.setFixedSize(self._STEP_CIRCLE_SIZE, self._STEP_CIRCLE_SIZE)
             circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
             # 초기 스타일 (대기 상태)
             circle.setStyleSheet(f"""
@@ -94,7 +95,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 line = QFrame()
                 line.setFrameShape(QFrame.Shape.HLine)
                 line.setFixedHeight(2)
-                line.setStyleSheet(f"background: {BORDER}; margin-bottom: 25px;")
+                line.setStyleSheet(f"background: {BORDER}; margin-bottom: {self._STEP_LINE_V_OFFSET}px;")
                 step_layout.addWidget(line, 1)  # 라인이 공간을 채우도록 가중치 1 부여
 
         stl.addWidget(step_container)
@@ -161,8 +162,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         mon_tbl_ctrl = QHBoxLayout()
         mon_tbl_ctrl.addStretch()
         self.mon_row_count_lbl = QLabel("0 rows")
-        self.mon_row_count_lbl.setStyleSheet(
-            f"color:{ACCENT_LIGHT}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
+        self.mon_row_count_lbl.setStyleSheet(count_badge_qss(ACCENT_LIGHT))
         mon_tbl_ctrl.addWidget(self.mon_row_count_lbl)
         mon_tbl_ctrl.addSpacing(10)
         mon_exp_csv = parts.outline_btn("내보내기")

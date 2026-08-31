@@ -2,14 +2,17 @@
 # 세션(프록시) 설정 페이지 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QCheckBox, QSpinBox, QTableWidgetItem,
+    QWidget, QHBoxLayout, QCheckBox, QSpinBox, QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from trigger import SessionSettingsPageTriggers
-from style import EqualSpacingTable, NoFocusDelegate
-from .common import theme, parts, TEXT_SECONDARY, TEXT_PRIMARY, ACCENT, ACCENT_HOVER, BLUE, PURPLE, AMBER
+from style import NoFocusDelegate
+from .common import (
+    theme, parts, build_scroll_body, make_header_table,
+    TEXT_SECONDARY, TEXT_PRIMARY, ACCENT, ACCENT_HOVER, BLUE, PURPLE, AMBER,
+)
 
 
 class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
@@ -21,20 +24,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
     def _build(self):
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        # ── 스크롤 바디 ──────────────────────────────────
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(14)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+        bl = build_scroll_body(self)
 
         # ── 전역 옵션 카드 ──────────────────────────────
         gw1, gl1 = parts.card_widget("세션 설정")
@@ -67,7 +57,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         self._allow_ip_cnts.setRange(1, 15)
         self._allow_ip_cnts.setValue(10)
         row1.addWidget(self._allow_ip_cnts)
-        row1.addSpacing(20)
+        row1.addSpacing(16)
         row1.addWidget(parts.make_label("MAX RETRY", TEXT_SECONDARY, 12))
         self._retry_spin = QSpinBox()
         self._retry_spin.setRange(1, 20)
@@ -117,14 +107,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
     def _make_proxy_table(self):
         headers = ["NO", "프로토콜", "호스트", "포트", "상태"]
-        t = EqualSpacingTable(
-            parent=self,
-            row_height=36,
-            col_padding=8,
-            hscroll_handle=50,
-        )
-        t.setColumnCount(len(headers))
-        t.setHorizontalHeaderLabels(headers)
+        t = make_header_table(self, headers)
         t.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         t.customContextMenuRequested.connect(self._proxy_table_context_menu)
         # itemChanged: 체크박스 직접 클릭 시 상태 동기화

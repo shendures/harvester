@@ -44,10 +44,6 @@ TELNETCONSOLE_ENABLED = False
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
-#SPIDER_MIDDLEWARES = {
-#    "middlewares.DonasSpiderMiddleware": 543,
-#}
-
 SPIDER_MIDDLEWARES = {
     # delay_until이 걸린 요청을 지연 재스케줄 (process_spider_output 훅이므로 SPIDER_MIDDLEWARES에 등록)
     'middlewares.DelaySchedulerMiddleware': 500,
@@ -71,10 +67,7 @@ DOWNLOADER_MIDDLEWARES = {
     # # 4. Scrapy 기본 User-Agent는 무시 (RandomUserAgentMiddleware를 사용하므로)
     # "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
 
-    # 5. 사용자 정의 미들웨어
-    "middlewares.DonasDownloaderMiddleware": None,
-
-    # # 6. 쿠키 설정 미들웨어
+    # # 5. 쿠키 설정 미들웨어
     # "middlewares.RandomCookieMiddleware": None,  # 650
 
     # requests와 response간의 Latency 측정

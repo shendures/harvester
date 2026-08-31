@@ -4,8 +4,11 @@
 # 서로를 직접 import하지 않는다(단, multi는 single을 상속 목적으로 import).
 
 from conf import DataStore
-from style import THEME, Parts
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSizePolicy, QApplication
+from style import THEME, Parts, EqualSpacingTable
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
+)
 
 store = DataStore()
 
@@ -47,6 +50,50 @@ def _blueprint_auth_method(info: dict):
 def _blueprint_requires_auth(info: dict) -> bool:
     """이 블루프린트가 인증 관리 화면을 필요로 하는지 판단합니다."""
     return _blueprint_auth_method(info) is not None
+
+
+def build_scroll_body(widget, spacing: int = 14) -> QVBoxLayout:
+    """widget에 스크롤 가능한 바디를 채우는 공통 뼈대를 만든다.
+    반환된 QVBoxLayout(패딩 14, 간격 spacing)에 실제 콘텐츠를 addWidget/addLayout한다.
+    auth/session/scheduler/statistics 페이지가 공유한다."""
+    root = QVBoxLayout(widget)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(0)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setStyleSheet("QScrollArea{border:none;}")
+    body = QWidget()
+    bl = QVBoxLayout(body)
+    bl.setContentsMargins(14, 14, 14, 14)
+    bl.setSpacing(spacing)
+    scroll.setWidget(body)
+    root.addWidget(scroll, 1)
+
+    return bl
+
+
+def make_header_table(parent, headers: list, row_height: int = 36,
+                       col_padding: int = 8, hscroll_handle: int = 50) -> EqualSpacingTable:
+    """헤더 컬럼이 고정된 EqualSpacingTable을 만든다. auth/session 페이지가 공유."""
+    t = EqualSpacingTable(
+        parent=parent, row_height=row_height,
+        col_padding=col_padding, hscroll_handle=hscroll_handle,
+    )
+    t.setColumnCount(len(headers))
+    t.setHorizontalHeaderLabels(headers)
+    return t
+
+
+def row_of_seq(table, seq_no, seq_no_col: int) -> int:
+    """table에서 seq_no_col 컬럼의 UserRole 데이터가 seq_no와 일치하는 행 번호를
+    찾는다(정렬 후에도 안전). 없으면 -1. BlueprintListPage/MonitorTargetListPage가
+    공유한다."""
+    for row in range(table.rowCount()):
+        id_item = table.item(row, seq_no_col)
+        if id_item and id_item.data(Qt.ItemDataRole.UserRole) == seq_no:
+            return row
+    return -1
 
 
 def result_columns_from_blueprint(blueprint_info: dict) -> list:

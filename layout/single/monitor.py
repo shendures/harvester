@@ -4,17 +4,17 @@ import customized_settings
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QScrollArea, QTabWidget, QCheckBox, QMessageBox,
+    QTabWidget, QCheckBox, QMessageBox,
 )
 
 from trigger import MonitorPageTriggers
 from style import StatCard, EqualSpacingTable, build_refine_rule_rows
 from ..common import (
-    parts,
+    parts, build_scroll_body,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
     TEXT_MUTED, TEXT_SECONDARY, GREEN, AMBER, RED,
 )
-from .common import ActiveBlueprintMixin
+from .common import ActiveBlueprintMixin, count_badge_qss
 
 
 class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
@@ -98,17 +98,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     # ── 탭 ① Raw 수집 결과 ────────────────────────────────────────────
     def _build_raw_tab(self):
         raw_widget = QWidget()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
-        scroll.setWidget(body)
-        raw_layout = QVBoxLayout(raw_widget)
-        raw_layout.setContentsMargins(0, 0, 0, 0)
-        raw_layout.addWidget(scroll)
+        bl = build_scroll_body(raw_widget, spacing=12)
 
         # 수집 결과 요약 카드 (4칸)
         sum_card_w, sum_card_l = parts.card_widget("수집 결과 요약")
@@ -135,8 +125,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         tbl_ctrl.addWidget(self.search_box)
 
         self.count_lbl = QLabel("0 rows")
-        self.count_lbl.setStyleSheet(
-            f"color:{ACCENT_LIGHT}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
+        self.count_lbl.setStyleSheet(count_badge_qss(ACCENT_LIGHT))
         tbl_ctrl.addWidget(self.count_lbl)
         tbl_ctrl.addStretch()
 
@@ -169,17 +158,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     # ── 탭 ② 정제 규칙 설정 ──────────────────────────────────────────
     def _build_refine_rules_tab(self):
         rules_widget = QWidget()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
-        scroll.setWidget(body)
-        rules_layout = QVBoxLayout(rules_widget)
-        rules_layout.setContentsMargins(0, 0, 0, 0)
-        rules_layout.addWidget(scroll)
+        bl = build_scroll_body(rules_widget, spacing=12)
 
         # ── 기본 정제 규칙 카드 ──────────────────────────────────────
         rw, rl = parts.card_widget("정제 규칙")
@@ -232,17 +211,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     # ── 탭 ③ 정제 결과 ────────────────────────────────────────────────
     def _build_refined_tab(self):
         refined_widget = QWidget()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
-        scroll.setWidget(body)
-        ref_layout = QVBoxLayout(refined_widget)
-        ref_layout.setContentsMargins(0, 0, 0, 0)
-        ref_layout.addWidget(scroll)
+        bl = build_scroll_body(refined_widget, spacing=12)
 
         # 정제 결과 요약 카드
         ref_sum_w, ref_sum_l = parts.card_widget("정제 결과 요약")
@@ -269,8 +238,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         ref_ctrl.addWidget(self.refined_search_box)
 
         self.refined_count_lbl = QLabel("— rows")
-        self.refined_count_lbl.setStyleSheet(
-            f"color:{GREEN}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
+        self.refined_count_lbl.setStyleSheet(count_badge_qss(GREEN))
         ref_ctrl.addWidget(self.refined_count_lbl)
         ref_ctrl.addStretch()
 
@@ -296,17 +264,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     # ── 탭 ④ Before / After 비교 ─────────────────────────────────────
     def _build_compare_tab(self):
         cmp_widget = QWidget()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;}")
-        body = QWidget()
-        bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
-        bl.setSpacing(12)
-        scroll.setWidget(body)
-        cmp_layout = QVBoxLayout(cmp_widget)
-        cmp_layout.setContentsMargins(0, 0, 0, 0)
-        cmp_layout.addWidget(scroll)
+        bl = build_scroll_body(cmp_widget, spacing=12)
 
         # 정제 요약 카드
         cmp_sum_w, cmp_sum_l = parts.card_widget("정제 요약")
@@ -331,8 +289,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 좌: Raw
         raw_cmp_w, raw_cmp_l = parts.card_widget("Raw 데이터")
         self.cmp_raw_count = QLabel("— rows")
-        self.cmp_raw_count.setStyleSheet(
-            f"color:{AMBER}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
+        self.cmp_raw_count.setStyleSheet(count_badge_qss(AMBER))
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
         raw_cmp_l.addWidget(self.cmp_raw_table)
@@ -341,8 +298,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 우: Refined
         ref_cmp_w, ref_cmp_l = parts.card_widget("정제 데이터")
         self.cmp_ref_count = QLabel("— rows")
-        self.cmp_ref_count.setStyleSheet(
-            f"color:{GREEN}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;")
+        self.cmp_ref_count.setStyleSheet(count_badge_qss(GREEN))
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
         ref_cmp_l.addWidget(self.cmp_ref_table)

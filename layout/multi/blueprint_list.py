@@ -12,7 +12,7 @@ from style import EqualSpacingTable
 from trigger.common import _default_msgbox_qss
 from ..common import (
     parts, theme, RED, BG_HOVER, ACCENT, ACCENT_LIGHT,
-    _blueprint_auth_method, _blueprint_requires_auth,
+    _blueprint_auth_method, _blueprint_requires_auth, row_of_seq,
 )
 from ..auth import AuthManagerPage
 from .dashboard import DashboardPageMulti
@@ -400,11 +400,7 @@ class BlueprintListPage(QWidget):
 
     def _row_of_seq(self, seq_no) -> int:
         """seq_no가 위치한 현재 행 번호를 찾는다(정렬 후에도 안전). 없으면 -1."""
-        for row in range(self.table.rowCount()):
-            id_item = self.table.item(row, self._SEQ_NO_COL)
-            if id_item and id_item.data(Qt.ItemDataRole.UserRole) == seq_no:
-                return row
-        return -1
+        return row_of_seq(self.table, seq_no, self._SEQ_NO_COL)
 
     def _apply_row_shade(self, row: int) -> None:
         """지금 보고 있는 행(_active_view_seq_no)일 때만 음영을 켠다 — 체크박스

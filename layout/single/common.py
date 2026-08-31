@@ -4,10 +4,15 @@
 # 통합하기 위한 ActiveBlueprintMixin.
 
 from conf import BlueprintStorage
-from ..common import result_columns_from_blueprint
+from ..common import result_columns_from_blueprint, BG_HOVER
 
 blueprint = BlueprintStorage()  # 수집 정보 클래스
 request_info = blueprint.read()  # 수집 정보
+
+
+def count_badge_qss(color: str) -> str:
+    """행 수 배지(카운트 라벨) 공통 스타일 — MonitorPageSingle/DashboardPageSingle이 공유."""
+    return f"color:{color}; background:{BG_HOVER}; padding:2px 8px; border-radius:10px; font-size:11px;"
 
 
 class ActiveBlueprintMixin:

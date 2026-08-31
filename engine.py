@@ -15,7 +15,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.remote_connection import RemoteConnection
-from selenium.common.exceptions import NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
@@ -149,23 +148,6 @@ def set_chrome_webdriver(headless=False):
     driver.set_page_load_timeout(SELENIUM_COMMAND_TIMEOUT_SECONDS)
 
     return driver
-
-
-def dismiss_popup(driver, button_text: str) -> bool:
-    """
-    페이지 로드 시 뜨는 공지/이벤트 팝업 등을 닫습니다.
-
-    button_text와 텍스트가 정확히 일치하는 button 요소를 찾아 클릭합니다.
-    팝업이 없어 해당 버튼을 못 찾으면 아무 것도 하지 않습니다.
-
-    Returns:
-        bool — 버튼을 찾아 클릭했으면 True, 없었으면 False.
-    """
-    try:
-        driver.find_element(By.XPATH, f"//button[normalize-space()='{button_text}']").click()
-        return True
-    except NoSuchElementException:
-        return False
 
 
 def check_login_success(driver, login_info, pre_login_url, pre_login_cookie_names) -> bool:
