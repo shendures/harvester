@@ -336,7 +336,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         bundle = self._get_or_create_bundle(seq_no)
         task = BlueprintStorage().get(seq_no)
         _apply_task_settings(
-            task, dashboard_page=bundle.dashboard, session_page=self.session_page,
+            task, collect=bundle.collect_settings, session_page=self.session_page,
             monitor_page=bundle.monitor_page, auth_page=bundle.auth_page,
             job_name=BATCH_JOB,
         )

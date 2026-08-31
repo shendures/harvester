@@ -1,14 +1,15 @@
 # layout/multi/blueprint_list.py
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QMessageBox,
     QScrollArea, QTableWidgetItem, QTableWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from conf import BlueprintStorage
 from style import EqualSpacingTable
-from ..common import parts, _blueprint_auth_method, _blueprint_requires_auth
+from trigger.common import _default_msgbox_qss
+from ..common import parts, RED, BG_HOVER, ACCENT, ACCENT_LIGHT, _blueprint_auth_method, _blueprint_requires_auth
 from ..auth import AuthManagerPage
 from .dashboard import DashboardPageMulti
 from .monitor import MonitorPageMulti
@@ -23,32 +24,67 @@ class BlueprintListPage(QWidget):
     URL·수집 방식·인증 방식 등 상세 정보를 한눈에 비교하는 목록이면서,
     동시에 순차 수집 대상을 고르는 화면이기도 하다.
 
+    수집 실행 트리거는 "전체"/"비전체" 2가지뿐이다(몇 개를 골랐는지는 구분하지
+    않는다 — 1개든 여러 개든 "비전체"로 동일하게 다룬다):
+
     - 선택 컬럼이 아닌 셀 클릭: 그 블루프린트를 활성 블루프린트로 전환한다(화면은
-      이 페이지에 그대로 머무름) → row_selected emit. 이후 우측 상단
-      GlobalToolbarMulti의 "시작" 버튼을 누르면 그 블루프린트가 실행된다. 동시에
-      그 행의 선택 컬럼 체크박스를 토글한다(클릭할 때마다 on/off 반전) — 다른
-      행의 체크 상태에는 영향 없음.
-    - 선택 컬럼: 여러 행을 동시에 체크할 수 있다(행 클릭으로도, 체크박스 직접
-      클릭으로도 토글 가능). 행의 음영(배경 강조)은 Qt의 선택 상태가 아니라 이
-      체크 상태로 직접 구동되어(_set_row_shaded), 체크된 행 여러 개가 동시에
-      음영 처리될 수 있고 체크 해제 즉시 그 행의 음영도 함께 사라진다. 순차
-      수집에 포함할 블루프린트를 체크 → "전체 수집" 클릭 시
-      batch_start_requested emit. "모두 선택"은 현재 전체 체크 여부에 따라
-      전체 선택/전체 해제를 토글한다. 체크 개수가 바뀔 때마다 selection_changed
-      emit → 2개 이상 체크되면 MainWindowMulti가 상단 URL 입력창을 비운다
-      (대상이 하나로 특정되지 않으므로).
+      이 페이지에 그대로 머무름) → row_selected emit. 체크박스는 전혀 건드리지
+      않는다 — "보기"와 "수집 대상 선택"은 완전히 독립된 동작이다(여러 후보를
+      체크해 둔 채 각각을 훑어봐도 선택이 사라지지 않는다).
+    - 선택 컬럼 체크박스를 "직접" 클릭하면 다중 선택이 가능하다(독립 토글) —
+      "비전체" 수집 대상을 고르는 유일한 방법이다.
+    - "설정" 컬럼(⚙): settings_requested(seq_no)를 emit — 그 블루프린트의 "수집
+      설정"(Delay/Threads/Timeout/Retry/Auto Save + 추출 설정 + 인증 관리) 다이얼로그를
+      연다. 화면 전환 없이 현재 페이지 위에 모달로만 뜬다.
+    - "수집" 버튼: 체크된 블루프린트만 순차 실행("비전체"). 체크 0개면 비활성화.
+    - "전체 수집" 버튼: 체크 여부와 무관하게 먼저 모든 행을 체크 상태로 바꾼 뒤
+      테이블의 모든 블루프린트를 순차 실행("전체").
+    - 두 버튼 모두 실행을 시작하면 자기 자신이 "⬛ 중지"로 바뀌고(반대쪽 버튼은
+      혼동을 막기 위해 잠시 비활성화), 자신이 시작한 대상들이 모두 끝나면
+      (set_status로 감지) 원래 라벨로 되돌아온다 — 단일 레이아웃의 "▶ 시작"/
+      "⬛ 중지" 토글(trigger/toolbar.py의 _toggle_run)과 동일한 관례. "중지" 클릭은
+      stop_requested를 emit하고 완료 확인을 기다리지 않고 즉시 원래 라벨로
+      되돌아간다(낙관적 UI).
+    - 행의 음영(배경 강조)은 Qt의 선택 상태가 아니라 체크 상태로 직접
+      구동되며(_set_row_shaded), 체크 개수가 바뀔 때마다 selection_changed emit →
+      2개 이상 체크되면 MainWindowMulti가 상단 URL 입력창을 비운다(대상이 하나로
+      특정되지 않으므로).
     """
 
     row_selected = pyqtSignal(str)
     batch_start_requested = pyqtSignal(list)
+    settings_requested = pyqtSignal(str)   # "설정"(⚙) 버튼 클릭 시 emit(seq_no)
+    stop_requested = pyqtSignal()          # 실행 중이던 [수집]/[전체 수집] 재클릭 시 emit
     selection_changed = pyqtSignal()   # 선택 컬럼 체크 개수가 바뀔 때마다 emit
 
-    _COLUMNS = ["NO", "제목", "URL", "방식", "데이터 형식", "인증", "렌더링", "상태", "선택"]
+    _COLUMNS = ["NO", "제목", "URL", "방식", "데이터 형식", "인증", "렌더링", "상태", "설정", "선택"]
     _SEQ_NO_COL = 0   # seq_no를 Qt.ItemDataRole.UserRole로 보관하는 컬럼 (정렬돼도 유효)
-    _CHECK_COL = 8
+    _CHECK_COL = 9
+
+    # 실행 중 버튼 스타일 — trigger/toolbar.py::_style_run_btn의 "중지" 배색과 동일.
+    _STOP_QSS = f"""
+        QPushButton {{
+            background:#7f1d1d; color:{RED}; border:none; border-radius:6px;
+            padding:6px 14px; font-size:12px; font-weight:bold;
+        }}
+        QPushButton:hover {{ background:#991b1b; }}
+    """
+
+    # "설정"(⚙) 버튼 강조 스타일 — 무채색 outline_btn보다 눈에 띄도록 액센트
+    # 테두리/글자색을 상시 적용하되, 반복되는 컬럼이라 꽉 찬 색상 블록은 피한다.
+    _SETTINGS_BTN_QSS = f"""
+        QPushButton {{
+            background:{BG_HOVER}; color:{ACCENT_LIGHT}; border:1px solid {ACCENT_LIGHT};
+            border-radius:6px; font-size:12px; font-weight:bold;
+        }}
+        QPushButton:hover {{ background:{ACCENT}; color:white; border-color:{ACCENT}; }}
+    """
 
     def __init__(self):
         super().__init__()
+        self._active_run_btn = None        # 실행 중이라 "⬛ 중지"로 바뀐 버튼(없으면 None)
+        self._pending_run_seq_nos = set()  # _active_run_btn이 책임지는, 아직 안 끝난 seq_no
+        self._active_view_seq_no = None    # 마지막으로 클릭(보기)한 블루프린트 — 음영 표시용
         self._build()
         self.refresh()
 
@@ -71,12 +107,13 @@ class BlueprintListPage(QWidget):
 
         ctrl_row = QHBoxLayout()
         ctrl_row.addStretch()
-        self._select_all_btn = parts.outline_btn("모두 선택")
-        self._select_all_btn.clicked.connect(self._toggle_select_all)
-        ctrl_row.addWidget(self._select_all_btn)
+        self._collect_btn = parts.action_btn("수집")
+        self._collect_btn_idle_qss = self._collect_btn.styleSheet()
+        self._collect_btn.clicked.connect(self._on_collect_clicked)
+        ctrl_row.addWidget(self._collect_btn)
         self._batch_btn = parts.action_btn("전체 수집")
-        self._batch_btn.setEnabled(False)
-        self._batch_btn.clicked.connect(self._emit_batch_start)
+        self._batch_btn_idle_qss = self._batch_btn.styleSheet()
+        self._batch_btn.clicked.connect(self._on_collect_all_clicked)
         ctrl_row.addWidget(self._batch_btn)
         tc.addLayout(ctrl_row)
 
@@ -102,6 +139,7 @@ class BlueprintListPage(QWidget):
             conditions = bp.get("conditions") or {}
             auth_method = _blueprint_auth_method(bp) or "-"
             rendering = "Y" if conditions.get("rendering") else "N"
+            seq_no = bp.get("seq_no")
 
             row = self.table.rowCount()
             self.table.insertRow(row)
@@ -123,8 +161,16 @@ class BlueprintListPage(QWidget):
                 if col == self._SEQ_NO_COL:
                     # 정렬 후에도 item.row()로 항상 올바른 seq_no를 찾을 수 있도록
                     # 실제 식별자를 UserRole에 보관 (표시 텍스트인 NO와는 별개).
-                    item.setData(Qt.ItemDataRole.UserRole, bp.get("seq_no"))
+                    item.setData(Qt.ItemDataRole.UserRole, seq_no)
                 self.table.setItem(row, col, item)
+
+            # "설정" 컬럼 — 체크박스와 동일하게 셀 가운데에 아이콘 전용 버튼을
+            # 배치한다. seq_no를 클로저로 직접 캡처해 동작하므로(체크박스와 달리)
+            # 정렬로 행 순서가 바뀌어도 재탐색이 필요 없다.
+            settings_wrap, settings_btn = self._make_action_button_cell(
+                "⚙", "수집 설정", lambda _, s=seq_no: self.settings_requested.emit(s))
+            settings_btn.setStyleSheet(self._SETTINGS_BTN_QSS)
+            self.table.setCellWidget(row, self._COLUMNS.index("설정"), settings_wrap)
 
             # 체크박스를 컬럼 가운데 정렬하기 위해 아이템(ItemIsUserCheckable) 대신
             # 실제 QCheckBox를 setCellWidget으로 배치한다 — QAbstractItemView의 체크
@@ -153,11 +199,21 @@ class BlueprintListPage(QWidget):
             self.table.setCellWidget(row, self._CHECK_COL, check_wrap)
 
         self.table.setSortingEnabled(True)
-        self._update_batch_btn()
+        has_rows = self.table.rowCount() > 0
+        self._collect_btn.setEnabled(has_rows)
+        self._batch_btn.setEnabled(has_rows)
+        if self._active_view_seq_no is not None:
+            row = self._row_of_seq(self._active_view_seq_no)
+            if row != -1:
+                self._apply_row_shade(row)
+            else:
+                self._active_view_seq_no = None  # 목록에서 사라진 블루프린트면 추적 해제
         self.selection_changed.emit()   # 재구성으로 선택 개수가 0으로 리셋됐음을 알림
 
     def set_status(self, seq_no, status: str) -> None:
-        """실행 상태를 이 테이블의 상태 컬럼에 반영한다 (idle/running/done)."""
+        """실행 상태를 이 테이블의 상태 컬럼에 반영한다(idle/running/done). 이
+        seq_no가 지금 실행 중인 [수집]/[전체 수집] 버튼이 책임지는 대상이었다면,
+        완료(done/idle) 시 그 버튼을 원래 라벨로 되돌리는 트리거로도 쓰인다."""
         label = BLUEPRINT_STATUS_LABELS.get(status, BLUEPRINT_STATUS_LABELS["idle"])
         for row in range(self.table.rowCount()):
             id_item = self.table.item(row, self._SEQ_NO_COL)
@@ -165,7 +221,30 @@ class BlueprintListPage(QWidget):
                 status_item = self.table.item(row, self._COLUMNS.index("상태"))
                 if status_item is not None:
                     status_item.setText(label)
-                return
+                break
+
+        if status in ("done", "idle"):
+            self._pending_run_seq_nos.discard(seq_no)
+            if self._active_run_btn is not None and not self._pending_run_seq_nos:
+                self._revert_active_run_btn()
+
+    def _make_action_button_cell(self, text: str, tooltip: str, on_click) -> tuple:
+        """아이콘 전용 버튼(▶/⚙)을 체크박스와 동일한 방식(투명 배경 래퍼 + 좌우
+        stretch로 중앙 정렬)으로 셀에 배치할 수 있도록 (래퍼 위젯, 버튼) 쌍을 만든다."""
+        btn = parts.outline_btn(text)
+        btn.setFixedSize(30, 24)
+        btn.setToolTip(tooltip)
+        btn.clicked.connect(on_click)
+
+        wrap = QWidget()
+        wrap.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        wrap.setStyleSheet("QWidget { background: transparent; border: none; }")
+        wrap_layout = QHBoxLayout(wrap)
+        wrap_layout.setContentsMargins(0, 0, 0, 0)
+        wrap_layout.addStretch()
+        wrap_layout.addWidget(btn)
+        wrap_layout.addStretch()
+        return wrap, btn
 
     def _checkbox_at(self, row: int) -> QCheckBox | None:
         """선택 컬럼 셀 위젯(래퍼) 안의 실제 QCheckBox를 반환한다."""
@@ -190,34 +269,91 @@ class BlueprintListPage(QWidget):
                     result.append(id_item.data(Qt.ItemDataRole.UserRole))
         return result
 
-    def _toggle_select_all(self) -> None:
-        """현재 전체가 체크된 상태면 전체 해제, 아니면 전체 선택."""
-        row_count = self.table.rowCount()
-        if row_count == 0:
+    def _warn_no_selection(self) -> None:
+        """"수집" 클릭 시 체크된 대상이 없으면 안내 — 앱 전역에서 반복 쓰이는
+        다크 테마 QMessageBox 스타일(_default_msgbox_qss)을 그대로 재사용한다."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("수집 대상 없음")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setText("수집 대상을 선택한 뒤 수집을 진행해 주세요.")
+        msg.setStyleSheet(_default_msgbox_qss())
+        msg.exec()
+
+    def _on_collect_clicked(self) -> None:
+        """"수집" 버튼 — 평소엔 체크된 것만 실행("비전체"), 자기 자신이 실행 중
+        (="⬛ 중지" 상태)일 땐 같은 버튼이 중지 역할을 한다(trigger/toolbar.py의
+        _toggle_run과 동일한 토글 패턴). 체크된 게 없으면 막는 대신(비활성화)
+        선택을 안내한다 — 버튼은 항상 눌러볼 수 있게 열어둔다."""
+        if self._active_run_btn is self._collect_btn:
+            self.stop_requested.emit()
+            self._revert_active_run_btn()
             return
-        checkboxes = [self._checkbox_at(row) for row in range(row_count)]
-        all_checked = all(cb.isChecked() for cb in checkboxes if cb)
-        new_state = not all_checked
-        for cb in checkboxes:
-            if cb:
-                cb.setChecked(new_state)
+        seq_nos = self.checked_seq_nos()
+        if not seq_nos:
+            self._warn_no_selection()
+            return
+        self._activate_run_btn(self._collect_btn, seq_nos)
+        self.batch_start_requested.emit(seq_nos)
 
-    def _update_batch_btn(self) -> None:
-        self._batch_btn.setEnabled(len(self.checked_seq_nos()) > 0)
+    def _on_collect_all_clicked(self) -> None:
+        """"전체 수집" 버튼 — 평소엔 체크 여부와 무관하게 먼저 모든 행을 체크
+        상태로 바꾼 뒤("전체가 선택됨"을 화면에 반영) 테이블 전체를 실행("전체").
+        자기 자신이 실행 중일 땐 중지 역할."""
+        if self._active_run_btn is self._batch_btn:
+            self.stop_requested.emit()
+            self._revert_active_run_btn()
+            return
+        all_seq_nos = []
+        for row in range(self.table.rowCount()):
+            checkbox = self._checkbox_at(row)
+            if checkbox:
+                checkbox.setChecked(True)
+            id_item = self.table.item(row, self._SEQ_NO_COL)
+            if id_item:
+                all_seq_nos.append(id_item.data(Qt.ItemDataRole.UserRole))
+        self._activate_run_btn(self._batch_btn, all_seq_nos)
+        self.batch_start_requested.emit(all_seq_nos)
 
-    def _emit_batch_start(self) -> None:
-        self.batch_start_requested.emit(self.checked_seq_nos())
+    def _activate_run_btn(self, btn, seq_nos: list) -> None:
+        """실행을 시작한 버튼을 "⬛ 중지" 상태로 바꾸고, 반대쪽 버튼은 혼동을
+        막기 위해 잠시 비활성화한다. seq_nos에 대한 완료 소식이 모두 도착하면
+        (set_status) 자동으로 원래대로 되돌아간다."""
+        self._active_run_btn = btn
+        self._pending_run_seq_nos = set(seq_nos)
+        other = self._batch_btn if btn is self._collect_btn else self._collect_btn
+        other.setEnabled(False)
+        btn.setText("⬛  중지")
+        btn.setStyleSheet(self._STOP_QSS)
+
+    def _revert_active_run_btn(self) -> None:
+        """실행 중이던 버튼을 원래 라벨/스타일로 되돌린다 — 배치가 자연 종료됐거나
+        (set_status로 감지) 사용자가 직접 "중지"를 눌렀을 때(즉시, 낙관적으로) 호출."""
+        btn = self._active_run_btn
+        if btn is None:
+            return
+        self._active_run_btn = None
+        self._pending_run_seq_nos = set()
+        if btn is self._collect_btn:
+            btn.setText("수집")
+            btn.setStyleSheet(self._collect_btn_idle_qss)
+        else:
+            btn.setText("전체 수집")
+            btn.setStyleSheet(self._batch_btn_idle_qss)
+        has_rows = self.table.rowCount() > 0
+        self._collect_btn.setEnabled(has_rows)
+        self._batch_btn.setEnabled(has_rows)
 
     def _set_row_shaded(self, row: int, shaded: bool) -> None:
         """
-        체크박스 상태에 맞춰 그 행 전체(선택 컬럼 포함)의 배경 음영을 켜거나 끈다.
+        체크 또는 열람 상태에 맞춰 그 행 전체(선택 컬럼 포함)의 배경 음영을
+        켜거나 끈다(_apply_row_shade가 두 상태를 하나로 합쳐 이 메서드를 호출).
 
         QTableWidgetItem.setBackground()(BackgroundRole)는 이 테이블처럼 QSS에
         ::item 규칙이 걸려 있으면 무시된다 — 대신 앱 전역 QSS에 이미 정의된
         QTableWidget::item:selected 스타일(style.py GLOBAL_QSS)이 확실히 반영되는
-        것을 이용해, Qt의 아이템 selected 상태를 체크 여부로 직접 구동한다.
-        SelectionMode는 NoSelection이라 사용자의 클릭이 이 상태를 직접 바꾸지
-        않고, 오직 이 메서드(=체크박스 상태)만이 selected 여부를 결정한다.
+        것을 이용해, Qt의 아이템 selected 상태를 직접 구동한다. SelectionMode는
+        NoSelection이라 사용자의 클릭이 이 상태를 직접 바꾸지 않고, 오직 이
+        메서드만이 selected 여부를 결정한다.
         """
         for col in range(self._CHECK_COL):
             item = self.table.item(row, col)
@@ -228,10 +364,26 @@ class BlueprintListPage(QWidget):
             bg = self.table.theme.BG_HOVER if shaded else "transparent"
             wrap.setStyleSheet(f"QWidget {{ background: {bg}; border: none; }}")
 
+    def _row_of_seq(self, seq_no) -> int:
+        """seq_no가 위치한 현재 행 번호를 찾는다(정렬 후에도 안전). 없으면 -1."""
+        for row in range(self.table.rowCount()):
+            id_item = self.table.item(row, self._SEQ_NO_COL)
+            if id_item and id_item.data(Qt.ItemDataRole.UserRole) == seq_no:
+                return row
+        return -1
+
+    def _apply_row_shade(self, row: int) -> None:
+        """지금 보고 있는 행(_active_view_seq_no)일 때만 음영을 켠다 — 체크박스
+        선택 여부는 체크 표시 자체로 이미 드러나므로 음영에 영향을 주지 않는다."""
+        id_item = self.table.item(row, self._SEQ_NO_COL)
+        seq_no = id_item.data(Qt.ItemDataRole.UserRole) if id_item else None
+        is_viewing = seq_no is not None and seq_no == self._active_view_seq_no
+        self._set_row_shaded(row, is_viewing)
+
     def _on_check_toggled(self, row: int, checked: bool) -> None:
-        """선택 컬럼 체크박스 상태가 바뀔 때마다 호출 (체크박스 직접 클릭이든, 행 클릭에 의한 토글이든)."""
-        self._set_row_shaded(row, checked)
-        self._update_batch_btn()
+        """선택 컬럼 체크박스 상태가 바뀔 때마다 호출(체크박스 직접 클릭으로만
+        발생 — 행 클릭은 더 이상 체크박스를 건드리지 않는다)."""
+        self._apply_row_shade(row)
         self.selection_changed.emit()
 
     def _on_item_clicked(self, item: QTableWidgetItem) -> None:
@@ -239,25 +391,44 @@ class BlueprintListPage(QWidget):
         # itemClicked가 그 컬럼에 대해선 애초에 발생하지 않는다 — 별도 가드 불필요.
         row = item.row()
 
-        # 클릭한 행의 체크박스를 토글 — 다른 행의 체크 상태는 건드리지 않는다.
-        checkbox = self._checkbox_at(row)
-        if checkbox:
-            checkbox.toggle()
-
+        # 행(체크박스 제외 셀) 클릭은 그 블루프린트를 보여주면서 그 행 전체를
+        # 음영으로 표시한다("지금 보고 있는 행" 피드백) — 체크박스는 전혀
+        # 건드리지 않는다("보기"와 "수집 대상 선택"을 완전히 독립시켜, 여러
+        # 후보를 체크해 둔 채 각각을 훑어봐도 선택이 사라지지 않게 함).
         id_item = self.table.item(row, self._SEQ_NO_COL)
         seq_no = id_item.data(Qt.ItemDataRole.UserRole) if id_item else None
+
+        previous = self._active_view_seq_no
+        self._active_view_seq_no = seq_no
+        if previous and previous != seq_no:
+            prev_row = self._row_of_seq(previous)
+            if prev_row != -1:
+                self._apply_row_shade(prev_row)
+        self._apply_row_shade(row)
+
         if seq_no:
             self.row_selected.emit(seq_no)
 
 
 
 class BlueprintPageBundle:
-    """하나의 블루프린트(seq_no)에 귀속된 Dashboard/Monitor/Auth 페이지 묶음."""
+    """하나의 블루프린트(seq_no)에 귀속된 Dashboard/Monitor/Auth 페이지 묶음.
+
+    collect_settings: "수집 & 저장 설정"(Delay/Threads/Timeout/Retry/Auto Save) 값을
+    보관하는 dict — 다중 대시보드에는 이 카드가 없으므로(요구사항 2), "⚙" 다이얼로그가
+    열릴 때마다 이 dict을 읽고, 적용 시 이 dict에 되써넣는다(monitor_page.output_info
+    ["extract"]와 동일한 패턴). auth_page는 인증 관리 사이드바 페이지로는 더 이상
+    쓰이지 않고(요구사항 3), "⚙" 다이얼로그가 열릴 때만 그 위젯을 다이얼로그에
+    잠깐 얹었다가(reparent) 닫힐 때 다시 떼어내는 방식으로 재사용된다."""
 
     def __init__(self, blueprint_info: dict):
         self.seq_no = blueprint_info.get("seq_no")
         self.dashboard = DashboardPageMulti(blueprint_info)
         self.monitor_page = MonitorPageMulti(blueprint_info)
+        self.collect_settings = {
+            "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
+            "auto_save": True, "auto_save_source": "raw",
+        }
         self.auth_page = (
             AuthManagerPage(
                 _blueprint_auth_method(blueprint_info),

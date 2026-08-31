@@ -14,3 +14,9 @@ class DashboardPageMulti(DashboardPageSingle):
 
     def _active_blueprint_info(self) -> dict:
         return self.blueprint_info
+
+    def _build_collect_settings_card(self, cfg) -> None:
+        """"수집 & 저장 설정" 카드를 만들지 않는다 — 다중 레이아웃은 같은 설정을
+        "수집 목록" 테이블의 "⚙" 버튼이 여는 다이얼로그로 옮겼다(BlueprintPageBundle.
+        collect_settings 참고)."""
+        pass

@@ -4,16 +4,14 @@ import customized_settings
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar,
-    QScrollArea, QCheckBox, QSpinBox,
+    QScrollArea,
 )
 from PyQt6.QtCore import Qt
 
 from conf import get_spider_mode
 from trigger import DashboardPageTriggers
-from style import (
-    StatCard, Divider, EqualSpacingTable, TagButton,
-    BoundNoticeSpinBox, BoundNoticeDoubleSpinBox, apply_render_safety_limits,
-)
+from trigger.common import _build_collect_settings_fields
+from style import StatCard, EqualSpacingTable, apply_render_safety_limits
 from ..common import (
     parts,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
@@ -103,91 +101,8 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
 
         self._update_step_ui(0)  # 초기 실행 시 "수집 대기" 상태로 불이 들어오게 설정
 
-        # card 1
-        c1w, c1 = parts.card_widget("수집 & 저장 설정")
-
-        # Row 1 — 딜레이 / 스레드
-        r1 = QHBoxLayout()
-        r1.setSpacing(8)
-        r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
-        self.delay_spin = BoundNoticeDoubleSpinBox()
-        self.delay_spin.setRange(0.5, 10.0)
-        self.delay_spin.setValue(0.5)
-        self.delay_spin.setSingleStep(0.5)
-        self.delay_spin.setDecimals(1)  # setDecimals : 소수점 자리 수 self.delay_spin.setSuffix("s")
-        self.delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
-        r1.addWidget(self.delay_spin)
-        r1.addSpacing(6)
-        r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
-        self.thread_spin = BoundNoticeSpinBox()
-        self.thread_spin.setRange(1, 16)
-        self.thread_spin.setValue(4)
-        self.thread_spin.setToolTip("병렬 수집 스레드 수")
-        r1.addWidget(self.thread_spin)
-        r1.addSpacing(6)
-        r1.addStretch()
-        c1.addLayout(r1)
-
-        # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전
-        # 상한/하한을 강제한다(spirenderer.py는 더 이상 런타임 보정을 하지 않음).
-        # 상한/하한을 넘으려는 시도는 상시 문구 대신 QToolTip 말풍선으로만 안내한다.
-        if self._get_active_spider_mode() == "html_render":
-            apply_render_safety_limits(
-                self.thread_spin, self.delay_spin,
-                customized_settings.get_render_safety_limits(),
-            )
-
-        # Row 2 — 타임 아웃 / 재시도
-        r2 = QHBoxLayout()
-        r2.setSpacing(8)
-        r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(1, 60)
-        self.timeout_spin.setValue(10)
-        self.timeout_spin.setToolTip("요청 최대 대기 시간")
-        r2.addWidget(self.timeout_spin)
-        r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
-        self.retry_spin = QSpinBox()
-        self.retry_spin.setRange(0, 5)
-        self.retry_spin.setValue(2)
-        self.retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
-        r2.addWidget(self.retry_spin)
-        r2.addSpacing(6)
-        r2.addStretch()
-        c1.addLayout(r2)
-
-        # Row 3 — 자동 저장 (수집 완료 시 결과를 자동으로 저장할지 / 무엇을 저장할지)
-        c1.addSpacing(6)
-        c1.addWidget(Divider())
-        c1.addSpacing(6)
-
-        r3 = QHBoxLayout()
-        r3.setSpacing(8)
-        self.auto_save_chk = QCheckBox("Auto Save")
-        self.auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
-        self.auto_save_chk.setChecked(True)
-        r3.addWidget(self.auto_save_chk)
-        r3.addSpacing(6)
-
-        self.auto_src_raw_btn = TagButton("RAW")
-        self.auto_src_raw_btn.setChecked(True)   # 기본값: customized_settings.get_output_settings()의 auto_save_source="raw"와 동일
-        self.auto_src_ref_btn = TagButton("정제")
-        self.auto_src_ref_btn.setToolTip(
-            "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
-            "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
-        )
-        r3.addWidget(self.auto_src_raw_btn)
-        r3.addWidget(self.auto_src_ref_btn)
-        r3.addStretch()
-        c1.addLayout(r3)
-
-        self.auto_save_chk.toggled.connect(self._on_auto_save_toggled)
-        self.auto_src_raw_btn.clicked.connect(lambda: self._on_auto_save_source_selected(False))
-        self.auto_src_ref_btn.clicked.connect(lambda: self._on_auto_save_source_selected(True))
-        self._on_auto_save_toggled(self.auto_save_chk.isChecked())
-
-        c1w.setFixedWidth(320)
-        cfg.addWidget(c1w, 1)
+        # card 1 — "수집 & 저장 설정"(Delay/Threads/Timeout/Retry/Auto Save)
+        self._build_collect_settings_card(cfg)
         bl.addLayout(cfg)
 
         # ── 프로그레스 바 (작업 진행 상태 ~ 세션 통계 사이) ──────────
@@ -255,6 +170,38 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         mon_tc.addWidget(self.monitor_table)
         bl.addWidget(mon_tcw, 1)
 
+    def _build_collect_settings_card(self, cfg: QHBoxLayout) -> None:
+        """"수집 & 저장 설정" 카드(Delay/Threads/Timeout/Retry/Auto Save) — 위젯
+        구성 자체는 _build_collect_settings_fields()(trigger/common.py)를 재사용한다.
+        DashboardPageMulti는 이 훅을 오버라이드해 카드를 만들지 않는다(다중 레이아웃은
+        같은 설정을 "⚙" 다이얼로그 쪽으로 옮겼으므로 대시보드에는 필요 없음)."""
+        c1w, c1 = parts.card_widget("수집 & 저장 설정")
+
+        content, widgets = _build_collect_settings_fields({
+            "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
+            "auto_save": True, "auto_save_source": "raw",
+        })
+        c1.addWidget(content)
+
+        self.delay_spin       = widgets["delay_spin"]
+        self.thread_spin      = widgets["thread_spin"]
+        self.timeout_spin     = widgets["timeout_spin"]
+        self.retry_spin       = widgets["retry_spin"]
+        self.auto_save_chk    = widgets["auto_save_chk"]
+        self.auto_src_raw_btn = widgets["auto_src_raw_btn"]
+        self.auto_src_ref_btn = widgets["auto_src_ref_btn"]
+
+        # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전
+        # 상한/하한을 강제한다(spirenderer.py는 더 이상 런타임 보정을 하지 않음).
+        # 상한/하한을 넘으려는 시도는 상시 문구 대신 QToolTip 말풍선으로만 안내한다.
+        if self._get_active_spider_mode() == "html_render":
+            apply_render_safety_limits(
+                self.thread_spin, self.delay_spin,
+                customized_settings.get_render_safety_limits(),
+            )
+
+        c1w.setFixedWidth(320)
+        cfg.addWidget(c1w, 1)
 
     # 단계 사이 (선)
     def _update_step_ui(self, step_idx):

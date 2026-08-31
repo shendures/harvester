@@ -91,9 +91,20 @@ class GlobalToolbarTriggers:
 
             request_info = BlueprintStorage().read()
 
+            collect = {
+                "delay": dashboard_page.delay_spin.value(),
+                "threads": dashboard_page.thread_spin.value(),
+                "timeout": dashboard_page.timeout_spin.value(),
+                "retry": dashboard_page.retry_spin.value(),
+                "auto_save": dashboard_page.auto_save_chk.isChecked(),
+                "auto_save_source": (
+                    "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+                ),
+            }
+
             self.task.update(deepcopy(request_info))
             _apply_task_settings(
-                self.task, dashboard_page=dashboard_page, session_page=session_page,
+                self.task, collect=collect, session_page=session_page,
                 monitor_page=monitor_page, auth_page=self.auth_page,
                 job_name="수동 실행",
             )

@@ -62,14 +62,12 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.stats_page = StatisticsPage()       # 3 — 전역 단일
         self.session_page = SessionSettingsPage()  # 4 — 전역 단일
         self.schedule_page.session_page = self.session_page
-        self.auth_slot = QStackedWidget()        # 5 — 블루프린트별 인증 관리
-        # 인증이 없는 블루프린트용 빈 자리 표시 위젯 (index 0)
-        self._auth_placeholder = QWidget()
-        self.auth_slot.addWidget(self._auth_placeholder)
 
-        self.blueprint_list_page = BlueprintListPage()   # 6 — 전역 단일, 목록 전용
+        self.blueprint_list_page = BlueprintListPage()   # 5 — 전역 단일, 목록 전용
         self.blueprint_list_page.row_selected.connect(self._activate_blueprint)
         self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
+        self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
+        self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
         self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
 
         self.stack.addWidget(self.dashboard_slot)       # 0
@@ -77,8 +75,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.stack.addWidget(self.schedule_page)        # 2
         self.stack.addWidget(self.stats_page)           # 3
         self.stack.addWidget(self.session_page)         # 4
-        self.stack.addWidget(self.auth_slot)            # 5
-        self.stack.addWidget(self.blueprint_list_page)  # 6
+        self.stack.addWidget(self.blueprint_list_page)  # 5
 
         self.global_toolbar.set_log_manager(self.log_manager)
 
@@ -106,13 +103,21 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         if seq_no not in self._bundles:
             bundle = BlueprintPageBundle(BlueprintStorage().get(seq_no))
             self._bundles[seq_no] = bundle
-            # 생성 즉시 슬롯에 편입 — 페이지 내부의 self.window() 참조
-            # (예: AuthManagerPage의 log_manager 조회)가 항상 동작하게 한다.
+            # 생성 즉시 슬롯에 편입 — 페이지 내부의 self.window() 참조가 항상
+            # 동작하게 한다. auth_page는 어떤 슬롯에도 마운트하지 않는다 — 더
+            # 이상 별도 화면이 아니라 "⚙" 다이얼로그가 열릴 때만 잠깐 그
+            # 다이얼로그에 얹혔다가 떼어지는 방식으로 쓰인다(_open_blueprint_settings).
             self.dashboard_slot.addWidget(bundle.dashboard)
             self.monitor_slot.addWidget(bundle.monitor_page)
-            if bundle.auth_page is not None:
-                self.auth_slot.addWidget(bundle.auth_page)
         return self._bundles[seq_no]
+
+    def _open_blueprint_settings(self, seq_no) -> None:
+        """"수집 목록" 테이블의 "⚙" 버튼 클릭 — 화면 전환 없이 그 블루프린트의
+        "수집 설정" 다이얼로그(수집 설정 + 추출 설정 + 인증 관리)만 모달로 띄운다."""
+        bundle = self._get_or_create_bundle(seq_no)
+        bundle.monitor_page._open_output_settings_dialog(
+            collect=bundle.collect_settings, auth_page=bundle.auth_page,
+        )
 
     # ── 활성 블루프린트 전환 ───────────────────────────
     def _activate_blueprint(self, seq_no):
@@ -127,15 +132,6 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
 
         self.dashboard_slot.setCurrentWidget(bundle.dashboard)
         self.monitor_slot.setCurrentWidget(bundle.monitor_page)
-        if bundle.auth_page is not None:
-            self.auth_slot.setCurrentWidget(bundle.auth_page)
-        else:
-            self.auth_slot.setCurrentWidget(self._auth_placeholder)
-            # 인증 화면을 보던 중 인증 없는 블루프린트로 전환하면 대시보드로
-            if self.stack.currentIndex() == SidebarMulti.AUTH_NAV_INDEX:
-                self.stack.setCurrentIndex(0)
-                for i, btn in enumerate(self.sidebar._btns):
-                    btn.setChecked(i == 0)
 
         # 상속(단일) 트리거 호환 — "활성 번들"의 페이지를 가리키는 별칭 유지
         self.dashboard = bundle.dashboard
@@ -149,17 +145,6 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         # 수집 목록에서 2개 이상 체크된 상태로 행을 클릭했을 수 있으므로,
         # 방금 위에서 채운 URL을 선택 개수 기준으로 다시 확정한다.
         self._sync_toolbar_url_for_selection()
-        self.global_toolbar.set_pages(
-            dashboard=bundle.dashboard,
-            monitor_page=bundle.monitor_page,
-            session_page=self.session_page,
-            auth_page=bundle.auth_page,
-        )
-        # set_pages()는 None을 무시하므로 인증 없는 블루프린트로 전환 시
-        # 이전 번들의 auth_page가 남지 않도록 직접 재할당한다.
-        self.global_toolbar.auth_page = bundle.auth_page
-
-        self.sidebar.set_auth_visible(bundle.auth_page is not None)
 
     def _sync_toolbar_url_for_selection(self) -> None:
         """

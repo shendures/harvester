@@ -17,13 +17,15 @@ from PyQt6.QtGui import QColor
 import db_conn
 import utility
 import customized_settings
-from style import TagButton, Divider
+from conf import get_spider_mode
+from style import TagButton, Divider, apply_render_safety_limits
 from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 from .common import (
     parts, BG_PRIMARY, BG_SECONDARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+    _build_collect_settings_fields,
 )
 
 class MonitorPageTriggers:
@@ -613,11 +615,26 @@ class MonitorPageTriggers:
         columns = self._get_result_columns()
         self._render_detail(self.result_table, self.detail_lbl, item.row(), columns)
 
-    def _open_output_settings_dialog(self):
-        """출력 대상 / 상세 설정(인라인) / AUTO SAVE Dialog"""
+    def _open_output_settings_dialog(self, *, collect: dict = None, auth_page=None):
+        """출력 대상 / 상세 설정(인라인) / AUTO SAVE Dialog.
+
+        collect: 지정하면(다중 레이아웃 전용) "수집 설정"(Delay/Threads/Timeout/
+            Retry/Auto Save) 섹션을 상단에 추가하고, 다이얼로그 제목도 "수집
+            설정"으로 바뀐다. None이면(단일 레이아웃의 기존 호출) 이 섹션 없이
+            기존과 완전히 동일하게 "추출 설정"만 노출한다.
+        auth_page: 지정하면(다중 레이아웃에서 인증이 필요한 블루프린트) 그
+            AuthManagerPage 위젯을 다이얼로그 하단에 통째로 얹는다 — 열려있는
+            동안만 잠깐 reparent했다가 닫히면 다시 떼어낸다(캐시된 위젯이므로
+            다이얼로그가 파괴될 때 함께 파괴되면 안 된다).
+        """
         dlg = QDialog(self)
-        dlg.setWindowTitle("추출 설정")
-        dlg.setFixedWidth(500)
+        title = "수집 설정" if collect is not None else "추출 설정"
+        dlg.setWindowTitle(title)
+        # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
+        # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
+        # auth_page가 있을 때만(=다중 레이아웃에서 인증이 필요한 블루프린트) 폭을
+        # 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px 그대로.
+        dlg.setFixedWidth(680 if auth_page is not None else 500)
         dlg.setStyleSheet(f"""
             QDialog {{
                 background:{BG_SECONDARY};
@@ -631,12 +648,52 @@ class MonitorPageTriggers:
         vl.setSpacing(0)
 
         title_row = QHBoxLayout()
-        title_row.addWidget(parts.make_label("추출 설정", TEXT_PRIMARY, 14, True))
+        title_row.addWidget(parts.make_label(title, TEXT_PRIMARY, 14, True))
         title_row.addStretch()
         vl.addLayout(title_row)
         vl.addSpacing(10)
         vl.addWidget(Divider())
         vl.addSpacing(14)
+
+        def _boxed(content: QWidget, margins: int = 14) -> QWidget:
+            """"상세 설정" 박스(아래 QStackedWidget#extractStack)와 동일한 프레임
+            (배경/테두리/라운드)으로 다른 섹션의 내용물을 감싼다 — 다이얼로그 안
+            섹션들의 시각적 통일감을 맞추기 위함. objectName으로 선택자를 좁혀서
+            바레 QWidget 선택자가 스타일시트 없는 자식(체크박스 등)까지 테두리를
+            상속시키는 문제를 피한다(아래 #extractStack, blueprint_list.py의
+            체크박스 래퍼와 동일한 관례)."""
+            box = QWidget()
+            box.setObjectName("settingsBox")
+            box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            box.setStyleSheet(f"""
+                QWidget#settingsBox {{
+                    background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;
+                }}
+            """)
+            box_layout = QVBoxLayout(box)
+            box_layout.setContentsMargins(margins, margins, margins, margins)
+            box_layout.addWidget(content)
+            return box
+
+        collect_widgets = None
+        if collect is not None:
+            collect_title = parts.make_label("수집 설정", TEXT_MUTED, 10)
+            collect_title.setStyleSheet(collect_title.styleSheet() + " letter-spacing:1px;")
+            vl.addWidget(collect_title)
+            vl.addSpacing(10)
+
+            collect_content, collect_widgets = _build_collect_settings_fields(collect)
+            if get_spider_mode(self._active_blueprint_info()) == "html_render":
+                apply_render_safety_limits(
+                    collect_widgets["thread_spin"], collect_widgets["delay_spin"],
+                    customized_settings.get_render_safety_limits(),
+                )
+            # "수집 설정" 위젯 자체는 여백 0(단일 대시보드의 parts.card_widget() 카드
+            # 안에 들어갈 때를 기준으로 설계됨) — 박스가 14px 안쪽 여백을 대신 공급한다.
+            vl.addWidget(_boxed(collect_content))
+            vl.addSpacing(14)
+            vl.addWidget(Divider())
+            vl.addSpacing(14)
 
         out_file_btn = TagButton("FILE")
         out_file_btn.setToolTip("로컬 파일로 저장 (CSV / JSON / Excel)")
@@ -760,6 +817,29 @@ class MonitorPageTriggers:
         _on_fmt_changed(fmt_combo.currentText())
 
         vl.addWidget(stack)
+
+        auth_scroll = None
+        auth_body = None
+        if auth_page is not None:
+            vl.addSpacing(16)
+            vl.addWidget(Divider())
+            vl.addSpacing(14)
+            auth_title = parts.make_label("인증 관리", TEXT_MUTED, 10)
+            auth_title.setStyleSheet(auth_title.styleSheet() + " letter-spacing:1px;")
+            vl.addWidget(auth_title)
+            vl.addSpacing(10)
+            # auth_page(AuthManagerPage)는 자체 QScrollArea로 감싸져 있는데(단일
+            # 레이아웃에서 전체 화면 페이지로 쓰일 때를 기준으로 설계됨), 그 QScrollArea를
+            # 통째로 이 다이얼로그의 QVBoxLayout 안에 넣으면 뷰포트가 세로로 충분히
+            # 늘어나지 못해 내용이 작은 창에 스크롤바로 눌려 보인다. QScrollArea 안의
+            # 실제 콘텐츠(body)만 꺼내(takeWidget) 박스에 직접 넣어 "수집 설정"/"상세
+            # 설정"과 동일하게 내용 크기에 맞춰 자연스럽게 펼쳐지도록 한다 — dlg.exec()
+            # 이후 finally에서 auth_scroll.setWidget(auth_body)로 반드시 되돌려 놓아야
+            # AuthManagerPage 내부 구조가 다음 번 열람 때도 온전하다.
+            auth_scroll = auth_page.layout().itemAt(0).widget()
+            auth_body = auth_scroll.takeWidget()
+            vl.addWidget(_boxed(auth_body, margins=0))
+
         vl.addSpacing(16)
         vl.addWidget(Divider())
         vl.addSpacing(12)
@@ -804,9 +884,20 @@ class MonitorPageTriggers:
                     self.output_info["extract"]["db"]["user"]               = db_user
                     self.output_info["extract"]["db"]["password"]           = db_pass
                     self.output_info["extract"]["db"]["save_data_nm"]       = save_data_nm
+
+                if collect_widgets is not None:
+                    collect["delay"]      = collect_widgets["delay_spin"].value()
+                    collect["threads"]    = collect_widgets["thread_spin"].value()
+                    collect["timeout"]    = collect_widgets["timeout_spin"].value()
+                    collect["retry"]      = collect_widgets["retry_spin"].value()
+                    collect["auto_save"]  = collect_widgets["auto_save_chk"].isChecked()
+                    collect["auto_save_source"] = (
+                        "refined" if collect_widgets["auto_src_ref_btn"].isChecked() else "raw"
+                    )
+
                 dlg.accept()
             except Exception as e:
-                QMessageBox.critical(dlg, "설정 저장 오류", f"추출 설정 저장 중 오류가 발생했습니다.\n\n{e}")
+                QMessageBox.critical(dlg, "설정 저장 오류", f"{title} 저장 중 오류가 발생했습니다.\n\n{e}")
 
         apply_btn  = parts.action_btn("적용")
         apply_btn.clicked.connect(_apply_file)
@@ -818,7 +909,16 @@ class MonitorPageTriggers:
 
         update_dialog_size()
         dlg.adjustSize()
-        dlg.exec()
+        try:
+            dlg.exec()
+        finally:
+            if auth_page is not None:
+                # dlg는 이 함수를 벗어나면 곧 파괴되는 임시 객체 — auth_body는
+                # BlueprintPageBundle(auth_page)에 캐시된 채 계속 살아있어야 하므로,
+                # dlg가 파괴되면서 함께 파괴되지 않도록 원래의 auth_scroll로
+                # 되돌려 놓는다(takeWidget()의 짝 — QScrollArea의 내부 참조도
+                # 함께 정리되어 다음 번 열람 때도 온전하다).
+                auth_scroll.setWidget(auth_body)
 
     def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None):
         """

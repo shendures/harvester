@@ -97,6 +97,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             self._login_url.setPlaceholderText("https://example.com/login")
             self._login_url.setToolTip("로그인 폼이 있는 페이지 URL")
             self._login_url.setText(self._login_info.get("loginUrl") or "")
+            self._login_url.setCursorPosition(0)
 
             self._login_id = QLineEdit()
             self._login_id.setPlaceholderText("아이디 / 이메일")
@@ -108,12 +109,14 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             self._login_pw.setText(self._login_info.get("password") or "")
 
             self._login_selector = QLineEdit()
-            self._login_selector.setPlaceholderText("예: #login-btn  (선택사항 — 비워두면 자동 탐지)")
-            self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (선택사항)")
+            # 좁은 화면(다중 레이아웃 "⚙" 다이얼로그)에서도 잘리지 않도록 예시만
+            # 짧게 두고, 부가 설명("비워두면 자동 탐지")은 툴팁으로 옮겼다.
+            self._login_selector.setPlaceholderText("예: #login-btn")
+            self._login_selector.setToolTip("로그인 버튼 CSS 셀렉터 (선택사항 — 비워두면 자동 탐지)")
 
             self._login_success_kw = QLineEdit()
-            self._login_success_kw.setPlaceholderText("예: 마이페이지, dashboard  (로그인 성공 판별 키워드)")
-            self._login_success_kw.setToolTip("로그인 후 응답 페이지에서 찾을 성공 판별 키워드")
+            self._login_success_kw.setPlaceholderText("예: 마이페이지, dashboard")
+            self._login_success_kw.setToolTip("로그인 성공 판별 키워드 — 로그인 후 응답 페이지에서 이 텍스트를 찾습니다")
 
             _field("사이트 URL", self._login_url, lc_l)
             _field("아이디", self._login_id, lc_l)

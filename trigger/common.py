@@ -7,13 +7,13 @@ import socket
 
 from PyQt6.QtWidgets import (
     QApplication, QFileDialog, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QLineEdit,
+    QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
 
 import db_conn
 from conf import DataStore
-from style import THEME, Parts
+from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
 from preprocess import DEFAULT_RULES
 
 store    = DataStore()
@@ -87,13 +87,16 @@ SCHEDULED_REFINE_RULES_DIALOG_DEFAULT = {
 }
 
 
-def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_page,
+def _apply_task_settings(task: dict, *, collect: dict, session_page, monitor_page,
                           auth_page, job_name: str) -> None:
     """
     실행 태스크(task)에 공통 설정(딜레이/스레드/타임아웃/재시도/UA/쿠키/프록시/
     추출 설정/로그인 정보 오버라이드)을 채워 넣는다.
     `GlobalToolbarTriggers._actual_start()`가 self.task를 채울 때 사용하는
     로직 — 모듈 함수로 분리해 두어 향후 다른 호출부에서도 재사용 가능하다.
+    collect: delay/threads/timeout/retry/auto_save/auto_save_source 키를 가진 dict —
+    단일은 대시보드 위젯에서, 다중은 BlueprintPageBundle.collect_settings에서 값을
+    읽어 호출부가 직접 구성한다("수집 & 저장 설정" 카드가 다중 대시보드에는 없으므로).
     """
     # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
     # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
@@ -109,10 +112,10 @@ def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_pa
         }
 
     task["job"]        = job_name
-    task["delay"]      = dashboard_page.delay_spin.value()
-    task["threads"]    = dashboard_page.thread_spin.value()
-    task["timeout"]    = dashboard_page.timeout_spin.value()
-    task["retry"]      = dashboard_page.retry_spin.value()
+    task["delay"]      = collect["delay"]
+    task["threads"]    = collect["threads"]
+    task["timeout"]    = collect["timeout"]
+    task["retry"]      = collect["retry"]
     task["user_agent"] = session_page.ua_check.isChecked()
     task["cookie"]     = session_page.cookie_check.isChecked()
     task["proxy"] = {
@@ -123,10 +126,8 @@ def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_pa
         "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
     }
     task["extract"] = monitor_page.output_info["extract"]
-    task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
-    task["extract"]["auto_save_source"] = (
-        "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
-    )
+    task["extract"]["auto_save"] = collect["auto_save"]
+    task["extract"]["auto_save_source"] = collect["auto_save_source"]
 
 
 def _reset_pages(dashboard, monitor_page) -> None:
@@ -189,6 +190,108 @@ def _get_log_manager(widget):
     (SessionSettingsPageTriggers/AuthManagerPageTriggers에 동일하게 복제돼 있던 메서드를 통합)
     """
     return getattr(widget.window(), 'log_manager', None)
+
+
+def _build_collect_settings_fields(defaults: dict) -> tuple:
+    """"수집 설정" 위젯(Delay/Threads/Timeout/Retry/Auto Save)을 만들어 (카드 위젯,
+    위젯 딕셔너리)를 반환한다. defaults: delay/threads/timeout/retry/auto_save/
+    auto_save_source 키를 가진 dict — 값만 채울 뿐 자체 기본값 로직은 갖지 않는다
+    (_build_output_file_page와 동일한 패턴). 원래 DashboardPageSingle._build()의
+    "수집 & 저장 설정" 카드(card1)에 있던 위젯 구성을 그대로 옮겨, 상시 페이지(단일
+    대시보드)와 매번 새로 열리는 다이얼로그(다중 "⚙ 수집 설정") 양쪽에서 재사용한다.
+    렌더링 안전 상한(apply_render_safety_limits) 적용 여부는 호출부가 반환된
+    delay_spin/thread_spin에 대해 직접 판단한다 — 대상 블루프린트 정보를 이 함수는
+    모르기 때문이다."""
+    card = QWidget()
+    c1 = QVBoxLayout(card)
+    c1.setContentsMargins(0, 0, 0, 0)
+    c1.setSpacing(8)
+
+    r1 = QHBoxLayout()
+    r1.setSpacing(8)
+    r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
+    delay_spin = BoundNoticeDoubleSpinBox()
+    delay_spin.setRange(0.5, 10.0)
+    delay_spin.setValue(defaults.get("delay", 0.5))
+    delay_spin.setSingleStep(0.5)
+    delay_spin.setDecimals(1)
+    delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
+    r1.addWidget(delay_spin)
+    r1.addSpacing(6)
+    r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
+    thread_spin = BoundNoticeSpinBox()
+    thread_spin.setRange(1, 16)
+    thread_spin.setValue(defaults.get("threads", 4))
+    thread_spin.setToolTip("병렬 수집 스레드 수")
+    r1.addWidget(thread_spin)
+    r1.addSpacing(6)
+    r1.addStretch()
+    c1.addLayout(r1)
+
+    r2 = QHBoxLayout()
+    r2.setSpacing(8)
+    r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+    timeout_spin = QSpinBox()
+    timeout_spin.setRange(1, 60)
+    timeout_spin.setValue(defaults.get("timeout", 10))
+    timeout_spin.setToolTip("요청 최대 대기 시간")
+    r2.addWidget(timeout_spin)
+    r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+    retry_spin = QSpinBox()
+    retry_spin.setRange(0, 5)
+    retry_spin.setValue(defaults.get("retry", 2))
+    retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
+    r2.addWidget(retry_spin)
+    r2.addSpacing(6)
+    r2.addStretch()
+    c1.addLayout(r2)
+
+    c1.addSpacing(6)
+    c1.addWidget(Divider())
+    c1.addSpacing(6)
+
+    r3 = QHBoxLayout()
+    r3.setSpacing(8)
+    auto_save_chk = QCheckBox("Auto Save")
+    auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
+    auto_save_chk.setChecked(defaults.get("auto_save", True))
+    r3.addWidget(auto_save_chk)
+    r3.addSpacing(6)
+
+    auto_src_raw_btn = TagButton("RAW")
+    auto_src_ref_btn = TagButton("정제")
+    auto_src_ref_btn.setToolTip(
+        "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
+        "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
+    )
+    is_refined_default = defaults.get("auto_save_source", "raw") == "refined"
+    auto_src_raw_btn.setChecked(not is_refined_default)
+    auto_src_ref_btn.setChecked(is_refined_default)
+    r3.addWidget(auto_src_raw_btn)
+    r3.addWidget(auto_src_ref_btn)
+    r3.addStretch()
+    c1.addLayout(r3)
+
+    def _on_auto_save_toggled(checked: bool) -> None:
+        auto_src_raw_btn.setEnabled(checked)
+        auto_src_ref_btn.setEnabled(checked)
+
+    def _on_source_selected(select_refined: bool) -> None:
+        auto_src_raw_btn.setChecked(not select_refined)
+        auto_src_ref_btn.setChecked(select_refined)
+
+    auto_save_chk.toggled.connect(_on_auto_save_toggled)
+    auto_src_raw_btn.clicked.connect(lambda: _on_source_selected(False))
+    auto_src_ref_btn.clicked.connect(lambda: _on_source_selected(True))
+    _on_auto_save_toggled(auto_save_chk.isChecked())
+
+    widgets = {
+        "delay_spin": delay_spin, "thread_spin": thread_spin,
+        "timeout_spin": timeout_spin, "retry_spin": retry_spin,
+        "auto_save_chk": auto_save_chk,
+        "auto_src_raw_btn": auto_src_raw_btn, "auto_src_ref_btn": auto_src_ref_btn,
+    }
+    return card, widgets
 
 
 def _build_db_settings_fields(grid: QGridLayout, db_info: dict) -> dict:

@@ -59,6 +59,12 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         self._copy_btn.clicked.connect(self._copy_url)
         lay.addWidget(self._copy_btn)
 
+        self._build_run_controls(lay)
+
+    def _build_run_controls(self, lay):
+        """시작/중지 버튼 + 추출 설정 버튼 — GlobalToolbarMulti가 오버라이드해
+        생략한다(다중 레이아웃은 이 두 기능을 "수집 목록" 테이블의 항목별
+        ▶/⚙ 버튼으로 옮겼다)."""
         # 시작 / 중지 버튼
         self.run_btn = QPushButton("▶  시작")
         self.run_btn.setFixedWidth(90)
