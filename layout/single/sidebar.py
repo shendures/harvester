@@ -22,7 +22,7 @@ class SidebarSingle(QWidget):
 
     def _nav_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 상단 NAVIGATOR 섹션."""
-        return [("⬡", "대시보드", 0), ("≡", "모니터링", 1), ("◷", "스케줄러", 2), ("▲", "통계 분석", 3)]
+        return [("⬡", "대시보드", 0), ("≡", "데이터 정제", 1), ("◷", "스케줄러", 2), ("▲", "통계 분석", 3)]
 
     def _settings_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 하단 SETTINGS 섹션.
