@@ -18,6 +18,11 @@ from style import Divider
 
 from .common import theme, parts, BG_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, _get_log_manager
 
+# 이 파일의 소형 다이얼로그(연결 테스트 진행창 / 새 프록시 추가창)가 공유하는 폭 —
+# 둘 다 같은 "간단한 폼 다이얼로그" 형태라 서로 다른 값을 쓸 이유가 없다.
+_SMALL_DIALOG_WIDTH = 360
+
+
 class ProxyHealthCheckThread(QThread):
     """
     "연결 테스트" 버튼 클릭 시, 넘겨받은 프록시 각각에 실제로 연결을 시도해
@@ -121,7 +126,7 @@ class ProxyTestProgressDialog(QDialog):
         self._finished = False
 
         self.setWindowTitle("프록시 연결 테스트")
-        self.setFixedWidth(360)
+        self.setFixedWidth(_SMALL_DIALOG_WIDTH)
         self.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
 
         root = QVBoxLayout(self)
@@ -292,7 +297,7 @@ class SessionSettingsPageTriggers:
         """새 프록시 추가 Dialog를 띄운다."""
         dlg = QDialog(self)
         dlg.setWindowTitle("새 프록시 추가")
-        dlg.setFixedWidth(350)
+        dlg.setFixedWidth(_SMALL_DIALOG_WIDTH)
         dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
 
         root = QVBoxLayout(dlg)
@@ -305,28 +310,28 @@ class SessionSettingsPageTriggers:
         root.addSpacing(14)
 
         proto_row = QHBoxLayout()
-        proto_row.setContentsMargins(0, 0, 0, 15)
         proto_row.addWidget(parts.make_label("프로토콜", TEXT_SECONDARY, 12))
         proto_cb = QComboBox()
         proto_cb.addItems(["HTTP", "HTTPS", "SOCKS4", "SOCKS5"])
         proto_row.addWidget(proto_cb, 1)
         root.addLayout(proto_row)
+        root.addSpacing(10)
 
         host_row = QHBoxLayout()
-        host_row.setContentsMargins(0, 0, 0, 15)
         host_row.addWidget(parts.make_label("호스트", TEXT_SECONDARY, 12))
         host_inp = QLineEdit()
         host_inp.setPlaceholderText("예: 10.0.0.1")
         host_row.addWidget(host_inp, 1)
         root.addLayout(host_row)
+        root.addSpacing(10)
 
         port_row = QHBoxLayout()
-        port_row.setContentsMargins(0, 0, 0, 15)
         port_row.addWidget(parts.make_label("포트", TEXT_SECONDARY, 12))
         port_inp = QLineEdit()
         port_inp.setPlaceholderText("예: 8080")
         port_row.addWidget(port_inp, 1)
         root.addLayout(port_row)
+        root.addSpacing(10)
 
         btn_row = QHBoxLayout()
         ok_btn = parts.action_btn("추가")

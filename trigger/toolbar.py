@@ -4,11 +4,13 @@
 from copy import deepcopy
 
 from PyQt6.QtWidgets import QApplication, QMainWindow
-from PyQt6.QtCore import QTimer
 
 from conf import BlueprintStorage
 
-from .common import store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages
+from .common import (
+    store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages,
+    _after_delay_unless_cancelled,
+)
 
 
 class GlobalToolbarTriggers:
@@ -41,7 +43,7 @@ class GlobalToolbarTriggers:
             self.set_running(True)
             self._log("info", "수집을 시작합니다.")
             QApplication.processEvents()
-            QTimer.singleShot(1000, self._step_to_setting)
+            _after_delay_unless_cancelled(lambda: self._start_cancelled, self._step_to_setting)
         else:
             self._start_cancelled = True
             self.stop_requested.emit()
@@ -72,7 +74,7 @@ class GlobalToolbarTriggers:
         QApplication.processEvents()
 
         self._log("info", "환경 설정을 로드합니다. (수집 세팅 중...)")
-        QTimer.singleShot(1000, self._actual_start)
+        _after_delay_unless_cancelled(lambda: self._start_cancelled, self._actual_start)
 
     def _actual_start(self):
         """[단계 2: 데이터 수집] 실제 시작"""
@@ -91,9 +93,24 @@ class GlobalToolbarTriggers:
 
             request_info = BlueprintStorage().read()
 
+            collect = {
+                "delay": dashboard_page.delay_spin.value(),
+                "threads": dashboard_page.thread_spin.value(),
+                "timeout": dashboard_page.timeout_spin.value(),
+                "retry": dashboard_page.retry_spin.value(),
+                "auto_save": dashboard_page.auto_save_chk.isChecked(),
+                "auto_save_source": (
+                    "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
+                ),
+            }
+            # 단일 레이아웃은 다중처럼 별도 "적용" 버튼이 없으므로, 수집 설정 카드의
+            # 값을 실제로 확정 짓는 "시작" 클릭 시점에 블루프린트에 영속화한다 —
+            # 재시작 후에도 마지막으로 수집에 쓰인 값이 그대로 표출된다.
+            BlueprintStorage().update_settings(request_info.get("seq_no"), collect_settings=collect)
+
             self.task.update(deepcopy(request_info))
             _apply_task_settings(
-                self.task, dashboard_page=dashboard_page, session_page=session_page,
+                self.task, collect=collect, session_page=session_page,
                 monitor_page=monitor_page, auth_page=self.auth_page,
                 job_name="수동 실행",
             )

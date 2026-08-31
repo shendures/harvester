@@ -87,33 +87,28 @@ def get_schedule_settings():
 
 def set_ip_settings(request_info):
 
-    if "proxy" in request_info.keys():
-        if request_info["proxy"]["enabled"]:
-            # GUI 프록시 테이블 행(dict: host/port/protocol/enabled)을
-            # Scrapy request.meta['proxy']가 요구하는 URL 문자열로 변환
-            ip_list = []
-            for row in request_info["proxy"]["ip_list"]:
-                if isinstance(row, dict):
-                    if not row.get("enabled", True):
-                        continue
-                    protocol = str(row.get("protocol", "http")).lower()
-                    ip_list.append(f"{protocol}://{row['host']}:{row['port']}")
-                else:
-                    ip_list.append(row)
-
-            proxy_req_info = {}
-            proxy_req_info["ip_list"] = ip_list
-            proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
-            # 이전에 저장된 schedule_info에는 rotate 키가 없을 수 있어 기본값(True=무작위)으로 보완
-            proxy_req_info["rotate"] = request_info["proxy"].get("rotate", True)
-
-            return proxy_req_info
-        elif not request_info["proxy"]["enabled"]:
-            return None
-        else:
-            return None
-    else:
+    if "proxy" not in request_info.keys() or not request_info["proxy"]["enabled"]:
         return None
+
+    # GUI 프록시 테이블 행(dict: host/port/protocol/enabled)을
+    # Scrapy request.meta['proxy']가 요구하는 URL 문자열로 변환
+    ip_list = []
+    for row in request_info["proxy"]["ip_list"]:
+        if isinstance(row, dict):
+            if not row.get("enabled", True):
+                continue
+            protocol = str(row.get("protocol", "http")).lower()
+            ip_list.append(f"{protocol}://{row['host']}:{row['port']}")
+        else:
+            ip_list.append(row)
+
+    proxy_req_info = {}
+    proxy_req_info["ip_list"] = ip_list
+    proxy_req_info["allow_ip_cnts"] = request_info["proxy"]["allow_ip_cnts"]
+    # 이전에 저장된 schedule_info에는 rotate 키가 없을 수 있어 기본값(True=무작위)으로 보완
+    proxy_req_info["rotate"] = request_info["proxy"].get("rotate", True)
+
+    return proxy_req_info
 
 
 def set_downloader_middlewares(request_info):

@@ -5,7 +5,7 @@
 > - **진행 이력**: `HISTORY.md`
 > - **exe/설치 프로그램 빌드 절차**: `BUILD_GUIDE.md`
 
-- **최신 갱신**: 2026-08-28 00:59
+- **최신 갱신**: 2026-08-31 00:16
 
 ---
 
@@ -24,7 +24,7 @@
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout_single.py` | 1,899줄 |
+| GUI 레이아웃 | `layout/` 패키지 | 2,680줄 (22개 파일) |
 | 이벤트 핸들러 (Mixin, 단일+다중 수집 공용) | `trigger/` 패키지 | 4,667줄 (11개 파일) |
 | 테마·공용 위젯·정제 규칙 UI 빌더 | `style.py` | 881줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
@@ -39,7 +39,7 @@
 
 ```
 [사용자 GUI]
-    main.py → layout_single.py
+    main.py → layout/ 패키지
         │
         ├── GlobalToolbarSingle (시작/중지 버튼)
         ├── DashboardPageSingle (대시보드)
@@ -102,21 +102,31 @@ GUI 시작 버튼
 
 ### GUI 레이어
 
-#### `layout_single.py`
-GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ 줄).
+#### `layout/` 패키지
+GUI의 전체 레이아웃과 페이지를 정의하는 핵심 패키지 (2,680줄, 22개 파일). 원래
+`layout_single.py`(1,899줄)+`layout_multi.py`(618줄) 두 파일이었으나 2026-08-31
+`trigger/`와 같은 방식(책임 단위 파일 분리)으로 패키지화하면서, 동시에 Single↔Multi
+사이에 남아 있던 진짜 중복 로직(결과 컬럼 산출, 스파이더 모드 조회, 툴바 빌드,
+무인 실행 시 모달 억제 판정)을 통합했습니다. 상세 배경은 `HISTORY.md`(2026-08-31)
+참고.
 
-| 클래스 | 역할 |
-|---|---|
-| `MainWindowSingle` | 전체 윈도우 컨테이너. SidebarSingle + GlobalToolbarSingle + 페이지 스택 조합 |
-| `SidebarSingle` | 좌측 내비게이션 메뉴 (대시보드, 모니터링, 스케줄러, 통계분석, 세션설정, 인증관리) |
-| `GlobalToolbarSingle` | 상단 고정 툴바. URL 입력, 시작/중지 버튼 |
-| `DashboardPageSingle` | 수집 진행 상태(Step Tracker), 수집 설정(딜레이·스레드), 세션 통계, 실시간 모니터링 테이블 |
-| `MonitorPageSingle` | 4탭 구조 — ① Raw 수집결과 ② 정제규칙 설정 ③ 정제결과 ④ Before/After 비교(좌우 테이블 스크롤·정렬 동기화) |
-| `StatisticsPage` | KPI 카드, 상태코드 도넛 차트, 응답시간 바 차트, 시간대별 추이 선 그래프, 세션 이력 테이블 |
-| `SchedulerPage` | 스케줄 작업 등록/수정/삭제. 주기: 매일/주간/월간/특정일. "저장 대상"이 "정제"일 때 스케줄별 정제 규칙을 구성하는 가로 인라인 패널 포함(2026-07-17) |
-| `SessionSettingsPage` | 수집 딜레이, 스레드, 타임아웃, 재시도, User-Agent, 쿠키, 프록시 설정 |
-| `AuthManagerPage` | 로그인 정보(ID/PW) 또는 API 라이선스 토큰 관리 |
-| `BarChart` / `LineChart` / `DonutChart` | QPainter 기반 커스텀 차트 위젯 |
+| 파일 | 클래스/함수 | 역할 |
+|---|---|---|
+| `__init__.py` | — | `MainWindowSingle`/`theme`/`MainWindowMulti` 재-export (facade) |
+| `common.py` | — | 싱글턴(`store`/`theme`/`parts`)·색상 상수·`_blueprint_auth_method()`/`_blueprint_requires_auth()`/`result_columns_from_blueprint()`/`build_status_bar()` — Single/Multi 공유 허브 |
+| `charts.py` | `BarChart`/`LineChart`/`DonutChart` | QPainter 기반 커스텀 차트 위젯 (StatisticsPage 전용) |
+| `statistics.py` | `StatisticsPage` | KPI 카드, 상태코드 도넛 차트, 응답시간 바 차트, 시간대별 추이 선 그래프, 세션 이력 테이블 — Single/Multi 공유(대응 클래스 없음) |
+| `scheduler.py` | `SchedulerPage` | 스케줄 작업 등록/수정/삭제 — Single/Multi 공유 |
+| `session.py` | `SessionSettingsPage` | 수집 딜레이, 스레드, 타임아웃, 재시도, User-Agent, 쿠키, 프록시 설정 — Single/Multi 공유 |
+| `auth.py` | `AuthManagerPage` | 로그인 정보(ID/PW) 또는 API 라이선스 토큰 관리 — Single/Multi 공유 |
+| `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 — Single/Multi 공유 |
+| `single/` | `MainWindowSingle`, `SidebarSingle`, `GlobalToolbarSingle`, `DashboardPageSingle`, `MonitorPageSingle` | 단일 수집 레이아웃. `ActiveBlueprintMixin`(`single/common.py`)이 "활성 블루프린트가 전역 request_info"라는 Single 쪽 기본값을 제공 |
+| `multi/` | `MainWindowMulti`, `SidebarMulti`, `GlobalToolbarMulti`, `DashboardPageMulti`, `MonitorPageMulti`, `BlueprintListPage`, `BlueprintPageBundle` | 다중 블루프린트(2개 이상 순차 배치) 레이아웃. 각 클래스가 `single/`의 대응 클래스를 상속하며, `_active_blueprint_info()` 훅만 오버라이드(`self.blueprint_info` 반환)해 결과 컬럼 산출·스파이더 모드 조회를 상속만으로 재사용 |
+
+`single/`의 클래스들은 여전히 "크로스체크 기준선" 원칙의 대상입니다 — 단,
+2026-08-31 통합 작업에서 훅 메서드 도입을 위해 이 원칙을 1회 한정으로 완화했고
+(`ActiveBlueprintMixin`, `_SILENT_JOBS`, `GlobalToolbarSingle._toolbar_display_info`/
+`_configure_method_label`), 이후 세션은 다시 "`single/` 무수정" 원칙으로 돌아갑니다.
 
 #### `style.py`
 테마 색상, 공통 위젯 팩토리, UI 컴포넌트를 정의합니다.
@@ -126,21 +136,21 @@ GUI의 전체 레이아웃과 페이지를 정의하는 핵심 파일 (2,000+ �
   재사용 가능한 커스텀 위젯(`ClickableRuleRow`는 2026-07-17 `layout_single.py`에서 이전)
 - `REFINE_RULE_DEFS`/`build_refine_rule_rows()`: 정제 규칙 체크박스 행 정의·빌더
   (2026-07-17 신설) — MonitorPageSingle "② 정제 규칙 설정" 탭과 "새 스케줄 등록"의
-  정제 규칙 패널이 공유(`layout_single.py`가 `trigger` 패키지를 import하는 구조상, 두 곳이
+  정제 규칙 패널이 공유(`layout/`이 `trigger` 패키지를 import하는 구조상, 두 곳이
   공유할 UI 빌더는 순환 import 없이 양쪽이 모두 import 가능한 `style.py`에
   둠). 상세는 `guidelines/PREPROCESS.md` §2·§2.3 참고.
 
 #### `trigger/` 패키지
-`layout_single.py`의 각 페이지 클래스에 **Mixin** 형태로 주입되는 이벤트 핸들러 모음.
-레이아웃 코드(UI 구성)와 비즈니스 로직(버튼 클릭 처리)을 분리하기 위해 사용됩니다.
-`MainWindowTriggersMulti(MainWindowTriggersSingle)`가 다중 블루프린트(순차 배치)
-레이아웃(`layout_multi.py`)에서만 쓰여, 단일 수집과 다중 수집 레이아웃이 이 패키지
-하나를 공유합니다.
+`layout/single/`·`layout/multi/`의 각 페이지 클래스에 **Mixin** 형태로 주입되는
+이벤트 핸들러 모음. 레이아웃 코드(UI 구성)와 비즈니스 로직(버튼 클릭 처리)을
+분리하기 위해 사용됩니다. `MainWindowTriggersMulti(MainWindowTriggersSingle)`가
+다중 블루프린트(순차 배치) 레이아웃(`layout/multi/`)에서만 쓰여, 단일 수집과
+다중 수집 레이아웃이 이 패키지 하나를 공유합니다.
 
 원래 단일 파일(`trigger.py`, 4,592줄)이었으나 2026-08-28 같은 유형(페이지 단위)끼리
-묶어 아래처럼 패키지로 분리했습니다 — 기능·동작은 100% 동일하며, `layout_single.py`/
-`layout_multi.py`의 `from trigger import ...` 호출부는 `__init__.py`가 기존 이름을
-그대로 재-export하므로 수정되지 않았습니다.
+묶어 아래처럼 패키지로 분리했습니다 — 기능·동작은 100% 동일하며, `layout/`의
+`from trigger import ...` 호출부는 `__init__.py`가 기존 이름을 그대로 재-export하므로
+수정되지 않았습니다.
 
 | 파일 | 클래스 | 연결 대상 | 규모 |
 |---|---|---|---|

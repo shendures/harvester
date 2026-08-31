@@ -17,14 +17,43 @@ from PyQt6.QtGui import QColor
 import db_conn
 import utility
 import customized_settings
-from style import TagButton, Divider
+from conf import get_spider_mode, BlueprintStorage
+from style import TagButton, Divider, apply_render_safety_limits
 from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 from .common import (
-    parts, BG_PRIMARY, BG_SECONDARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
+    parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+    _build_collect_settings_fields, _default_dialog_qss,
 )
+
+
+def _make_cell_item(val) -> QTableWidgetItem:
+    """값이 숫자면 DisplayRole로, 아니면 텍스트로 QTableWidgetItem을 만든다
+    (숫자는 정렬 시 문자열이 아닌 값으로 비교되도록 setData를 사용).
+    전경색/배경색은 호출 측이 필요에 따라 이어서 설정한다."""
+    item = QTableWidgetItem()
+    if isinstance(val, (int, float)):
+        item.setData(Qt.ItemDataRole.DisplayRole, val)
+    else:
+        item.setText(str(val) if val is not None else "—")
+    return item
+
+
+def _next_available_name(base_name: str, suffix_fmt: str, exists) -> str:
+    """base_name이 이미 존재하면(exists) suffix_fmt(예: "{base} ({count})")로
+    접미사를 붙여가며 존재하지 않는 이름을 찾을 때까지 반복합니다.
+    CSV/JSON 파일명, DB 테이블명의 "새로 만들기(중복 회피)" 저장 경로가 공유합니다."""
+    if not exists(base_name):
+        return base_name
+    count = 1
+    while True:
+        candidate = suffix_fmt.format(base=base_name, count=count)
+        if not exists(candidate):
+            return candidate
+        count += 1
+
 
 class MonitorPageTriggers:
     """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
@@ -74,11 +103,7 @@ class MonitorPageTriggers:
 
             for col_idx, col_name in enumerate(columns, start=1):
                 val = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 if row_bg.alpha() > 0:
                     item.setBackground(row_bg)
@@ -345,13 +370,7 @@ class MonitorPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("제외 필드 선택")
         dlg.setFixedWidth(420)
-        dlg.setStyleSheet(f"""
-            QDialog {{
-                background:{BG_SECONDARY};
-                border:1px solid {BORDER};
-                border-radius:10px;
-            }}
-        """)
+        dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
@@ -434,11 +453,7 @@ class MonitorPageTriggers:
             self.refined_table.setItem(row_idx, 0, no_item)
             for col_idx, col_name in enumerate(columns, start=1):
                 val = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 self.refined_table.setItem(row_idx, col_idx, item)
         self.refined_table.setSortingEnabled(True)
@@ -482,9 +497,6 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
-            if is_deleted:
-                # no_item.setBackground(CLR_DEL_BG)
-                pass
             self.cmp_raw_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(columns, start=1):
@@ -493,7 +505,6 @@ class MonitorPageTriggers:
                 item.setText(str(val) if val is not None else "—")
                 if is_deleted:
                     item.setForeground(CLR_DEL_FG)
-                    # item.setBackground(CLR_DEL_BG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_raw_table.setItem(row_idx, col_idx, item)
@@ -512,21 +523,13 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
-            if is_modified:
-                # no_item.setBackground(CLR_REF_BG)
-                pass
             self.cmp_ref_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(ref_columns, start=1):
                 val  = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                if isinstance(val, (int, float)):
-                    item.setData(Qt.ItemDataRole.DisplayRole, val)
-                else:
-                    item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 if is_modified:
                     item.setForeground(CLR_REF_FG)
-                    # item.setBackground(CLR_REF_BG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
@@ -613,30 +616,81 @@ class MonitorPageTriggers:
         columns = self._get_result_columns()
         self._render_detail(self.result_table, self.detail_lbl, item.row(), columns)
 
-    def _open_output_settings_dialog(self):
-        """출력 대상 / 상세 설정(인라인) / AUTO SAVE Dialog"""
+    def _open_output_settings_dialog(self, *, collect: dict = None, auth_page=None):
+        """출력 대상 / 상세 설정(인라인) / AUTO SAVE Dialog.
+
+        collect: 지정하면(다중 레이아웃 전용) "수집 설정"(Delay/Threads/Timeout/
+            Retry/Auto Save) 섹션을 상단에 추가하고, 다이얼로그 제목도 "수집
+            설정"으로 바뀐다. None이면(단일 레이아웃의 기존 호출) 이 섹션 없이
+            기존과 완전히 동일하게 "추출 설정"만 노출한다.
+        auth_page: 지정하면(다중 레이아웃에서 인증이 필요한 블루프린트) 그
+            AuthManagerPage 위젯을 다이얼로그 하단에 통째로 얹는다 — 열려있는
+            동안만 잠깐 reparent했다가 닫히면 다시 떼어낸다(캐시된 위젯이므로
+            다이얼로그가 파괴될 때 함께 파괴되면 안 된다).
+        """
         dlg = QDialog(self)
-        dlg.setWindowTitle("추출 설정")
-        dlg.setFixedWidth(500)
-        dlg.setStyleSheet(f"""
-            QDialog {{
-                background:{BG_SECONDARY};
-                border:1px solid {BORDER};
-                border-radius:10px;
-            }}
-        """)
+        title = "수집 설정" if collect is not None else "추출 설정"
+        dlg.setWindowTitle(title)
+        # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
+        # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
+        # "수집 설정" 섹션도 Delay/Threads/Timeout/Retry를 한 줄로 배치하므로 동일하게
+        # 넓은 폭이 필요하다. collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃
+        # 호출) 폭을 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px
+        # 그대로.
+        dlg.setFixedWidth(680 if (collect is not None or auth_page is not None) else 500)
+        dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
         vl.setSpacing(0)
 
         title_row = QHBoxLayout()
-        title_row.addWidget(parts.make_label("추출 설정", TEXT_PRIMARY, 14, True))
+        title_row.addWidget(parts.make_label(title, TEXT_PRIMARY, 14, True))
         title_row.addStretch()
         vl.addLayout(title_row)
         vl.addSpacing(10)
         vl.addWidget(Divider())
         vl.addSpacing(14)
+
+        def _boxed(content: QWidget, margins: int = 14) -> QWidget:
+            """"상세 설정" 박스(아래 QStackedWidget#extractStack)와 동일한 프레임
+            (배경/테두리/라운드)으로 다른 섹션의 내용물을 감싼다 — 다이얼로그 안
+            섹션들의 시각적 통일감을 맞추기 위함. objectName으로 선택자를 좁혀서
+            바레 QWidget 선택자가 스타일시트 없는 자식(체크박스 등)까지 테두리를
+            상속시키는 문제를 피한다(아래 #extractStack, blueprint_list.py의
+            체크박스 래퍼와 동일한 관례)."""
+            box = QWidget()
+            box.setObjectName("settingsBox")
+            box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            box.setStyleSheet(f"""
+                QWidget#settingsBox {{
+                    background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;
+                }}
+            """)
+            box_layout = QVBoxLayout(box)
+            box_layout.setContentsMargins(margins, margins, margins, margins)
+            box_layout.addWidget(content)
+            return box
+
+        collect_widgets = None
+        if collect is not None:
+            collect_title = parts.make_label("수집 설정", TEXT_MUTED, 10)
+            collect_title.setStyleSheet(collect_title.styleSheet() + " letter-spacing:1px;")
+            vl.addWidget(collect_title)
+            vl.addSpacing(10)
+
+            collect_content, collect_widgets = _build_collect_settings_fields(collect, single_row=True)
+            if get_spider_mode(self._active_blueprint_info()) == "html_render":
+                apply_render_safety_limits(
+                    collect_widgets["thread_spin"], collect_widgets["delay_spin"],
+                    customized_settings.get_render_safety_limits(),
+                )
+            # "수집 설정" 위젯 자체는 여백 0(단일 대시보드의 parts.card_widget() 카드
+            # 안에 들어갈 때를 기준으로 설계됨) — 박스가 14px 안쪽 여백을 대신 공급한다.
+            vl.addWidget(_boxed(collect_content))
+            vl.addSpacing(14)
+            vl.addWidget(Divider())
+            vl.addSpacing(14)
 
         out_file_btn = TagButton("FILE")
         out_file_btn.setToolTip("로컬 파일로 저장 (CSV / JSON / Excel)")
@@ -760,6 +814,29 @@ class MonitorPageTriggers:
         _on_fmt_changed(fmt_combo.currentText())
 
         vl.addWidget(stack)
+
+        auth_scroll = None
+        auth_body = None
+        if auth_page is not None:
+            vl.addSpacing(16)
+            vl.addWidget(Divider())
+            vl.addSpacing(14)
+            auth_title = parts.make_label("인증 관리", TEXT_MUTED, 10)
+            auth_title.setStyleSheet(auth_title.styleSheet() + " letter-spacing:1px;")
+            vl.addWidget(auth_title)
+            vl.addSpacing(10)
+            # auth_page(AuthManagerPage)는 자체 QScrollArea로 감싸져 있는데(단일
+            # 레이아웃에서 전체 화면 페이지로 쓰일 때를 기준으로 설계됨), 그 QScrollArea를
+            # 통째로 이 다이얼로그의 QVBoxLayout 안에 넣으면 뷰포트가 세로로 충분히
+            # 늘어나지 못해 내용이 작은 창에 스크롤바로 눌려 보인다. QScrollArea 안의
+            # 실제 콘텐츠(body)만 꺼내(takeWidget) 박스에 직접 넣어 "수집 설정"/"상세
+            # 설정"과 동일하게 내용 크기에 맞춰 자연스럽게 펼쳐지도록 한다 — dlg.exec()
+            # 이후 finally에서 auth_scroll.setWidget(auth_body)로 반드시 되돌려 놓아야
+            # AuthManagerPage 내부 구조가 다음 번 열람 때도 온전하다.
+            auth_scroll = auth_page.layout().itemAt(0).widget()
+            auth_body = auth_scroll.takeWidget()
+            vl.addWidget(_boxed(auth_body, margins=0))
+
         vl.addSpacing(16)
         vl.addWidget(Divider())
         vl.addSpacing(12)
@@ -804,9 +881,31 @@ class MonitorPageTriggers:
                     self.output_info["extract"]["db"]["user"]               = db_user
                     self.output_info["extract"]["db"]["password"]           = db_pass
                     self.output_info["extract"]["db"]["save_data_nm"]       = save_data_nm
+
+                if collect_widgets is not None:
+                    collect["delay"]      = collect_widgets["delay_spin"].value()
+                    collect["threads"]    = collect_widgets["thread_spin"].value()
+                    collect["timeout"]    = collect_widgets["timeout_spin"].value()
+                    collect["retry"]      = collect_widgets["retry_spin"].value()
+                    collect["auto_save"]  = collect_widgets["auto_save_chk"].isChecked()
+                    collect["auto_save_source"] = (
+                        "refined" if collect_widgets["auto_src_ref_btn"].isChecked() else "raw"
+                    )
+
+                # 재시작 후에도 방금 적용한 값이 그대로 표출되도록 블루프린트에
+                # 영속화한다(단일/다중 레이아웃이 이 다이얼로그를 공유하므로 두 곳
+                # 모두 여기서 함께 저장된다). collect_widgets가 없으면(단일의 "⚙
+                # 추출 설정" 버튼처럼 collect 인자 없이 열린 경우) 추출 설정만 저장한다.
+                settings_patch = {"output_settings": self.output_info}
+                if collect_widgets is not None:
+                    settings_patch["collect_settings"] = collect
+                BlueprintStorage().update_settings(
+                    self._active_blueprint_info().get("seq_no"), **settings_patch
+                )
+
                 dlg.accept()
             except Exception as e:
-                QMessageBox.critical(dlg, "설정 저장 오류", f"추출 설정 저장 중 오류가 발생했습니다.\n\n{e}")
+                QMessageBox.critical(dlg, "설정 저장 오류", f"{title} 저장 중 오류가 발생했습니다.\n\n{e}")
 
         apply_btn  = parts.action_btn("적용")
         apply_btn.clicked.connect(_apply_file)
@@ -818,7 +917,16 @@ class MonitorPageTriggers:
 
         update_dialog_size()
         dlg.adjustSize()
-        dlg.exec()
+        try:
+            dlg.exec()
+        finally:
+            if auth_page is not None:
+                # dlg는 이 함수를 벗어나면 곧 파괴되는 임시 객체 — auth_body는
+                # BlueprintPageBundle(auth_page)에 캐시된 채 계속 살아있어야 하므로,
+                # dlg가 파괴되면서 함께 파괴되지 않도록 원래의 auth_scroll로
+                # 되돌려 놓는다(takeWidget()의 짝 — QScrollArea의 내부 참조도
+                # 함께 정리되어 다음 번 열람 때도 온전하다).
+                auth_scroll.setWidget(auth_body)
 
     def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None):
         """
@@ -871,15 +979,10 @@ class MonitorPageTriggers:
                 if file_format == "CSV":
                     delimiter = extract_cfg["file"]["file_delimiter"]
                     if save_type is None:
-                        final_file_name = file_name
-                        if os.path.exists(os.path.join(file_path, f"{file_name}.csv")):
-                            count = 1
-                            while True:
-                                new_file_name = f"{file_name} ({count})"
-                                if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
-                                    break
-                                count += 1
-                            final_file_name = new_file_name
+                        final_file_name = _next_available_name(
+                            file_name, "{base} ({count})",
+                            lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
+                        )
                         with open(os.path.join(file_path, f"{final_file_name}.csv"),
                                   mode='w', encoding='utf-8-sig', newline='') as f:
                             writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
@@ -957,15 +1060,10 @@ class MonitorPageTriggers:
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.csv")
         if save_type == "new":
-            final_file_name = file_name
-            if os.path.exists(full_path):
-                count = 1
-                while True:
-                    new_file_name = f"{file_name} ({count})"
-                    if not os.path.exists(os.path.join(file_path, f"{new_file_name}.csv")):
-                        break
-                    count += 1
-                final_file_name = new_file_name
+            final_file_name = _next_available_name(
+                file_name, "{base} ({count})",
+                lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
+            )
             full_path = os.path.join(file_path, f"{final_file_name}.csv")
             mode, write_header = 'w', True
         elif save_type == "overwrite":
@@ -983,13 +1081,11 @@ class MonitorPageTriggers:
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.json")
         if save_type == "new" and os.path.exists(full_path):
-            count = 1
-            while True:
-                candidate = os.path.join(file_path, f"{file_name} ({count}).json")
-                if not os.path.exists(candidate):
-                    break
-                count += 1
-            full_path = candidate
+            final_file_name = _next_available_name(
+                file_name, "{base} ({count})",
+                lambda name: os.path.exists(os.path.join(file_path, f"{name}.json")),
+            )
+            full_path = os.path.join(file_path, f"{final_file_name}.json")
             out_data = data
         elif save_type == "append" and os.path.exists(full_path):
             try:
@@ -1017,12 +1113,13 @@ class MonitorPageTriggers:
         elif save_type == "append":
             db_conn.save_db(db_info, data, mode='append')
         else:  # "new" — 기존 테이블은 건드리지 않고 이름에 접미사를 붙여 새로 생성
+            base_name = db_info["save_data_nm"]
+            final_name = _next_available_name(
+                base_name, "{base}_{count}",
+                lambda name: db_conn._check_db_table_exists({**db_info, "save_data_nm": name}),
+            )
             target = dict(db_info)
-            base_name = target["save_data_nm"]
-            count = 1
-            while db_conn._check_db_table_exists(target):
-                target["save_data_nm"] = f"{base_name}_{count}"
-                count += 1
-            if target["save_data_nm"] != base_name and lm:
-                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{target['save_data_nm']}'(으)로 새로 생성합니다.")
+            target["save_data_nm"] = final_name
+            if final_name != base_name and lm:
+                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{final_name}'(으)로 새로 생성합니다.")
             db_conn.save_db(target, data, mode='overwrite')

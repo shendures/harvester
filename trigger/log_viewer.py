@@ -11,8 +11,9 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QTextDocument, QTextCursor
 
 from .common import (
-    BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT, ACCENT_HOVER,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, GREEN, AMBER, RED,
+    BG_PRIMARY, BG_HOVER, ACCENT, ACCENT_LIGHT, ACCENT_HOVER,
+    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, RED,
+    LOG_LEVEL_COLORS, _default_dialog_qss,
 )
 
 
@@ -54,14 +55,6 @@ class LogViewerDialog(QDialog):
     # last_log: 하단 상태바에 최신 로그 한 줄을 실시간 전달하는 시그널
     last_log = pyqtSignal(str, str)   # (level, message)
 
-    # 레벨별 색상 (THEME과 동일)
-    _LEVEL_COLORS = {
-        "ok":   GREEN,
-        "err":  RED,
-        "warn": AMBER,
-        "info": ACCENT_LIGHT,
-    }
-
     def __init__(self, parent=None):
         super().__init__(parent)
         # ── 로그 버퍼 (구 LogView._html_history) ──────────────────────────
@@ -75,13 +68,7 @@ class LogViewerDialog(QDialog):
         self.setModal(False)          # 모달리스: 메인 창 조작 유지
         self.resize(760, 500)
         self.setMinimumSize(520, 320)
-        self.setStyleSheet(f"""
-            QDialog {{
-                background:{BG_SECONDARY};
-                border:1px solid {BORDER};
-                border-radius:10px;
-            }}
-        """)
+        self.setStyleSheet(_default_dialog_qss())
         self._build()
 
     # ── 로그 수신 (구 LogView.append_log) ───────────────────────────────
@@ -92,7 +79,7 @@ class LogViewerDialog(QDialog):
         last_log 시그널로 하단 상태바에 실시간 전달합니다.
         """
         ts    = datetime.now().strftime("%H:%M:%S")
-        color = self._LEVEL_COLORS.get(level, TEXT_SECONDARY)
+        color = LOG_LEVEL_COLORS.get(level, TEXT_SECONDARY)
         tag   = f"[{level.upper():4s}]"
         line_html = (
             f'<span style="color:{TEXT_MUTED};">{ts}</span> '
@@ -219,7 +206,7 @@ class LogViewerDialog(QDialog):
         self._search_count_lbl = QLabel("")
         self._search_count_lbl.setFixedWidth(90)
         self._search_count_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._search_count_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        self._set_search_count_style()
         search_row.addWidget(self._search_count_lbl)
 
         vl.addLayout(search_row)
@@ -294,7 +281,7 @@ class LogViewerDialog(QDialog):
         self._total_matches = 0
         self._current_match = 0
         self._search_count_lbl.setText("")
-        self._search_count_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        self._set_search_count_style()
         self._btn_prev.setEnabled(False)
         self._btn_next.setEnabled(False)
 
@@ -316,6 +303,11 @@ class LogViewerDialog(QDialog):
         _run_search() 내부의 _last_keyword 동일 여부 확인으로 중복 탐색을 차단합니다.
         """
         self._run_search(full_text.strip())
+
+    def _set_search_count_style(self, is_error: bool = False) -> None:
+        """검색 매치 카운트 라벨의 색상을 설정한다 (매치 0건=RED, 그 외=TEXT_MUTED)."""
+        color = RED if is_error else TEXT_MUTED
+        self._search_count_lbl.setStyleSheet(f"color:{color}; font-size:11px;")
 
     def _run_search(self, keyword: str):
         """
@@ -347,7 +339,7 @@ class LogViewerDialog(QDialog):
 
         if self._total_matches == 0:
             self._search_count_lbl.setText("0 / 0")
-            self._search_count_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            self._set_search_count_style(is_error=True)
             self._btn_prev.setEnabled(False)
             self._btn_next.setEnabled(False)
         else:
@@ -416,11 +408,11 @@ class LogViewerDialog(QDialog):
             self._search_count_lbl.setText(
                 f"{self._current_match} / {self._total_matches}"
             )
-            self._search_count_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+            self._set_search_count_style()
         else:
             # 재탐색도 실패 — 방어 코드 (정상 경로에서는 미도달)
             self._search_count_lbl.setText("0 / 0")
-            self._search_count_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            self._set_search_count_style(is_error=True)
 
     # ── 키보드 이벤트: Enter / Shift+Enter 처리 ──────
     def keyPressEvent(self, event):

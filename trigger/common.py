@@ -7,13 +7,14 @@ import socket
 
 from PyQt6.QtWidgets import (
     QApplication, QFileDialog, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QLineEdit,
+    QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
+from PyQt6.QtCore import QTimer
 
 import db_conn
 from conf import DataStore
-from style import THEME, Parts
+from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
 from preprocess import DEFAULT_RULES
 
 store    = DataStore()
@@ -40,8 +41,23 @@ PURPLE        = theme.PURPLE
 # 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
 VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 
+# 로그 레벨("ok"/"err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
+# 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
+LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
+
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
+
+# 메인 창 self.stack(QStackedWidget)의 고정 페이지 인덱스 — 단일·다중 레이아웃
+# 공용이며, 사이드바 "표시 순서"(NAV_ITEMS)와는 독립적인 값이다(다중은 표시
+# 순서가 이 값과 다르게 재배열되어 있음 — layout/multi/sidebar.py 참고).
+NAV_MONITOR = 0          # 모니터링 (구 대시보드)
+NAV_REFINE = 1           # 데이터 정제
+NAV_SCHEDULE = 2         # 스케줄러
+NAV_STATS = 3            # 통계 분석
+NAV_SESSION = 4          # 세션 설정
+NAV_AUTH = 5             # 인증 관리 — 단일 전용, 인증 필요 블루프린트일 때만 조건부 추가
+NAV_BLUEPRINT_LIST = 5   # 수집 목록 — 다중 전용 (단일의 NAV_AUTH와 값은 같으나 레이아웃별 배타적 사용)
 
 # 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 규칙 — 원래는 모든
 # 스케줄에 고정 적용되는 상수였으나(2026-07-17 이전), 이제 "새 스케줄 등록"
@@ -87,13 +103,16 @@ SCHEDULED_REFINE_RULES_DIALOG_DEFAULT = {
 }
 
 
-def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_page,
+def _apply_task_settings(task: dict, *, collect: dict, session_page, monitor_page,
                           auth_page, job_name: str) -> None:
     """
     실행 태스크(task)에 공통 설정(딜레이/스레드/타임아웃/재시도/UA/쿠키/프록시/
     추출 설정/로그인 정보 오버라이드)을 채워 넣는다.
     `GlobalToolbarTriggers._actual_start()`가 self.task를 채울 때 사용하는
     로직 — 모듈 함수로 분리해 두어 향후 다른 호출부에서도 재사용 가능하다.
+    collect: delay/threads/timeout/retry/auto_save/auto_save_source 키를 가진 dict —
+    단일은 대시보드 위젯에서, 다중은 BlueprintPageBundle.collect_settings에서 값을
+    읽어 호출부가 직접 구성한다("수집 & 저장 설정" 카드가 다중 대시보드에는 없으므로).
     """
     # 로그인 인증이면 인증 관리 페이지에 입력된 현재 값으로 로그인 정보를 덮어씀
     # (request_info.json 파일에는 저장하지 않고, 이번 실행 task에만 반영)
@@ -109,10 +128,10 @@ def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_pa
         }
 
     task["job"]        = job_name
-    task["delay"]      = dashboard_page.delay_spin.value()
-    task["threads"]    = dashboard_page.thread_spin.value()
-    task["timeout"]    = dashboard_page.timeout_spin.value()
-    task["retry"]      = dashboard_page.retry_spin.value()
+    task["delay"]      = collect["delay"]
+    task["threads"]    = collect["threads"]
+    task["timeout"]    = collect["timeout"]
+    task["retry"]      = collect["retry"]
     task["user_agent"] = session_page.ua_check.isChecked()
     task["cookie"]     = session_page.cookie_check.isChecked()
     task["proxy"] = {
@@ -123,10 +142,8 @@ def _apply_task_settings(task: dict, *, dashboard_page, session_page, monitor_pa
         "ip_list":       deepcopy(getattr(session_page, "_proxy_rows", [])),
     }
     task["extract"] = monitor_page.output_info["extract"]
-    task["extract"]["auto_save"] = dashboard_page.auto_save_chk.isChecked()
-    task["extract"]["auto_save_source"] = (
-        "refined" if dashboard_page.auto_src_ref_btn.isChecked() else "raw"
-    )
+    task["extract"]["auto_save"] = collect["auto_save"]
+    task["extract"]["auto_save_source"] = collect["auto_save_source"]
 
 
 def _reset_pages(dashboard, monitor_page) -> None:
@@ -135,6 +152,17 @@ def _reset_pages(dashboard, monitor_page) -> None:
         dashboard._reset_dashboard()
     if monitor_page is not None:
         monitor_page._reset_monitor_page()
+
+
+def _default_dialog_qss() -> str:
+    """앱 전역에서 반복 사용되는 QDialog 스타일시트 (여러 다이얼로그에 그대로 복사돼 있던 블록)"""
+    return f"""
+        QDialog {{
+            background:{BG_SECONDARY};
+            border:1px solid {BORDER};
+            border-radius:10px;
+        }}
+    """
 
 
 def _default_msgbox_qss(label_font_size: int = 12) -> str:
@@ -180,6 +208,14 @@ def _stop_worker_if_running(worker) -> None:
         worker.wait(1500)
 
 
+def _after_delay_unless_cancelled(is_cancelled, fn, delay_ms: int = 1000) -> None:
+    """delay_ms 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
+    취소된 경우 지연 중이던 콜백이 뒤늦게 실행되는 것을 막는다. 단일 '_toggle_run→
+    _step_to_setting→_actual_start'와 다중 '_start_batch'의 시작 연출(수집 대기→수집
+    세팅→데이터 수집 단계 표시)이 공유하는 타이머 유틸."""
+    QTimer.singleShot(delay_ms, lambda: None if is_cancelled() else fn())
+
+
 def _get_log_manager(widget):
     """
     최상위 MainWindowSingle의 log_manager(LogViewerDialog 싱글턴)를 반환한다.
@@ -189,6 +225,126 @@ def _get_log_manager(widget):
     (SessionSettingsPageTriggers/AuthManagerPageTriggers에 동일하게 복제돼 있던 메서드를 통합)
     """
     return getattr(widget.window(), 'log_manager', None)
+
+
+def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) -> tuple:
+    """"수집 설정" 위젯(Delay/Threads/Timeout/Retry/Auto Save)을 만들어 (카드 위젯,
+    위젯 딕셔너리)를 반환한다. defaults: delay/threads/timeout/retry/auto_save/
+    auto_save_source 키를 가진 dict — 값만 채울 뿐 자체 기본값 로직은 갖지 않는다
+    (_build_output_file_page와 동일한 패턴). 원래 DashboardPageSingle._build()의
+    "수집 & 저장 설정" 카드(card1)에 있던 위젯 구성을 그대로 옮겨, 상시 페이지(단일
+    대시보드)와 매번 새로 열리는 다이얼로그(다중 "⚙ 수집 설정") 양쪽에서 재사용한다.
+    렌더링 안전 상한(apply_render_safety_limits) 적용 여부는 호출부가 반환된
+    delay_spin/thread_spin에 대해 직접 판단한다 — 대상 블루프린트 정보를 이 함수는
+    모르기 때문이다.
+    single_row: Delay/Threads/Timeout/Retry를 한 줄에 배치할지(True) 기존처럼
+    두 줄(Delay+Threads / Timeout+Retry)로 배치할지(False, 기본값). 단일 대시보드
+    카드는 폭이 320px로 고정돼 있어 한 줄에 4개 필드가 들어가지 않으므로 기본값을
+    유지하고, 폭이 넉넉한 다중 "⚙ 수집 설정" 다이얼로그만 True로 호출한다."""
+    card = QWidget()
+    c1 = QVBoxLayout(card)
+    c1.setContentsMargins(0, 0, 0, 0)
+    c1.setSpacing(8)
+
+    delay_spin = BoundNoticeDoubleSpinBox()
+    delay_spin.setRange(0.5, 10.0)
+    delay_spin.setValue(defaults.get("delay", 0.5))
+    delay_spin.setSingleStep(0.5)
+    delay_spin.setDecimals(1)
+    delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
+
+    thread_spin = BoundNoticeSpinBox()
+    thread_spin.setRange(1, 16)
+    thread_spin.setValue(defaults.get("threads", 4))
+    thread_spin.setToolTip("병렬 수집 스레드 수")
+
+    timeout_spin = QSpinBox()
+    timeout_spin.setRange(1, 60)
+    timeout_spin.setValue(defaults.get("timeout", 10))
+    timeout_spin.setToolTip("요청 최대 대기 시간")
+
+    retry_spin = QSpinBox()
+    retry_spin.setRange(0, 5)
+    retry_spin.setValue(defaults.get("retry", 2))
+    retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
+
+    r1 = QHBoxLayout()
+    r1.setSpacing(8)
+    r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
+    r1.addWidget(delay_spin)
+    r1.addSpacing(6)
+    r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
+    r1.addWidget(thread_spin)
+    r1.addSpacing(6)
+
+    if single_row:
+        r1.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+        r1.addWidget(timeout_spin)
+        r1.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+        r1.addWidget(retry_spin)
+        r1.addSpacing(6)
+        r1.addStretch()
+        c1.addLayout(r1)
+    else:
+        r1.addStretch()
+        c1.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        r2.setSpacing(8)
+        r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+        r2.addWidget(timeout_spin)
+        r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+        r2.addWidget(retry_spin)
+        r2.addSpacing(6)
+        r2.addStretch()
+        c1.addLayout(r2)
+
+    c1.addSpacing(6)
+    c1.addWidget(Divider())
+    c1.addSpacing(6)
+
+    r3 = QHBoxLayout()
+    r3.setSpacing(8)
+    auto_save_chk = QCheckBox("Auto Save")
+    auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
+    auto_save_chk.setChecked(defaults.get("auto_save", True))
+    r3.addWidget(auto_save_chk)
+    r3.addSpacing(6)
+
+    auto_src_raw_btn = TagButton("RAW")
+    auto_src_ref_btn = TagButton("정제")
+    auto_src_ref_btn.setToolTip(
+        "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
+        "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
+    )
+    is_refined_default = defaults.get("auto_save_source", "raw") == "refined"
+    auto_src_raw_btn.setChecked(not is_refined_default)
+    auto_src_ref_btn.setChecked(is_refined_default)
+    r3.addWidget(auto_src_raw_btn)
+    r3.addWidget(auto_src_ref_btn)
+    r3.addStretch()
+    c1.addLayout(r3)
+
+    def _on_auto_save_toggled(checked: bool) -> None:
+        auto_src_raw_btn.setEnabled(checked)
+        auto_src_ref_btn.setEnabled(checked)
+
+    def _on_source_selected(select_refined: bool) -> None:
+        auto_src_raw_btn.setChecked(not select_refined)
+        auto_src_ref_btn.setChecked(select_refined)
+
+    auto_save_chk.toggled.connect(_on_auto_save_toggled)
+    auto_src_raw_btn.clicked.connect(lambda: _on_source_selected(False))
+    auto_src_ref_btn.clicked.connect(lambda: _on_source_selected(True))
+    _on_auto_save_toggled(auto_save_chk.isChecked())
+
+    widgets = {
+        "delay_spin": delay_spin, "thread_spin": thread_spin,
+        "timeout_spin": timeout_spin, "retry_spin": retry_spin,
+        "auto_save_chk": auto_save_chk,
+        "auto_src_raw_btn": auto_src_raw_btn, "auto_src_ref_btn": auto_src_ref_btn,
+    }
+    return card, widgets
 
 
 def _build_db_settings_fields(grid: QGridLayout, db_info: dict) -> dict:
@@ -324,19 +480,21 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
 def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:
     """TEST CONNECTION 버튼 클릭 시 공통 DB 연결 테스트 로직을 수행한다
     (출력 설정 / 스케줄 등록 다이얼로그에서 통째로 복제돼 있던 로직을 통합)."""
+    def _set_result(text: str, color: str) -> None:
+        test_result_lbl.setText(text)
+        test_result_lbl.setStyleSheet(f"color:{color}; font-size:11px;")
+
     def _test_conn():
         host = widgets["host"].text().strip() or "localhost"
         try:
             port = int(widgets["port"].text().strip())
         except ValueError:
-            test_result_lbl.setText("⚠ 포트 번호가 올바르지 않습니다")
-            test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+            _set_result("⚠ 포트 번호가 올바르지 않습니다", AMBER)
             _show_db_conn_fail_dialog(
                 parent_dialog, "포트 번호에 숫자가 아닌 값이 입력되어 있습니다.\n올바른 포트 번호를 입력하세요."
             )
             return
-        test_result_lbl.setText("⏳ 연결 중...")
-        test_result_lbl.setStyleSheet(f"color:{TEXT_MUTED}; font-size:11px;")
+        _set_result("⏳ 연결 중...", TEXT_MUTED)
         test_btn.setEnabled(False)
         QApplication.processEvents()
         info = {
@@ -348,27 +506,22 @@ def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog
         try:
             ok, reason = db_conn._check_db_connect_info(info)
             if ok:
-                test_result_lbl.setText(f"✅ {host}:{port} 연결 성공")
-                test_result_lbl.setStyleSheet(f"color:{GREEN}; font-size:11px;")
+                _set_result(f"✅ {host}:{port} 연결 성공", GREEN)
             else:
-                test_result_lbl.setText("❌ 연결 실패")
-                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _set_result("❌ 연결 실패", RED)
                 _show_db_conn_fail_dialog(parent_dialog, reason)
         except ImportError:
             try:
                 with socket.create_connection((host, port), timeout=3):
-                    test_result_lbl.setText(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)")
-                    test_result_lbl.setStyleSheet(f"color:{AMBER}; font-size:11px;")
+                    _set_result(f"✅ {host}:{port} 소켓 연결 성공 (DB 드라이버 미설치)", AMBER)
             except OSError as e:
-                test_result_lbl.setText("❌ 연결 실패")
-                test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+                _set_result("❌ 연결 실패", RED)
                 _show_db_conn_fail_dialog(
                     parent_dialog,
                     f"DB 드라이버가 설치되어 있지 않아 소켓 연결을 시도했으나 실패했습니다.\n\n원인: {e}"
                 )
         except Exception as e:
-            test_result_lbl.setText("❌ 연결 실패")
-            test_result_lbl.setStyleSheet(f"color:{RED}; font-size:11px;")
+            _set_result("❌ 연결 실패", RED)
             _show_db_conn_fail_dialog(parent_dialog, str(e))
         finally:
             test_btn.setEnabled(True)

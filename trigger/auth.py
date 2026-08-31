@@ -29,7 +29,7 @@ class AuthManagerPageTriggers:
         dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
 
         vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(20, 16, 20, 16)
+        vl.setContentsMargins(22, 18, 22, 18)
         vl.setSpacing(10)
         vl.addWidget(parts.make_label("자격증명 추가", TEXT_PRIMARY, 13, True))
         vl.addWidget(Divider())

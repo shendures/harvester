@@ -15,16 +15,6 @@ from .common import (
 class DashboardPageTriggers:
     """DashboardPageSingle의 테이블·필터·내보내기 메서드"""
 
-    def _on_auto_save_toggled(self, checked: bool):
-        """자동 저장 체크박스 — 꺼져 있으면 저장 대상(RAW/정제) 토글은 의미가 없어 비활성화"""
-        self.auto_src_raw_btn.setEnabled(checked)
-        self.auto_src_ref_btn.setEnabled(checked)
-
-    def _on_auto_save_source_selected(self, is_refined: bool):
-        """자동 저장 대상(RAW/정제) 토글 — 상호 배타 선택"""
-        self.auto_src_raw_btn.setChecked(not is_refined)
-        self.auto_src_ref_btn.setChecked(is_refined)
-
     def add_row(self, row: dict):
         """워커 new_row 시그널 수신 → 대시보드 수집 모니터링 테이블에 행 추가"""
         if not row or "resp_info" not in row:

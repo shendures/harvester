@@ -9,7 +9,7 @@ import multiprocessing
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from layout_single import MainWindowSingle, theme
+from layout import MainWindowSingle, theme
 from conf import BlueprintStorage
 import utility
 
@@ -85,7 +85,7 @@ def main():
     use_multi = forced_multi or (not forced_single and blueprint_count >= 2)
 
     if use_multi:
-        from layout_multi import MainWindowMulti
+        from layout.multi import MainWindowMulti
         win = MainWindowMulti()
     else:
         win = MainWindowSingle()

@@ -66,6 +66,56 @@ def _build_mongo_uri(db_info: dict) -> str:
     return f"mongodb://{host}:{port}/"
 
 
+def _run_sql_query(db_info: dict, connect_args: dict, query: str) -> list[dict]:
+    """
+    PostgreSQL / MySQL 공용 쿼리 실행 헬퍼.
+    connect_args만 호출 측(read_db_data)에서 dialect별로 다르게 조립해 넘깁니다.
+    """
+    engine = None
+    try:
+        engine = create_engine(_build_sql_url(db_info), connect_args=connect_args, pool_pre_ping=True)
+        with engine.connect() as conn:
+            result = conn.execute(text(query))
+            keys   = result.keys()
+            return [dict(zip(keys, row)) for row in result.fetchall()]
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
+def _write_sql_table(db_info: dict, data: list[dict], mode: str,
+                      connect_args: dict, schema: str | None, error_label: str) -> None:
+    """
+    PostgreSQL / MySQL 공용 테이블 저장 헬퍼.
+    connect_args(dialect별 접속 옵션)와 schema(PostgreSQL만 사용)는
+    호출 측(save_db)에서 조립해 넘깁니다.
+    """
+    engine = None
+    try:
+        engine = create_engine(_build_sql_url(db_info), connect_args=connect_args, pool_pre_ping=True)
+
+        sample  = data[0]
+        columns = [Column(k, _infer_col_type(v)) for k, v in sample.items()]
+
+        metadata      = MetaData()
+        table_kwargs  = {"schema": schema} if schema else {}
+        dynamic_table = Table(db_info["save_data_nm"], metadata, *columns, **table_kwargs)
+
+        if mode == "overwrite":
+            dynamic_table.drop(engine, checkfirst=True)
+
+        metadata.create_all(engine)
+
+        with engine.begin() as conn:
+            conn.execute(dynamic_table.insert(), data)
+
+    except Exception as e:
+        raise RuntimeError(f"{error_label} DB 저장 중 오류 발생: {e}") from e
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+
 def _infer_col_type(value):
     """
     Python 값으로 SQLAlchemy 컬럼 타입을 추론합니다.
@@ -156,29 +206,17 @@ def _check_db_connect_info(db_info: dict) -> tuple[bool, str]:
                     # search_path 세팅 자체는 잘못된 스키마여도 오류가 발생하지 않으므로
                     # information_schema를 직접 조회하여 스키마 존재 여부를 확인합니다.
                     if schema:
-                        if db_env == "PostgreSQL":
-                            row = conn.execute(
-                                text(
-                                    "SELECT 1 FROM information_schema.schemata "
-                                    "WHERE schema_name = :s"
-                                ),
-                                {"s": schema},
-                            ).fetchone()
-                            if row is None:
-                                return False, f"스키마 '{schema}'를 찾을 수 없습니다."
-
-                        elif db_env == "MySQL":
-                            # MySQL에서 스키마(SCHEMA)는 데이터베이스와 동일한 개념이므로
-                            # SCHEMATA 테이블에서 SCHEMA_NAME으로 존재 여부를 확인합니다.
-                            row = conn.execute(
-                                text(
-                                    "SELECT 1 FROM information_schema.SCHEMATA "
-                                    "WHERE SCHEMA_NAME = :s"
-                                ),
-                                {"s": schema},
-                            ).fetchone()
-                            if row is None:
-                                return False, f"스키마(데이터베이스) '{schema}'를 찾을 수 없습니다."
+                        # MySQL에서 스키마(SCHEMA)는 데이터베이스와 동일한 개념이므로
+                        # 라벨을 구분해 안내합니다. information_schema 테이블/컬럼명
+                        # 표기(소문자 vs 대문자)는 각 DB의 관례를 따릅니다.
+                        info_schema_sql, label = (
+                            ("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s", "스키마")
+                            if db_env == "PostgreSQL" else
+                            ("SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = :s", "스키마(데이터베이스)")
+                        )
+                        row = conn.execute(text(info_schema_sql), {"s": schema}).fetchone()
+                        if row is None:
+                            return False, f"{label} '{schema}'를 찾을 수 없습니다."
 
                 return True, ""
             finally:
@@ -286,40 +324,11 @@ def read_db_data(db_info: dict, query: str) -> list[dict]:
             connect_args = {}
             if db_info.get("schema"):
                 connect_args["options"] = f"-csearch_path={db_info['schema']}"
-
-            # [수정] _build_sql_url 헬퍼로 패스워드 인코딩 (기존: raw 삽입)
-            engine = None
-            try:
-                engine = create_engine(
-                    _build_sql_url(db_info),
-                    connect_args=connect_args,
-                    pool_pre_ping=True,
-                )
-                with engine.connect() as conn:
-                    result = conn.execute(text(query))
-                    keys   = result.keys()
-                    result_data = [dict(zip(keys, row)) for row in result.fetchall()]
-            finally:
-                # [수정] 기존 코드는 engine.dispose() 없어 커넥션 풀 누수 발생
-                if engine is not None:
-                    engine.dispose()
+            result_data = _run_sql_query(db_info, connect_args, query)
 
         # ── 2. MySQL ──────────────────────────────────────
         elif db_env == "MySQL":
-            engine = None
-            try:
-                engine = create_engine(
-                    _build_sql_url(db_info),
-                    pool_pre_ping=True,
-                    connect_args={"charset": "utf8mb4"},
-                )
-                with engine.connect() as conn:
-                    result = conn.execute(text(query))
-                    keys   = result.keys()
-                    result_data = [dict(zip(keys, row)) for row in result.fetchall()]
-            finally:
-                if engine is not None:
-                    engine.dispose()
+            result_data = _run_sql_query(db_info, {"charset": "utf8mb4"}, query)
 
         # ── 3. MongoDB ────────────────────────────────────
         elif db_env == "MongoDB":
@@ -393,75 +402,21 @@ def save_db(db_info: dict, data: list[dict], mode: str = "append") -> None:
 
     # ── PostgreSQL ───────────────────────────────────────
     elif db_env == "PostgreSQL":
-        engine = None
-        try:
-            # [수정] _build_sql_url 헬퍼로 패스워드 인코딩 통일 (기존: raw 삽입)
-            engine = create_engine(
-                _build_sql_url(db_info),
-                connect_args={"options": f'-csearch_path={db_info["schema"]}'},
-                pool_pre_ping=True,
-            )
-
-            sample  = data[0]
-            columns = [Column(k, _infer_col_type(v)) for k, v in sample.items()]
-
-            metadata      = MetaData()
-            dynamic_table = Table(
-                db_info["save_data_nm"],
-                metadata,
-                *columns,
-                schema=db_info["schema"],
-            )
-
-            if mode == "overwrite":
-                dynamic_table.drop(engine, checkfirst=True)
-
-            metadata.create_all(engine)
-
-            with engine.begin() as conn:
-                conn.execute(dynamic_table.insert(), data)
-
-        except Exception as e:
-            raise RuntimeError(f"PostgreSQL DB 저장 중 오류 발생: {e}") from e
-        finally:
-            # [수정] 기존 코드는 finally 없어 엔진 누수 발생
-            if engine is not None:
-                engine.dispose()
+        _write_sql_table(
+            db_info, data, mode,
+            connect_args={"options": f'-csearch_path={db_info["schema"]}'},
+            schema=db_info["schema"],
+            error_label="PostgreSQL",
+        )
 
     # ── MySQL ────────────────────────────────────────────
     elif db_env == "MySQL":
-        engine = None
-        try:
-            # [수정] _build_sql_url 헬퍼로 패스워드 인코딩 통일 (기존: raw 삽입)
-            engine = create_engine(
-                _build_sql_url(db_info),
-                pool_pre_ping=True,
-                connect_args={"charset": "utf8mb4"},
-            )
-
-            sample  = data[0]
-            columns = [Column(k, _infer_col_type(v)) for k, v in sample.items()]
-
-            metadata      = MetaData()
-            dynamic_table = Table(
-                db_info["save_data_nm"],
-                metadata,
-                *columns,
-            )
-
-            if mode == "overwrite":
-                dynamic_table.drop(engine, checkfirst=True)
-
-            metadata.create_all(engine)
-
-            with engine.begin() as conn:
-                conn.execute(dynamic_table.insert(), data)
-
-        except Exception as e:
-            raise RuntimeError(f"MySQL DB 저장 중 오류 발생: {e}") from e
-        finally:
-            if engine is not None:
-                engine.dispose()
+        _write_sql_table(
+            db_info, data, mode,
+            connect_args={"charset": "utf8mb4"},
+            schema=None,
+            error_label="MySQL",
+        )
 
     else:
         raise ValueError(f"[save_db] 지원하지 않는 DB 타입입니다: '{db_env}'")

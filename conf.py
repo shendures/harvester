@@ -54,9 +54,6 @@ class DataStore:
             return
         self._rows.append(row)
 
-    def get_rows(self) -> list:
-        return list(self._rows)
-
     def clear_rows(self) -> None:
         self._rows.clear()
 
@@ -100,23 +97,35 @@ class DataStore:
 
 
 # ══════════════════════════════════════════════════════
+#  싱글턴 공통 베이스 (__init__에 무거운 초기화가 있는 경우)
+# ══════════════════════════════════════════════════════
+class _LazyInitSingleton:
+    """
+    BlueprintStorage / CustomModuleStorage가 공유하는 싱글턴 __new__ 보일러플레이트.
+
+    __new__는 최초 1회만 인스턴스를 만들고 _initialized=False로 표시합니다.
+    각 서브클래스의 __init__은 맨 앞에서 `if self._initialized: return` 가드로
+    재호출 시 초기화가 다시 실행되지 않도록 해야 합니다.
+    """
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+
+# ══════════════════════════════════════════════════════
 #  BLUEPRINT STORAGE
 # ══════════════════════════════════════════════════════
-class BlueprintStorage:
+class BlueprintStorage(_LazyInitSingleton):
     """
     request_info.json을 로드해 수집 청사진(blueprint)을 관리하는 싱글턴.
 
     싱글턴 초기화는 최초 1회만 수행됩니다.
     이후 BlueprintStorage()를 다시 호출해도 __init__이 재실행되지 않습니다.
     """
-    _instance = None
-
-    # ── 싱글턴 ────────────────────────────────────────
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
 
     def __init__(self, app_name: str = utility.get_app_name(), filename: str = "request_info.json"):
         # 최초 1회만 초기화
@@ -301,6 +310,34 @@ class BlueprintStorage:
         """활성 seq_no가 가리키는 내부 dict 참조. _load()가 최소 1개를 보장."""
         return self._find(self._active_seq_no) or self._blueprints[0]
 
+    # ── Public API (블루프린트별 UI 설정 영속화) ─────────
+    def update_settings(self, seq_no, **patch) -> None:
+        """seq_no 블루프린트에 patch(예: collect_settings=..., output_settings=...)를
+        병합하고 즉시 파일에 저장한다 — "⚙" 다이얼로그의 "적용"처럼 값을 확정하는
+        시점에 호출해, 앱을 재시작해도 마지막으로 설정한 값이 그대로 표출되게 한다."""
+        target = self._find(seq_no)
+        if target is None:
+            logger.warning("[BlueprintStorage] update_settings: 존재하지 않는 seq_no (%s)", seq_no)
+            return
+        target.update(patch)
+        self.save()
+
+    def save(self) -> None:
+        """현재 메모리의 전체 블루프린트 리스트를 request_info.json에 그대로 저장한다."""
+        try:
+            with open(self.file_path, "w", encoding="utf-8") as f:
+                json.dump(self._blueprints, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error("[BlueprintStorage] 저장 실패: %s", e)
+
+
+# 수집 설정("수집 & 저장 설정" 카드 / 다중의 "⚙" 다이얼로그) 기본값 — 블루프린트에
+# collect_settings가 저장돼 있지 않은 최초 실행/신규 블루프린트에 쓰인다.
+DEFAULT_COLLECT_SETTINGS = {
+    "delay": 0.5, "threads": 4, "timeout": 10, "retry": 2,
+    "auto_save": True, "auto_save_source": "raw",
+}
+
 
 def get_spider_mode(blueprint: dict):
     """블루프린트의 스파이더 모드(conditions.spiders 값)를 반환한다.
@@ -314,7 +351,7 @@ def get_spider_mode(blueprint: dict):
 # ══════════════════════════════════════════════════════
 #  CUSTOM MODULE STORAGE
 # ══════════════════════════════════════════════════════
-class CustomModuleStorage:
+class CustomModuleStorage(_LazyInitSingleton):
     """
     seq_no별 커스텀 모듈(`{kind}/{seq_no}.py`)을 로드하는 싱글턴.
 
@@ -339,15 +376,7 @@ class CustomModuleStorage:
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
     반영됩니다.
     """
-    _instance = None
     _KINDS = ("render", "login", "refine")
-
-    # ── 싱글턴 ────────────────────────────────────────
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
 
     def __init__(self, app_name: str = utility.get_app_name()):
         # 최초 1회만 초기화

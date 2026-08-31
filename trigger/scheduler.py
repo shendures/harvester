@@ -727,7 +727,7 @@ class SchedulerPageTriggers:
         sched_refine_panel.setMinimumWidth(260)
         sched_refine_panel.setMaximumWidth(400)
         refine_panel_layout = QVBoxLayout(sched_refine_panel)
-        refine_panel_layout.setContentsMargins(16, 18, 0, 18)
+        refine_panel_layout.setContentsMargins(16, 18, 16, 18)
         refine_panel_layout.setSpacing(8)
 
         refine_panel_layout.addWidget(parts.make_label("정제 규칙 설정", TEXT_PRIMARY, 12, bold=True))
@@ -1140,7 +1140,7 @@ class SchedulerPageTriggers:
         _on_iv_changed(sched_interval.currentIndex())
 
         root.addLayout(iv_row)
-        root.setSpacing(4)
+        root.addSpacing(4)
         root.addWidget(detail_wrap)
         root.addSpacing(12)
         root.addWidget(Divider())

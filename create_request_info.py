@@ -4,25 +4,6 @@ import json
 import utility
 import customized_settings
 
-def select_columns(_feature):
-    """기능에 따른 컬럼 리스트 선택"""
-    fixed_info = [
-                  'seq_no',
-                  'title',
-                  'urls',
-                  'callback_urls',
-                  'conditions',
-                  'spiders',
-                  'needs_cleaning'
-                  ]
-
-    if _feature == "default":
-        return fixed_info
-    elif _feature == "login" or _feature == "license":
-        return fixed_info + ['auth']
-
-    return fixed_info
-
 def create_request_info_setting_file(blueprint_list, save_file_nm):
     """
     수집 정보 설정 파일을 생성합니다.
