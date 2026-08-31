@@ -192,7 +192,7 @@ def _get_log_manager(widget):
     return getattr(widget.window(), 'log_manager', None)
 
 
-def _build_collect_settings_fields(defaults: dict) -> tuple:
+def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) -> tuple:
     """"수집 설정" 위젯(Delay/Threads/Timeout/Retry/Auto Save)을 만들어 (카드 위젯,
     위젯 딕셔너리)를 반환한다. defaults: delay/threads/timeout/retry/auto_save/
     auto_save_source 키를 가진 dict — 값만 채울 뿐 자체 기본값 로직은 갖지 않는다
@@ -201,50 +201,68 @@ def _build_collect_settings_fields(defaults: dict) -> tuple:
     대시보드)와 매번 새로 열리는 다이얼로그(다중 "⚙ 수집 설정") 양쪽에서 재사용한다.
     렌더링 안전 상한(apply_render_safety_limits) 적용 여부는 호출부가 반환된
     delay_spin/thread_spin에 대해 직접 판단한다 — 대상 블루프린트 정보를 이 함수는
-    모르기 때문이다."""
+    모르기 때문이다.
+    single_row: Delay/Threads/Timeout/Retry를 한 줄에 배치할지(True) 기존처럼
+    두 줄(Delay+Threads / Timeout+Retry)로 배치할지(False, 기본값). 단일 대시보드
+    카드는 폭이 320px로 고정돼 있어 한 줄에 4개 필드가 들어가지 않으므로 기본값을
+    유지하고, 폭이 넉넉한 다중 "⚙ 수집 설정" 다이얼로그만 True로 호출한다."""
     card = QWidget()
     c1 = QVBoxLayout(card)
     c1.setContentsMargins(0, 0, 0, 0)
     c1.setSpacing(8)
 
-    r1 = QHBoxLayout()
-    r1.setSpacing(8)
-    r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
     delay_spin = BoundNoticeDoubleSpinBox()
     delay_spin.setRange(0.5, 10.0)
     delay_spin.setValue(defaults.get("delay", 0.5))
     delay_spin.setSingleStep(0.5)
     delay_spin.setDecimals(1)
     delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
-    r1.addWidget(delay_spin)
-    r1.addSpacing(6)
-    r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
+
     thread_spin = BoundNoticeSpinBox()
     thread_spin.setRange(1, 16)
     thread_spin.setValue(defaults.get("threads", 4))
     thread_spin.setToolTip("병렬 수집 스레드 수")
-    r1.addWidget(thread_spin)
-    r1.addSpacing(6)
-    r1.addStretch()
-    c1.addLayout(r1)
 
-    r2 = QHBoxLayout()
-    r2.setSpacing(8)
-    r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
     timeout_spin = QSpinBox()
     timeout_spin.setRange(1, 60)
     timeout_spin.setValue(defaults.get("timeout", 10))
     timeout_spin.setToolTip("요청 최대 대기 시간")
-    r2.addWidget(timeout_spin)
-    r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+
     retry_spin = QSpinBox()
     retry_spin.setRange(0, 5)
     retry_spin.setValue(defaults.get("retry", 2))
     retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
-    r2.addWidget(retry_spin)
-    r2.addSpacing(6)
-    r2.addStretch()
-    c1.addLayout(r2)
+
+    r1 = QHBoxLayout()
+    r1.setSpacing(8)
+    r1.addWidget(parts.make_label("Delay(s)", TEXT_SECONDARY, 12))
+    r1.addWidget(delay_spin)
+    r1.addSpacing(6)
+    r1.addWidget(parts.make_label(" Threads", TEXT_SECONDARY, 12))
+    r1.addWidget(thread_spin)
+    r1.addSpacing(6)
+
+    if single_row:
+        r1.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+        r1.addWidget(timeout_spin)
+        r1.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+        r1.addWidget(retry_spin)
+        r1.addSpacing(6)
+        r1.addStretch()
+        c1.addLayout(r1)
+    else:
+        r1.addStretch()
+        c1.addLayout(r1)
+
+        r2 = QHBoxLayout()
+        r2.setSpacing(8)
+        r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+        r2.addWidget(timeout_spin)
+        r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+        r2.addWidget(retry_spin)
+        r2.addSpacing(6)
+        r2.addStretch()
+        c1.addLayout(r2)
 
     c1.addSpacing(6)
     c1.addWidget(Divider())

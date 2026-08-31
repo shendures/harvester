@@ -75,7 +75,7 @@ class BlueprintListPage(QWidget):
     _SETTINGS_BTN_QSS = f"""
         QPushButton {{
             background:{BG_HOVER}; color:{ACCENT_LIGHT}; border:1px solid {ACCENT_LIGHT};
-            border-radius:6px; font-size:12px; font-weight:bold;
+            border-radius:6px; padding:0; font-size:12px; font-weight:bold;
         }}
         QPushButton:hover {{ background:{ACCENT}; color:white; border-color:{ACCENT}; }}
     """
@@ -232,7 +232,11 @@ class BlueprintListPage(QWidget):
         """아이콘 전용 버튼(▶/⚙)을 체크박스와 동일한 방식(투명 배경 래퍼 + 좌우
         stretch로 중앙 정렬)으로 셀에 배치할 수 있도록 (래퍼 위젯, 버튼) 쌍을 만든다."""
         btn = parts.outline_btn(text)
-        btn.setFixedSize(30, 24)
+        # 셀 위젯은 Qt가 행 높이(row_height=32)에서 상하 여백을 뺀 자리에
+        # 배치하므로 실사용 가능한 높이는 32px가 아니라 약 20px다 — 24px로
+        # 고정하면 버튼 하단이 그 여백에 가려 잘려 보인다(체크박스는 16px라
+        # 문제없었음). 20px로 맞춰 잘림 없이 셀 안에 온전히 들어가게 한다.
+        btn.setFixedSize(30, 20)
         btn.setToolTip(tooltip)
         btn.clicked.connect(on_click)
 

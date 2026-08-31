@@ -632,9 +632,11 @@ class MonitorPageTriggers:
         dlg.setWindowTitle(title)
         # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
         # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
-        # auth_page가 있을 때만(=다중 레이아웃에서 인증이 필요한 블루프린트) 폭을
-        # 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px 그대로.
-        dlg.setFixedWidth(680 if auth_page is not None else 500)
+        # "수집 설정" 섹션도 Delay/Threads/Timeout/Retry를 한 줄로 배치하므로 동일하게
+        # 넓은 폭이 필요하다. collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃
+        # 호출) 폭을 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px
+        # 그대로.
+        dlg.setFixedWidth(680 if (collect is not None or auth_page is not None) else 500)
         dlg.setStyleSheet(f"""
             QDialog {{
                 background:{BG_SECONDARY};
@@ -682,7 +684,7 @@ class MonitorPageTriggers:
             vl.addWidget(collect_title)
             vl.addSpacing(10)
 
-            collect_content, collect_widgets = _build_collect_settings_fields(collect)
+            collect_content, collect_widgets = _build_collect_settings_fields(collect, single_row=True)
             if get_spider_mode(self._active_blueprint_info()) == "html_render":
                 apply_render_safety_limits(
                     collect_widgets["thread_spin"], collect_widgets["delay_spin"],
