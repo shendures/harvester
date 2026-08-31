@@ -98,17 +98,28 @@ class BlueprintListPage(QWidget):
     def _build(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        # "작업 진행 상태"·"수집 목록"·모니터링 상세 사이의 카드 간격을 모두
+        # 통일한다(다중 대시보드의 카드 간 기준 간격인 bl.setSpacing(12)와 동일).
+        root.setSpacing(12)
+        self._root = root  # attach_step_panel이 맨 위에 끼워 넣을 때 참조
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;}")
         body = QWidget()
         bl = QVBoxLayout(body)
-        bl.setContentsMargins(14, 14, 14, 14)
+        # 위/아래 여백은 0으로 둔다 — root.setSpacing(12)가 위(작업 진행 상태)·
+        # 아래(모니터링 상세) 카드와의 간격을 전담하므로, 여기서 추가하면 간격이
+        # 중복으로 벌어진다. 좌우 여백만 페이지 가장자리 여백으로 유지한다.
+        bl.setContentsMargins(14, 0, 14, 0)
         bl.setSpacing(12)
         scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+
+        # 목록(위, 고정 높이) / 모니터링 상세(아래, attach_detail_panel로 주입,
+        # 나머지 공간 차지) — 사용자가 드래그로 비율을 바꿀 수 없도록 스플리터
+        # 대신 고정 배치를 쓴다.
+        scroll.setMaximumHeight(380)
+        root.addWidget(scroll)
 
         tcw, tc = parts.card_widget("수집 목록")
 
@@ -136,6 +147,16 @@ class BlueprintListPage(QWidget):
         self.table.customContextMenuRequested.connect(self._show_cell_context_menu)
         tc.addWidget(self.table)
         bl.addWidget(tcw, 1)
+
+    def attach_step_panel(self, widget: QWidget) -> None:
+        """활성 블루프린트의 "작업 진행 상태"(main_window의 step_slot)를 목록 위쪽 맨
+        위에 결합한다 — 카드 순서 "작업 진행 상태 → 수집 목록 → (나머지)"를 위함."""
+        self._root.insertWidget(0, widget)
+
+    def attach_detail_panel(self, widget: QWidget) -> None:
+        """활성 블루프린트의 모니터링 상세(main_window의 dashboard_slot)를 목록 아래에
+        결합한다 — 남는 세로 공간을 모두 차지한다(stretch=1)."""
+        self._root.addWidget(widget, 1)
 
     def refresh(self) -> None:
         """BlueprintStorage에서 다시 읽어 테이블을 재구성한다."""

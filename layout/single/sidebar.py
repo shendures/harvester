@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import pyqtSignal
 
 from style import NavItem, Divider
+from trigger.common import NAV_MONITOR, NAV_REFINE, NAV_SCHEDULE, NAV_STATS, NAV_SESSION, NAV_AUTH
 from ..common import parts, BG_SECONDARY, ACCENT_LIGHT, TEXT_MUTED, GREEN, BORDER, _blueprint_requires_auth
 from .common import request_info
 
@@ -22,14 +23,17 @@ class SidebarSingle(QWidget):
 
     def _nav_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 상단 NAVIGATOR 섹션."""
-        return [("⬡", "대시보드", 0), ("≡", "데이터 정제", 1), ("◷", "스케줄러", 2), ("▲", "통계 분석", 3)]
+        return [
+            ("⬡", "모니터링", NAV_MONITOR), ("≡", "데이터 정제", NAV_REFINE),
+            ("◷", "스케줄러", NAV_SCHEDULE), ("▲", "통계 분석", NAV_STATS),
+        ]
 
     def _settings_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 하단 SETTINGS 섹션.
         첫번째 수집 정보 기준으로 인증 관리 항목 포함 여부를 결정한다."""
-        items = [("◎", "세션 설정", 4)]
+        items = [("◎", "세션 설정", NAV_SESSION)]
         if _blueprint_requires_auth(request_info):
-            items.append(("⬡", "인증 관리", 5))
+            items.append(("⬡", "인증 관리", NAV_AUTH))
         return items
 
     def _build(self):

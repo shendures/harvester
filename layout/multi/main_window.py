@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt
 
 from conf import BlueprintStorage
 from trigger import LogViewerDialog, MainWindowTriggersMulti
+from trigger.common import NAV_BLUEPRINT_LIST
 from ..common import build_status_bar, center_window_on_screen
 from ..scheduler import SchedulerPage
 from ..statistics import StatisticsPage
@@ -65,7 +66,8 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         # ── QStackedWidget: 페이지 종류별 인덱스는 단일과 동일하게 고정하고,
         #    블루프린트별 페이지는 각 슬롯(내부 QStackedWidget)에서 교체한다.
         self.stack = QStackedWidget()
-        self.dashboard_slot = QStackedWidget()   # 0 — 블루프린트별 대시보드
+        self.dashboard_slot = QStackedWidget()   # 블루프린트별 대시보드(나머지 카드) — "수집 목록"(5) 하단에 통합됨
+        self.step_slot = QStackedWidget()        # 블루프린트별 "작업 진행 상태" 카드 — "수집 목록"(5) 위쪽에 통합됨
         self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 데이터 정제(4탭)
         self.monitor_nav_list = MonitorTargetListPage()  # 1 좌측 — 정제 대상 선택용 경량 목록
         self.monitor_nav_list.blueprint_selected.connect(self._activate_blueprint)
@@ -82,19 +84,30 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.session_page = SessionSettingsPage()  # 4 — 전역 단일
         self.schedule_page.session_page = self.session_page
 
-        self.blueprint_list_page = BlueprintListPage()   # 5 — 전역 단일, 목록 전용
+        self.blueprint_list_page = BlueprintListPage()   # 5 — 전역 단일, 목록+모니터링 통합
         self.blueprint_list_page.row_selected.connect(self._activate_blueprint)
         self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
         self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
         self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
         self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
+        # "모니터링"(구 NAV_MONITOR 페이지)을 "수집 목록" 위/아래에 통합한다 — 카드
+        # 순서를 "작업 진행 상태 → 수집 목록 → 대기중 상태바 → 세션 통계 → 수집
+        # 모니터링"으로 맞추기 위해 step_slot(작업 진행 상태만)은 위에, dashboard_slot
+        # (나머지 카드)은 아래에 붙인다. 두 슬롯의 소유권은 그대로 이 클래스가 갖고
+        # (_get_or_create_bundle이 계속 addWidget으로 채움), 화면 배치만 여기서 주입한다.
+        self.blueprint_list_page.attach_step_panel(self.step_slot)
+        self.blueprint_list_page.attach_detail_panel(self.dashboard_slot)
 
-        self.stack.addWidget(self.dashboard_slot)       # 0
-        self.stack.addWidget(self.monitor_split)        # 1
-        self.stack.addWidget(self.schedule_page)        # 2
-        self.stack.addWidget(self.stats_page)           # 3
-        self.stack.addWidget(self.session_page)         # 4
-        self.stack.addWidget(self.blueprint_list_page)  # 5
+        # 추가 순서가 곧 스택 인덱스이며 trigger/common.py의 NAV_* 상수와 일치해야 한다.
+        # 인덱스 0(NAV_MONITOR)은 단일 레이아웃과 공유하는 고정값이라 값을 바꿀 수
+        # 없지만, 다중은 위에서 "수집 목록"에 통합했으므로 이 자리는 쓰지 않는
+        # 빈 위젯으로 채워 1~5 인덱스 정렬만 유지한다.
+        self.stack.addWidget(QWidget())                 # 0 — NAV_MONITOR (다중 미사용, "수집 목록"에 통합됨)
+        self.stack.addWidget(self.monitor_split)        # 1 — NAV_REFINE
+        self.stack.addWidget(self.schedule_page)        # 2 — NAV_SCHEDULE
+        self.stack.addWidget(self.stats_page)           # 3 — NAV_STATS
+        self.stack.addWidget(self.session_page)         # 4 — NAV_SESSION
+        self.stack.addWidget(self.blueprint_list_page)  # 5 — NAV_BLUEPRINT_LIST
 
         self.global_toolbar.set_log_manager(self.log_manager)
 
@@ -110,6 +123,8 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
 
         # 최초 활성화 — 첫 번째 블루프린트 기준으로 기존 단일 동작을 재현
         self._activate_blueprint(storage.list_seq_nos()[0])
+        # 다중 레이아웃은 시작 화면으로 "수집 목록"을 먼저 보여준다
+        self._activate_nav_page(NAV_BLUEPRINT_LIST)
 
     # ── 번들 캐시 ─────────────────────────────────────
     def _resolve_seq_no(self, seq_no):
@@ -127,6 +142,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
             # 이상 별도 화면이 아니라 "⚙" 다이얼로그가 열릴 때만 잠깐 그
             # 다이얼로그에 얹혔다가 떼어지는 방식으로 쓰인다(_open_blueprint_settings).
             self.dashboard_slot.addWidget(bundle.dashboard)
+            self.step_slot.addWidget(bundle.dashboard.step_card_widget)
             self.monitor_slot.addWidget(bundle.monitor_page)
         return self._bundles[seq_no]
 
@@ -156,6 +172,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.monitor_nav_list.set_active_seq_no(seq_no)
 
         self.dashboard_slot.setCurrentWidget(bundle.dashboard)
+        self.step_slot.setCurrentWidget(bundle.dashboard.step_card_widget)
         self.monitor_slot.setCurrentWidget(bundle.monitor_page)
 
         # 상속(단일) 트리거 호환 — "활성 번들"의 페이지를 가리키는 별칭 유지

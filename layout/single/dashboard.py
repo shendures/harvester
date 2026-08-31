@@ -49,6 +49,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         bl = QVBoxLayout(body)
         bl.setContentsMargins(14, 14, 14, 14)
         bl.setSpacing(12)
+        self._configure_body_margins(bl)
         scroll.setWidget(body)
         root.addWidget(scroll, 1)
 
@@ -103,7 +104,13 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
 
         # card 1 — "수집 & 저장 설정"(Delay/Threads/Timeout/Retry/Auto Save)
         self._build_collect_settings_card(cfg)
-        bl.addLayout(cfg)
+
+        # "작업 진행 상태"(+단일의 "수집 & 저장 설정") 행을 별도 위젯으로 감싸 둔다 —
+        # DashboardPageMulti가 _place_step_card를 오버라이드해 이 위젯을 이 페이지의
+        # 스크롤 영역 밖(main_window의 별도 스택)으로 떼어내 배치할 수 있게 하기 위함.
+        self.step_card_widget = QWidget()
+        self.step_card_widget.setLayout(cfg)
+        self._place_step_card(bl)
 
         # ── 프로그레스 바 (작업 진행 상태 ~ 세션 통계 사이) ──────────
         pb_card = QWidget()
@@ -169,6 +176,22 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
             ["NO", "URL", "STATUS", "IP_ADDRESS", "USER-AGENT", "COOKIES", "LATENCY(PURE)", "LATENCY(TOTAL)", "JOB_NAME"])
         mon_tc.addWidget(self.monitor_table)
         bl.addWidget(mon_tcw, 1)
+
+    def _place_step_card(self, bl: QVBoxLayout) -> None:
+        """"작업 진행 상태" 행(self.step_card_widget)을 배치한다. 기본은 다른 카드들과
+        같은 세로 스택(이 페이지 자체의 스크롤 영역)에 그대로 넣는다(단일 레이아웃).
+        DashboardPageMulti는 이 훅을 오버라이드해 아무것도 하지 않는다 — 그 대신
+        main_window가 step_card_widget을 "수집 목록" 위쪽의 별도 스택에 직접
+        마운트한다(요구사항: 모니터링 페이지 카드 순서에 "수집 목록"을 끼워 넣기 위함)."""
+        bl.addWidget(self.step_card_widget)
+
+    def _configure_body_margins(self, bl: QVBoxLayout) -> None:
+        """bl(스크롤 영역 내부 콘텐츠)의 여백을 조정하는 훅. 기본은 그대로 둔다(단일
+        레이아웃 — 이 페이지가 독립된 화면이라 4면 여백이 모두 필요함). DashboardPageMulti는
+        위쪽 여백만 0으로 줄인다 — "수집 목록" 카드와의 경계 여백은 main_window의
+        상위 레이아웃 spacing이 대신 공급하므로, 여기서 위쪽까지 14px를 더하면
+        카드 사이 간격이 다른 카드 쌍보다 두 배 가까이 벌어진다."""
+        pass
 
     def _build_collect_settings_card(self, cfg: QHBoxLayout) -> None:
         """"수집 & 저장 설정" 카드(Delay/Threads/Timeout/Retry/Auto Save) — 위젯

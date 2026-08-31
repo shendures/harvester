@@ -76,19 +76,20 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
         self.session_page = SessionSettingsPage()
         self.schedule_page.session_page = self.session_page
 
-        # Navigator 순서
-        self.stack.addWidget(self.dashboard)  # 0
-        self.stack.addWidget(self.monitor_page)  # 1
-        self.stack.addWidget(self.schedule_page)  # 2
-        self.stack.addWidget(self.stats_page)  # 3
-        self.stack.addWidget(self.session_page)  # 4
+        # Navigator 순서 — 추가 순서가 곧 스택 인덱스이며 trigger/common.py의
+        # NAV_* 상수와 일치해야 한다.
+        self.stack.addWidget(self.dashboard)  # 0 — NAV_MONITOR
+        self.stack.addWidget(self.monitor_page)  # 1 — NAV_REFINE
+        self.stack.addWidget(self.schedule_page)  # 2 — NAV_SCHEDULE
+        self.stack.addWidget(self.stats_page)  # 3 — NAV_STATS
+        self.stack.addWidget(self.session_page)  # 4 — NAV_SESSION
 
         if _blueprint_requires_auth(request_info):
             self.auth_page = AuthManagerPage(
                 _blueprint_auth_method(request_info),
                 (request_info.get("conditions") or {}).get("login"),
             )
-            self.stack.addWidget(self.auth_page)  # 5
+            self.stack.addWidget(self.auth_page)  # 5 — NAV_AUTH
 
         # GlobalToolbarSingle에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
         self.global_toolbar.set_log_manager(self.log_manager)

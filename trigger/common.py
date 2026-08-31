@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
+from PyQt6.QtCore import QTimer
 
 import db_conn
 from conf import DataStore
@@ -42,6 +43,17 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
+
+# 메인 창 self.stack(QStackedWidget)의 고정 페이지 인덱스 — 단일·다중 레이아웃
+# 공용이며, 사이드바 "표시 순서"(NAV_ITEMS)와는 독립적인 값이다(다중은 표시
+# 순서가 이 값과 다르게 재배열되어 있음 — layout/multi/sidebar.py 참고).
+NAV_MONITOR = 0          # 모니터링 (구 대시보드)
+NAV_REFINE = 1           # 데이터 정제
+NAV_SCHEDULE = 2         # 스케줄러
+NAV_STATS = 3            # 통계 분석
+NAV_SESSION = 4          # 세션 설정
+NAV_AUTH = 5             # 인증 관리 — 단일 전용, 인증 필요 블루프린트일 때만 조건부 추가
+NAV_BLUEPRINT_LIST = 5   # 수집 목록 — 다중 전용 (단일의 NAV_AUTH와 값은 같으나 레이아웃별 배타적 사용)
 
 # 스케줄(무인) 실행에서 정제 데이터 자동 저장 시 적용하는 규칙 — 원래는 모든
 # 스케줄에 고정 적용되는 상수였으나(2026-07-17 이전), 이제 "새 스케줄 등록"
@@ -179,6 +191,14 @@ def _stop_worker_if_running(worker) -> None:
     if worker and worker.isRunning():
         worker.stop()
         worker.wait(1500)
+
+
+def _after_delay_unless_cancelled(is_cancelled, fn, delay_ms: int = 1000) -> None:
+    """delay_ms 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
+    취소된 경우 지연 중이던 콜백이 뒤늦게 실행되는 것을 막는다. 단일 '_toggle_run→
+    _step_to_setting→_actual_start'와 다중 '_start_batch'의 시작 연출(수집 대기→수집
+    세팅→데이터 수집 단계 표시)이 공유하는 타이머 유틸."""
+    QTimer.singleShot(delay_ms, lambda: None if is_cancelled() else fn())
 
 
 def _get_log_manager(widget):

@@ -12,6 +12,8 @@ from conf import BlueprintStorage
 from .common import (
     store, ACCENT_LIGHT, TEXT_SECONDARY, GREEN, AMBER, RED, SCHEDULED_REFINE_RULES,
     _apply_task_settings, _reset_pages, _show_no_data_dialog, _stop_worker_if_running,
+    _after_delay_unless_cancelled,
+    NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
 )
 
 class TrayManagerTriggers:
@@ -37,8 +39,14 @@ class MainWindowTriggersSingle:
 
     def _switch_page(self, idx):
         self.stack.setCurrentIndex(idx)
-        if idx == 3:
+        if idx == NAV_STATS:
             self.stats_page.reload()
+
+    def _activate_nav_page(self, stack_idx: int) -> None:
+        """표시 순서가 아닌 실제 스택 인덱스 기준으로 페이지를 전환하고 사이드바 체크를 동기화한다."""
+        self.stack.setCurrentIndex(stack_idx)
+        for btn, idx in self.sidebar._nav_idx_by_btn.items():
+            btn.setChecked(idx == stack_idx)
 
     def _reset_all_pages(self):
         _reset_pages(self.dashboard, self.monitor_page)
@@ -73,9 +81,6 @@ class MainWindowTriggersSingle:
         # 수동 실행과 동일하게 대시보드·모니터링 페이지 리셋 후 실행
         self._reset_for_schedule(cfg)
         self._launch_worker(cfg, job_name=cfg["job"])
-        self.stack.setCurrentIndex(0)
-        for i, btn in enumerate(self.sidebar._btns):
-            btn.setChecked(i == 0)
 
     def _reset_for_schedule(self, cfg: dict) -> None:
         """스케줄 실행 시작 전 페이지 리셋 — MainWindowTriggersMulti가 번들 단위로 오버라이드한다."""
@@ -96,6 +101,7 @@ class MainWindowTriggersSingle:
         self.reset_progress()
         self.global_toolbar.set_running(True)
         self.dashboard._update_step_ui(2)
+        self._activate_nav_page(NAV_MONITOR)
 
     def _consume_pending_queue(self):
         """
@@ -116,11 +122,10 @@ class MainWindowTriggersSingle:
         self._reset_all_pages()
 
         self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
-        self.stack.setCurrentIndex(0)
-        for i, btn in enumerate(self.sidebar._btns):
-            btn.setChecked(i == 0)
 
     def _stop_crawl(self):
+        self._batch_start_cancelled = True
+
         if self._worker and self._worker.isRunning():
             self._worker.stop()
 
@@ -182,9 +187,7 @@ class MainWindowTriggersSingle:
             else:
                 _show_no_data_dialog(self, url_count, skipped, elapsed)
                 if task.get("job") == "수동 실행":
-                    self.stack.setCurrentIndex(1)
-                    for i, btn in enumerate(self.sidebar._btns):
-                        btn.setChecked(i == 1)
+                    self._activate_nav_page(NAV_REFINE)
                     self.monitor_page.tab_widget.setCurrentIndex(0)
             # 0건이어도 스케줄은 재무장해야 함 — 그렇지 않으면 다음 회차가
             # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
@@ -240,9 +243,7 @@ class MainWindowTriggersSingle:
             self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
 
         if task.get("job") == "수동 실행":
-            self.stack.setCurrentIndex(1)
-            for i, btn in enumerate(self.sidebar._btns):
-                btn.setChecked(i == 1)
+            self._activate_nav_page(NAV_REFINE)
             self.monitor_page.tab_widget.setCurrentIndex(0)
 
         # ── 정상 완료 후 대기 큐 소비 ──
@@ -376,7 +377,21 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             f"[전체 수집] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
             f"'{first.get('title') or first.get('seq_no')}'"
         )
-        self._launch_worker(first, job_name=BATCH_JOB)
+
+        # 단일 레이아웃의 _toggle_run→_step_to_setting과 동일한 "수집 대기(0, 위
+        # _reset_bundle_pages가 이미 표시함)→수집 세팅(1)→데이터 수집(2)" 연출을
+        # 재현한다 — _after_delay_unless_cancelled는 두 레이아웃이 공유하는 헬퍼.
+        self._batch_start_cancelled = False
+        dash = self._get_or_create_bundle(first.get("seq_no")).dashboard
+
+        def _to_setting():
+            dash._update_step_ui(1)
+            _after_delay_unless_cancelled(
+                lambda: self._batch_start_cancelled,
+                lambda: self._launch_worker(first, job_name=BATCH_JOB),
+            )
+
+        _after_delay_unless_cancelled(lambda: self._batch_start_cancelled, _to_setting)
 
     def _reset_bundle_pages(self, seq_no) -> None:
         """실행 직전 해당 번들의 대시보드/모니터링 페이지를 초기화합니다."""
@@ -416,6 +431,9 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._broadcast_blueprint_status(seq_no, "running")
         self.global_toolbar.set_running(True)
         dash._update_step_ui(2)
+        # 다중 레이아웃은 "모니터링"이 "수집 목록"(NAV_BLUEPRINT_LIST) 하단 상세로
+        # 통합됐으므로, 단일과 달리 NAV_MONITOR가 아니라 그쪽으로 전환한다.
+        self._activate_nav_page(NAV_BLUEPRINT_LIST)
 
     # ── 진행률 (번들별) ────────────────────────────────
     @staticmethod
@@ -455,9 +473,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         self._reset_bundle_pages(next_cfg.get("seq_no"))
         self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
-        self.stack.setCurrentIndex(0)
-        for i, btn in enumerate(self.sidebar._btns):
-            btn.setChecked(i == 0)
 
     # ── 완료 처리 (번들 라우팅) ────────────────────────
     def _on_finished(self, task: dict, summary: dict):
@@ -568,9 +583,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._consume_pending_queue()
 
     def _show_monitor_for(self, seq_no) -> None:
-        """해당 블루프린트를 활성화하고 모니터링(nav 1) 화면을 표시합니다."""
+        """해당 블루프린트를 활성화하고 데이터 정제(nav 1) 화면을 표시합니다."""
         self._activate_blueprint(seq_no)
-        self.stack.setCurrentIndex(1)
-        for i, btn in enumerate(self.sidebar._btns):
-            btn.setChecked(i == 1)
+        self._activate_nav_page(NAV_REFINE)
         self._get_or_create_bundle(seq_no).monitor_page.tab_widget.setCurrentIndex(0)

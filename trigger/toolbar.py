@@ -4,11 +4,13 @@
 from copy import deepcopy
 
 from PyQt6.QtWidgets import QApplication, QMainWindow
-from PyQt6.QtCore import QTimer
 
 from conf import BlueprintStorage
 
-from .common import store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages
+from .common import (
+    store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages,
+    _after_delay_unless_cancelled,
+)
 
 
 class GlobalToolbarTriggers:
@@ -41,7 +43,7 @@ class GlobalToolbarTriggers:
             self.set_running(True)
             self._log("info", "수집을 시작합니다.")
             QApplication.processEvents()
-            QTimer.singleShot(1000, self._step_to_setting)
+            _after_delay_unless_cancelled(lambda: self._start_cancelled, self._step_to_setting)
         else:
             self._start_cancelled = True
             self.stop_requested.emit()
@@ -72,7 +74,7 @@ class GlobalToolbarTriggers:
         QApplication.processEvents()
 
         self._log("info", "환경 설정을 로드합니다. (수집 세팅 중...)")
-        QTimer.singleShot(1000, self._actual_start)
+        _after_delay_unless_cancelled(lambda: self._start_cancelled, self._actual_start)
 
     def _actual_start(self):
         """[단계 2: 데이터 수집] 실제 시작"""
