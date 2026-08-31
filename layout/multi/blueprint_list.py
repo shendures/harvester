@@ -2,14 +2,18 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QMessageBox,
-    QScrollArea, QTableWidgetItem, QTableWidget,
+    QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QCursor
 
 from conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from style import EqualSpacingTable
 from trigger.common import _default_msgbox_qss
-from ..common import parts, RED, BG_HOVER, ACCENT, ACCENT_LIGHT, _blueprint_auth_method, _blueprint_requires_auth
+from ..common import (
+    parts, theme, RED, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    _blueprint_auth_method, _blueprint_requires_auth,
+)
 from ..auth import AuthManagerPage
 from .dashboard import DashboardPageMulti
 from .monitor import MonitorPageMulti
@@ -36,6 +40,9 @@ class BlueprintListPage(QWidget):
     - "설정" 컬럼(⚙): settings_requested(seq_no)를 emit — 그 블루프린트의 "수집
       설정"(Delay/Threads/Timeout/Retry/Auto Save + 추출 설정 + 인증 관리) 다이얼로그를
       연다. 화면 전환 없이 현재 페이지 위에 모달로만 뜬다.
+    - 셀 우클릭: 컨텍스트 메뉴에서 "'<컬럼명>' 복사" 선택 시 그 셀의 텍스트만
+      클립보드에 복사한다(행 전체가 아니라 클릭한 셀 하나). "설정"(⚙)/"선택"
+      컬럼은 텍스트 아이템이 없어 메뉴 자체가 뜨지 않는다.
     - "수집" 버튼: 체크된 블루프린트만 순차 실행("비전체"). 체크 0개면 비활성화.
     - "전체 수집" 버튼: 체크 여부와 무관하게 먼저 모든 행을 체크 상태로 바꾼 뒤
       테이블의 모든 블루프린트를 순차 실행("전체").
@@ -125,6 +132,8 @@ class BlueprintListPage(QWidget):
         self.table.setColumnCount(len(self._COLUMNS))
         self.table.setHorizontalHeaderLabels(self._COLUMNS)
         self.table.itemClicked.connect(self._on_item_clicked)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_cell_context_menu)
         tc.addWidget(self.table)
         bl.addWidget(tcw, 1)
 
@@ -413,6 +422,26 @@ class BlueprintListPage(QWidget):
         if seq_no:
             self.row_selected.emit(seq_no)
 
+    def _show_cell_context_menu(self, pos) -> None:
+        """셀 우클릭 — 클릭한 셀 하나의 텍스트만 클립보드에 복사하는 메뉴를 띄운다
+        (프록시 테이블의 우클릭 메뉴 패턴과 동일한 뼈대: trigger/session.py의
+        _proxy_table_context_menu 참고). "설정"(⚙)/"선택" 컬럼은 cellWidget이라
+        텍스트 아이템이 없으므로(item is None) 메뉴 자체를 띄우지 않는다."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        row, col = index.row(), index.column()
+        item = self.table.item(row, col)
+        if item is None:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(theme.PROXY_CONTEXT_MENU_QSS)
+        copy_act = menu.addAction(f"'{self._COLUMNS[col]}' 복사")
+        action = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if action == copy_act:
+            QApplication.clipboard().setText(item.text())
+            QToolTip.showText(QCursor.pos(), "클립보드에 복사되었습니다", self.table)
 
 
 class BlueprintPageBundle:
