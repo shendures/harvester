@@ -67,6 +67,9 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
                 font-size: 12px;
                 margin-right: 2px;
             }}
+            QTabWidget::tab-bar {{
+                left: 14px;
+            }}
             QTabBar::tab:selected {{
                 background: {BG_PRIMARY};
                 color: {ACCENT_LIGHT};
