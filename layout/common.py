@@ -5,7 +5,7 @@
 
 from conf import DataStore
 from style import THEME, Parts
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QSizePolicy, QApplication
 
 store = DataStore()
 
@@ -95,3 +95,16 @@ def build_status_bar(open_log_viewer_callback):
     sbl.addWidget(log_view_btn)
 
     return status_bar, status_level, status_msg
+
+
+def center_window_on_screen(window) -> None:
+    """창을 현재 화면(멀티 모니터면 창이 뜨는 화면)의 정중앙으로 이동시킨다.
+    창이 아직 표시(show)되기 전이면 창 관리자가 배치를 덮어써 move()가
+    무시될 수 있으므로, 반드시 show() 이후(예: showEvent)에 호출해야 한다.
+    MainWindowSingle/MainWindowMulti가 동일하게 사용한다."""
+    screen = window.screen() or QApplication.primaryScreen()
+    if screen is None:
+        return
+    frame_geo = window.frameGeometry()
+    frame_geo.moveCenter(screen.availableGeometry().center())
+    window.move(frame_geo.topLeft())

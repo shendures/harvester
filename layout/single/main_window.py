@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
 
 from trigger import LogViewerDialog, MainWindowTriggersSingle
-from ..common import build_status_bar
+from ..common import build_status_bar, center_window_on_screen
 from ..scheduler import SchedulerPage
 from ..statistics import StatisticsPage
 from ..session import SessionSettingsPage
@@ -21,7 +21,7 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DataCrawler v2.0")
-        self.resize(1280, 800)
+        self.resize(1843, 1152)
         self.setMinimumSize(960, 640)
         self._worker = None
         self._pending_queue = []   # 스케줄 대기 큐: 실행 중 작업이 있을 때 후속 스케줄을 순서대로 보관
@@ -33,6 +33,14 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
 
         self._build()
         self.tray_manager = TrayManager(self)
+        self._centered_once = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 트레이에서 창을 복원할 때마다 다시 중앙으로 튀지 않도록 최초 1회만 정렬한다.
+        if not self._centered_once:
+            self._centered_once = True
+            center_window_on_screen(self)
 
     def _build(self):
 
