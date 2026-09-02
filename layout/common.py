@@ -109,6 +109,11 @@ def result_columns_from_blueprint(blueprint_info: dict) -> list:
         return []
 
 
+# 사이드바 하단 구분선(sidebar.py의 status_footer)과 반드시 같은 값을 써야 한다 —
+# 두 값이 갈라지면 사이드바 선과 이 상태바 선이 어긋난다.
+STATUS_BAR_HEIGHT = 41
+
+
 def build_status_bar(open_log_viewer_callback):
     """메인 창 최하단 상태바(최신 로그 한 줄 + 전체 로그 보기 버튼)를 만든다.
     MainWindowSingle/MainWindowMulti가 동일하게 사용한다.
@@ -118,7 +123,7 @@ def build_status_bar(open_log_viewer_callback):
         self.status_level/self.status_msg에 직접 대입해 보관한다.
     """
     status_bar = QWidget()
-    status_bar.setFixedHeight(41)
+    status_bar.setFixedHeight(STATUS_BAR_HEIGHT)
     status_bar.setStyleSheet(
         f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
     )
