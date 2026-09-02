@@ -523,6 +523,10 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
+            # 팝업(layout/single/monitor.py의 _apply_refined_text_color)이 글자색을
+            # 보고 "정제됨"을 역추론하지 않고 이 값을 그대로 읽도록 명시적으로
+            # 저장해 둔다 — 화면 표시 방식(색)과 데이터(정제 여부)를 분리.
+            no_item.setData(Qt.ItemDataRole.UserRole, is_modified)
             self.cmp_ref_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(ref_columns, start=1):
@@ -532,6 +536,7 @@ class MonitorPageTriggers:
                     item.setForeground(CLR_REF_FG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
+                item.setData(Qt.ItemDataRole.UserRole, is_modified)
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
         self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_ref_count.setText(f"{len(refined_data)} rows")
@@ -552,6 +557,25 @@ class MonitorPageTriggers:
         if target.verticalScrollBar().value() == value:
             return
         target.verticalScrollBar().setValue(value)
+
+    def _link_vscroll_group(self, tables: list) -> None:
+        """여러 테이블의 세로 스크롤을 하나의 그룹으로 묶어, 그중 하나를
+        움직이면 나머지 전부가 같은 위치로 따라 움직이게 한다(원본 Raw/정제
+        비교 카드 + 팝업 Raw/정제 테이블처럼 개수가 2개보다 많아져도 동작).
+        _sync_cmp_vscroll의 "이미 같은 값이면 손대지 않는다" 가드를 그대로
+        재사용하므로, 같은 쌍이 여러 번 연결돼도(예: 팝업을 열 때마다) 재귀나
+        무한 루프 없이 안전하다."""
+        for table in tables:
+            others = [t for t in tables if t is not table]
+            # src/targets를 기본 인자로 묶어야 한다 — 그냥 클로저로 table/others를
+            # 참조하면 파이썬의 late binding 때문에 모든 람다가 루프의 마지막
+            # table 값을 공유해버린다(지금은 _sync_cmp_vscroll이 source 인자를
+            # 안 쓰고 있어 겉으로 드러나지 않을 뿐, 잠재 버그이므로 바로잡는다).
+            table.verticalScrollBar().valueChanged.connect(
+                lambda value, src=table, targets=others: [
+                    self._sync_cmp_vscroll(src, t, value) for t in targets
+                ]
+            )
 
     def _sync_cmp_sort(self, source, target, logical_index, order):
         """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향으로 동기화합니다.

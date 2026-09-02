@@ -33,7 +33,9 @@ class MonitorTargetListPage(QWidget):
 
     def _build(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        # 좌우 14px — "수집 목록"(blueprint_list.py의 bl.setContentsMargins)과
+        # 동일한 규칙으로, 카드 좌측 끝을 대시보드 페이지 카드들과 맞춘다.
+        root.setContentsMargins(14, 0, 14, 0)
         root.setSpacing(0)
 
         tcw, tc = parts.card_widget("수집 대상")

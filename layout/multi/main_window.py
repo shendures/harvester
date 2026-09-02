@@ -68,18 +68,19 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.stack = QStackedWidget()
         self.dashboard_slot = QStackedWidget()   # 블루프린트별 대시보드(나머지 카드) — "수집 목록"(5) 하단에 통합됨
         self.step_slot = QStackedWidget()        # 블루프린트별 "작업 진행 상태" 카드 — "수집 목록"(5) 위쪽에 통합됨
+        self.progress_slot = QStackedWidget()    # 블루프린트별 "대기중 상태바" — step_slot보다 더 위, 맨 위에 통합됨
         self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 데이터 정제(4탭)
         self.monitor_nav_list = MonitorTargetListPage()  # 1 좌측 — 정제 대상 선택용 경량 목록
         self.monitor_nav_list.blueprint_selected.connect(self._activate_blueprint)
         self.monitor_split = QSplitter(Qt.Orientation.Horizontal)
         self.monitor_split.addWidget(self.monitor_nav_list)
         self.monitor_split.addWidget(self.monitor_slot)
-        # "수집 대상"(좌) : 정제 레이아웃(우) = 3 : 7 비율 — 창 크기가 바뀌어도
-        # 두 창 폭이 늘고 줄 때 이 비율로 함께 움직이도록 스트레치 팩터도 3:7로 맞춘다
-        # (setSizes는 초기 폭만 정하고, 이후 리사이즈 배분은 stretchFactor를 따른다).
-        self.monitor_split.setStretchFactor(0, 3)
-        self.monitor_split.setStretchFactor(1, 7)
-        self.monitor_split.setSizes([300, 700])
+        # "수집 대상"(좌) : 정제 레이아웃(우) = 2.5 : 7.5 비율 — 창 크기가 바뀌어도
+        # 두 창 폭이 늘고 줄 때 이 비율로 함께 움직이도록 스트레치 팩터도 25:75(=2.5:7.5)로
+        # 맞춘다(setSizes는 초기 폭만 정하고, 이후 리사이즈 배분은 stretchFactor를 따른다).
+        self.monitor_split.setStretchFactor(0, 25)
+        self.monitor_split.setStretchFactor(1, 75)
+        self.monitor_split.setSizes([250, 750])
         self.monitor_split.setChildrenCollapsible(False)
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
@@ -93,12 +94,15 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
         self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
         self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
-        # "모니터링"(구 NAV_MONITOR 페이지)을 "수집 목록" 위/아래에 통합한다 — 카드
-        # 순서를 "작업 진행 상태 → 수집 목록 → 대기중 상태바 → 세션 통계 → 수집
-        # 모니터링"으로 맞추기 위해 step_slot(작업 진행 상태만)은 위에, dashboard_slot
-        # (나머지 카드)은 아래에 붙인다. 두 슬롯의 소유권은 그대로 이 클래스가 갖고
-        # (_get_or_create_bundle이 계속 addWidget으로 채움), 화면 배치만 여기서 주입한다.
+        # "대시보드"(구 NAV_MONITOR 페이지)를 "수집 목록" 위/아래에 통합한다 — 카드
+        # 순서를 "대기중 상태바 → 작업 진행 상태 → 수집 목록 → 세션 통계 → 수집
+        # 모니터링"으로 맞추기 위해 progress_slot(대기중 상태바)·step_slot(작업 진행
+        # 상태)을 이 순서로 위에, dashboard_slot(나머지 카드)을 아래에 붙인다. 세
+        # 슬롯의 소유권은 그대로 이 클래스가 갖고(_get_or_create_bundle이 계속
+        # addWidget으로 채움), 화면 배치만 여기서 주입한다. attach_progress_panel은
+        # attach_step_panel보다 반드시 나중에 호출해야 "작업 진행 상태" 위에 놓인다.
         self.blueprint_list_page.attach_step_panel(self.step_slot)
+        self.blueprint_list_page.attach_progress_panel(self.progress_slot)
         self.blueprint_list_page.attach_detail_panel(self.dashboard_slot)
 
         # 추가 순서가 곧 스택 인덱스이며 trigger/common.py의 NAV_* 상수와 일치해야 한다.
@@ -146,6 +150,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
             # 다이얼로그에 얹혔다가 떼어지는 방식으로 쓰인다(_open_blueprint_settings).
             self.dashboard_slot.addWidget(bundle.dashboard)
             self.step_slot.addWidget(bundle.dashboard.step_card_widget)
+            self.progress_slot.addWidget(bundle.dashboard.progress_card_widget)
             self.monitor_slot.addWidget(bundle.monitor_page)
         return self._bundles[seq_no]
 
@@ -176,6 +181,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
 
         self.dashboard_slot.setCurrentWidget(bundle.dashboard)
         self.step_slot.setCurrentWidget(bundle.dashboard.step_card_widget)
+        self.progress_slot.setCurrentWidget(bundle.dashboard.progress_card_widget)
         self.monitor_slot.setCurrentWidget(bundle.monitor_page)
 
         # 상속(단일) 트리거 호환 — "활성 번들"의 페이지를 가리키는 별칭 유지

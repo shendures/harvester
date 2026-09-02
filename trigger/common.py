@@ -51,7 +51,7 @@ DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 # 메인 창 self.stack(QStackedWidget)의 고정 페이지 인덱스 — 단일·다중 레이아웃
 # 공용이며, 사이드바 "표시 순서"(NAV_ITEMS)와는 독립적인 값이다(다중은 표시
 # 순서가 이 값과 다르게 재배열되어 있음 — layout/multi/sidebar.py 참고).
-NAV_MONITOR = 0          # 모니터링 (구 대시보드)
+NAV_MONITOR = 0          # 대시보드 (구 모니터링)
 NAV_REFINE = 1           # 데이터 정제
 NAV_SCHEDULE = 2         # 스케줄러
 NAV_STATS = 3            # 통계 분석

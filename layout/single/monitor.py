@@ -4,15 +4,18 @@ import customized_settings
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QTabWidget, QCheckBox, QMessageBox,
+    QTabWidget, QCheckBox, QMessageBox, QDialog, QTableWidgetItem, QSplitter,
 )
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
-from style import StatCard, EqualSpacingTable, build_refine_rule_rows
+from trigger.common import _default_dialog_qss
+from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon
 from ..common import (
     parts, build_scroll_body,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
-    TEXT_MUTED, TEXT_SECONDARY, GREEN, AMBER, RED,
+    TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER, RED,
 )
 from .common import ActiveBlueprintMixin, count_badge_qss
 
@@ -280,6 +283,20 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         cmp_sum_l.addLayout(csg)
         bl.addWidget(cmp_sum_w)
 
+        # "Raw 데이터"/"정제 데이터" 카드 바로 위, 카드로 감싸지 않은 독립된
+        # 행에 "새 창에서 함께 보기" 버튼을 둔다 — 두 카드 중 어느 한쪽에
+        # 속하지 않으면서도 그 둘과 같은 영역에 있다는 인상을 주기 위함.
+        popout_row = QHBoxLayout()
+        popout_row.addStretch()
+        cmp_popout_btn = parts.outline_btn("")
+        cmp_popout_btn.setIcon(_load_svg_icon("external-link", TEXT_SECONDARY, "2", 14))
+        cmp_popout_btn.setIconSize(QSize(14, 14))
+        cmp_popout_btn.setFixedSize(30, 20)
+        cmp_popout_btn.setToolTip("Raw/정제 데이터를 새 창에서 함께 보기")
+        cmp_popout_btn.clicked.connect(self._open_compare_popup)
+        popout_row.addWidget(cmp_popout_btn)
+        bl.addLayout(popout_row)
+
         # 좌우 비교 테이블 (Raw | Refined)
         side_w = QWidget()
         side_l = QHBoxLayout(side_w)
@@ -307,10 +324,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl.addWidget(side_w, 1)
 
         # 좌우 테이블 세로 스크롤 동기화
-        self.cmp_raw_table.verticalScrollBar().valueChanged.connect(
-            lambda v: self._sync_cmp_vscroll(self.cmp_raw_table, self.cmp_ref_table, v))
-        self.cmp_ref_table.verticalScrollBar().valueChanged.connect(
-            lambda v: self._sync_cmp_vscroll(self.cmp_ref_table, self.cmp_raw_table, v))
+        self._link_vscroll_group([self.cmp_raw_table, self.cmp_ref_table])
 
         # 좌우 테이블 정렬 동기화 (같은 컬럼명·방향)
         self.cmp_raw_table.horizontalHeader().sortIndicatorChanged.connect(
@@ -319,6 +333,100 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
             lambda idx, order: self._sync_cmp_sort(self.cmp_ref_table, self.cmp_raw_table, idx, order))
 
         self.tab_widget.addTab(cmp_widget, "④ Before / After 비교")
+
+    @staticmethod
+    def _copy_table_contents(dest: EqualSpacingTable, source: EqualSpacingTable) -> None:
+        """source(Raw/정제 비교 테이블)의 헤더 라벨과 모든 셀 텍스트를 dest에
+        그대로 복사한다. 위젯 자체를 옮기는 게 아니라 내용만 복사하므로
+        source는 원래 자리에 그대로 남는다."""
+        col_count = source.columnCount()
+        dest.setColumnCount(col_count)
+        dest.setHorizontalHeaderLabels([
+            source.horizontalHeaderItem(c).text() if source.horizontalHeaderItem(c) else ""
+            for c in range(col_count)
+        ])
+        dest.setRowCount(source.rowCount())
+        for r in range(source.rowCount()):
+            for c in range(col_count):
+                src_item = source.item(r, c)
+                dest.setItem(r, c, QTableWidgetItem(src_item.text() if src_item else ""))
+
+    @staticmethod
+    def _apply_refined_text_color(popup_table: EqualSpacingTable, source_table: EqualSpacingTable) -> None:
+        """source_table(정제 데이터 비교 테이블)에서 정제 과정에 값이 바뀐 행을
+        찾아, 복사본인 popup_table에 메인 창의 "정제 데이터" 카드
+        (trigger/monitor.py:_update_compare_tab, 514-536행)와 동일한 배색
+        규칙을 그대로 재현한다 — "NO" 컬럼은 항상 TEXT_MUTED, 값 컬럼은
+        정제된 행이면 GREEN, 아니면 TEXT_PRIMARY(배경색이 아니라 글자색).
+        "정제됨" 여부는 글자색을 보고 역추론하지 않고, _update_compare_tab이
+        각 아이템에 직접 저장해 둔 Qt.ItemDataRole.UserRole 값을 그대로
+        읽는다 — 화면에 보이는 색이 무엇이든 항상 정확하다."""
+        col_count = source_table.columnCount()
+        for r in range(source_table.rowCount()):
+            no_src = source_table.item(r, 0)
+            is_modified = bool(no_src.data(Qt.ItemDataRole.UserRole)) if no_src else False
+
+            no_dest = popup_table.item(r, 0)
+            if no_dest:
+                no_dest.setForeground(QColor(TEXT_MUTED))
+
+            value_fg = QColor(GREEN) if is_modified else QColor(TEXT_PRIMARY)
+            for c in range(1, col_count):
+                dest_item = popup_table.item(r, c)
+                if dest_item:
+                    dest_item.setForeground(value_fg)
+
+    def _open_compare_popup(self) -> None:
+        """Raw/정제 데이터를 한 창에서 나란히 보여주는 모달리스 팝업을 연다.
+        내용은 두 원본 테이블(self.cmp_raw_table/self.cmp_ref_table)의 현재
+        스냅샷을 복사한 것이라(_copy_table_contents) 원본 비교 뷰는 그대로
+        유지된다. 팝업의 두 테이블끼리만 세로 스크롤을 동기화하고
+        (_link_vscroll_group) 원본 Raw/정제 카드와는 서로 독립적으로
+        움직인다. 행 순서가 어긋나면 스크롤 위치 동기화가 무의미해지므로
+        팝업 쪽 정렬은 막아둔다. 두 카드는 QSplitter로 묶어 드래그로 폭을
+        조절할 수 있다(layout/multi/main_window.py의 monitor_split과 동일한
+        패턴). LogViewerDialog(trigger/log_viewer.py)와 동일한 QDialog +
+        setModal(False) 패턴을 재사용한다."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Raw / 정제 데이터 비교")
+        dlg.setModal(False)
+        dlg.resize(1400, 600)
+        dlg.setMinimumSize(700, 400)
+        dlg.setStyleSheet(_default_dialog_qss())
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(14, 14, 14, 14)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        raw_w, raw_l = parts.card_widget("Raw 데이터")
+        popup_raw_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
+        popup_raw_table.setSortingEnabled(False)
+        self._copy_table_contents(popup_raw_table, self.cmp_raw_table)
+        raw_l.addWidget(popup_raw_table)
+        splitter.addWidget(raw_w)
+
+        ref_w, ref_l = parts.card_widget("정제 데이터")
+        popup_ref_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
+        popup_ref_table.setSortingEnabled(False)
+        self._copy_table_contents(popup_ref_table, self.cmp_ref_table)
+        self._apply_refined_text_color(popup_ref_table, self.cmp_ref_table)
+        ref_l.addWidget(popup_ref_table)
+        splitter.addWidget(ref_w)
+
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([700, 700])
+        lay.addWidget(splitter)
+
+        # 팝업 안의 두 테이블끼리만 묶는다 — 원본 Raw/정제 카드는 이미 자기들끼리
+        # 별도로 동기화돼 있고(위 327-328행), 팝업과 원본은 서로 독립적으로
+        # 스크롤돼야 하므로 여기서 원본 테이블을 함께 묶지 않는다.
+        self._link_vscroll_group([popup_raw_table, popup_ref_table])
+
+        dlg.show()
 
     # ── 워커 시그널 수신: 실시간 수집 결과 테이블 행 추가 ────────────
     def _reset_monitor_page(self):

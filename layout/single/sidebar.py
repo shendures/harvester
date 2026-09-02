@@ -24,16 +24,16 @@ class SidebarSingle(QWidget):
     def _nav_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 상단 NAVIGATOR 섹션."""
         return [
-            ("⬡", "모니터링", NAV_MONITOR), ("≡", "데이터 정제", NAV_REFINE),
-            ("◷", "스케줄러", NAV_SCHEDULE), ("▲", "통계 분석", NAV_STATS),
+            ("layout-dashboard", "대시보드", NAV_MONITOR), ("funnel", "데이터 정제", NAV_REFINE),
+            ("calendar-clock", "스케줄러", NAV_SCHEDULE), ("chart-column", "통계 분석", NAV_STATS),
         ]
 
     def _settings_items(self) -> list:
         """(아이콘, 라벨, 스택 인덱스) 목록 — 하단 SETTINGS 섹션.
         첫번째 수집 정보 기준으로 인증 관리 항목 포함 여부를 결정한다."""
-        items = [("◎", "세션 설정", NAV_SESSION)]
+        items = [("waypoints", "세션 설정", NAV_SESSION)]
         if _blueprint_requires_auth(request_info):
-            items.append(("⬡", "인증 관리", NAV_AUTH))
+            items.append(("key-round", "인증 관리", NAV_AUTH))
         return items
 
     def _build(self):
@@ -41,7 +41,11 @@ class SidebarSingle(QWidget):
         self.setFixedWidth(190)
         self.setStyleSheet(f"background:{BG_SECONDARY}; border-right:1px solid {BORDER};")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 16, 0, 16)
+        # 하단만 14(상단은 16) — 맨 아래 구분선(addStretch() 다음의 Divider)은
+        # 창 높이와 무관하게 이 마진값만으로 위치가 정해지는데, 대칭인 16으로 두면
+        # 메인 창 최하단 상태바(layout/common.py build_status_bar, border-top)
+        # 선보다 2px 위에 그려져 어긋난다 — 2px 줄여 두 선을 한 줄로 맞춘다.
+        lay.setContentsMargins(0, 16, 0, 14)
         lay.setSpacing(2)
 
         logo = parts.make_label("DataCrawler", ACCENT_LIGHT, 15, True)
