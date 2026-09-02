@@ -505,6 +505,29 @@ class EqualSpacingTable(QTableWidget):
 
         # 사용자가 직접 조작 → equal 상태 해제 (창 리사이즈 시 재분배 안 함)
         self._is_equal_state = False
+        self._fill_right_gap(logical)
+
+    # ── 컬럼 축소로 생긴 우측 여백 흡수 ────────────────
+    def _fill_right_gap(self, resized_logical: int) -> None:
+        """resized_logical 컬럼이 좁아져 전체 컬럼 폭 합이 viewport보다
+        작아졌으면(오른쪽에 여백 발생), 그 부족분을 마지막 컬럼에 더해
+        흡수한다. 단, 방금 좁힌 컬럼이 마지막 컬럼 자신이면(그 컬럼을 더
+        키워버리면 방금 한 리사이즈가 무효화되므로) 그 바로 앞 컬럼이 대신
+        흡수한다. 늘려서 viewport를 넘치는 경우(부족분이 음수)는 손대지 않아
+        기존 가로 스크롤 동작을 그대로 유지한다."""
+        last = self.columnCount() - 1
+        target = last if resized_logical != last else last - 1
+        if target < 0:
+            return
+        total = sum(self.columnWidth(c) for c in range(self.columnCount()))
+        deficit = self._viewport_total() - total
+        if deficit <= 0:
+            return
+        self._resizing = True
+        try:
+            self.setColumnWidth(target, self.columnWidth(target) + deficit)
+        finally:
+            self._resizing = False
 
     # ── Auto-fit (더블클릭 / 공개 API) ────────────────
     def fit_column(self, logical: int):
@@ -554,6 +577,7 @@ class EqualSpacingTable(QTableWidget):
 
         # auto-fit 도 사용자 조작으로 간주 → equal 상태 해제
         self._is_equal_state = False
+        self._fill_right_gap(logical)
 
     # ── Qt 이벤트 오버라이드 ──────────────────────────
     def resizeEvent(self, event):
