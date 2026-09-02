@@ -78,7 +78,7 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         )
         self.session_table.setColumnCount(9)
         self.session_table.setHorizontalHeaderLabels(
-            ["작업명", "URL", "총 항목", "성공", "오류", "평균 응답", "소요 시간", "시작 시각", "완료 시각"])
+            ["Task Name", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration", "Start Time", "End Time"])
         tl.addWidget(self.session_table)
         bl.addWidget(tw)
 

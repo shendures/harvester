@@ -38,7 +38,7 @@ class BlueprintListPage(QWidget):
       체크해 둔 채 각각을 훑어봐도 선택이 사라지지 않는다).
     - 선택 컬럼 체크박스를 "직접" 클릭하면 다중 선택이 가능하다(독립 토글) —
       "비전체" 수집 대상을 고르는 유일한 방법이다.
-    - "관리" 컬럼: "▶"(실행)·"⚙"(설정) 버튼이 이 순서로 나란히 들어있다.
+    - "Run/Manage" 컬럼: "▶"(실행)·"⚙"(설정) 버튼이 이 순서로 나란히 들어있다.
       "▶"는 체크 상태와 무관하게 그 행의 블루프린트 하나만 즉시 실행한다 —
       batch_start_requested를 seq_no 1개짜리 리스트로 emit해 "선택 수집"/
       "전체 수집"과 동일한 순차 실행 큐를 그대로 공유한다(이미 다른 작업이
@@ -48,7 +48,7 @@ class BlueprintListPage(QWidget):
       (Delay/Threads/Timeout/Retry/Auto Save + 추출 설정 + 인증 관리)
       다이얼로그를 연다(화면 전환 없이 현재 페이지 위에 모달로만 뜬다).
     - 셀 우클릭: 컨텍스트 메뉴에서 "'<컬럼명>' 복사" 선택 시 그 셀의 텍스트만
-      클립보드에 복사한다(행 전체가 아니라 클릭한 셀 하나). "관리"/"선택"
+      클립보드에 복사한다(행 전체가 아니라 클릭한 셀 하나). "Run/Manage"/"Select"
       컬럼은 텍스트 아이템이 없어 메뉴 자체가 뜨지 않는다.
     - "선택 수집" 버튼: 체크된 블루프린트만 순차 실행("비전체"). 체크 0개면 비활성화.
     - "전체 수집" 버튼: 체크 여부와 무관하게 먼저 모든 행을 체크 상태로 바꾼 뒤
@@ -60,18 +60,16 @@ class BlueprintListPage(QWidget):
       stop_requested를 emit하고 완료 확인을 기다리지 않고 즉시 원래 라벨로
       되돌아간다(낙관적 UI).
     - 행의 음영(배경 강조)은 Qt의 선택 상태가 아니라 체크 상태로 직접
-      구동되며(_set_row_shaded), 체크 개수가 바뀔 때마다 selection_changed emit →
-      2개 이상 체크되면 MainWindowMulti가 상단 URL 입력창을 비운다(대상이 하나로
-      특정되지 않으므로).
+      구동된다(_set_row_shaded). 상단 URL 입력창은 체크 개수와 무관하며,
+      "Run/Manage" 컬럼이 아닌 셀 클릭(row_selected)으로만 갱신된다.
     """
 
     row_selected = pyqtSignal(str)
     batch_start_requested = pyqtSignal(list)
-    settings_requested = pyqtSignal(str)   # "관리" 컬럼의 "⚙" 버튼 클릭 시 emit(seq_no)
+    settings_requested = pyqtSignal(str)   # "Run/Manage" 컬럼의 "⚙" 버튼 클릭 시 emit(seq_no)
     stop_requested = pyqtSignal()          # 실행 중이던 [수집]/[전체 수집] 재클릭 시 emit
-    selection_changed = pyqtSignal()   # 선택 컬럼 체크 개수가 바뀔 때마다 emit
 
-    _COLUMNS = ["NO", "제목", "URL", "방식", "데이터 형식", "인증", "렌더링", "상태", "관리", "선택"]
+    _COLUMNS = ["NO", "Title", "URL", "Method", "Format", "Auth", "Render", "Status", "Run/Manage", "Select"]
     _SEQ_NO_COL = 0   # seq_no를 Qt.ItemDataRole.UserRole로 보관하는 컬럼 (정렬돼도 유효)
     _CHECK_COL = 9
 
@@ -219,7 +217,7 @@ class BlueprintListPage(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, seq_no)
                 self.table.setItem(row, col, item)
 
-            # "관리" 컬럼 — "▶"(실행)·"⚙"(설정) 두 아이콘 버튼을 이 순서로 한
+            # "Run/Manage" 컬럼 — "▶"(실행)·"⚙"(설정) 두 아이콘 버튼을 이 순서로 한
             # 셀에 나란히 배치한다. "▶"는 체크 여부와 무관하게 이 블루프린트
             # 하나만 즉시 실행한다(batch_start_requested를 seq_no 1개짜리
             # 리스트로 emit해 "선택 수집"/"전체 수집"과 동일한 순차 실행 큐를
@@ -232,7 +230,7 @@ class BlueprintListPage(QWidget):
                 ("⚙", "수집 설정",
                  lambda _, s=seq_no: self.settings_requested.emit(s), self._SETTINGS_BTN_QSS),
             ])
-            self.table.setCellWidget(row, self._COLUMNS.index("관리"), action_wrap)
+            self.table.setCellWidget(row, self._COLUMNS.index("Run/Manage"), action_wrap)
 
             # 체크박스를 컬럼 가운데 정렬하기 위해 아이템(ItemIsUserCheckable) 대신
             # 실제 QCheckBox를 setCellWidget으로 배치한다 — QAbstractItemView의 체크
@@ -270,7 +268,6 @@ class BlueprintListPage(QWidget):
                 self._apply_row_shade(row)
             else:
                 self._active_view_seq_no = None  # 목록에서 사라진 블루프린트면 추적 해제
-        self.selection_changed.emit()   # 재구성으로 선택 개수가 0으로 리셋됐음을 알림
 
     def set_status(self, seq_no, status: str) -> None:
         """실행 상태를 이 테이블의 상태 컬럼에 반영한다(idle/running/done). 이
@@ -280,7 +277,7 @@ class BlueprintListPage(QWidget):
         for row in range(self.table.rowCount()):
             id_item = self.table.item(row, self._SEQ_NO_COL)
             if id_item and id_item.data(Qt.ItemDataRole.UserRole) == seq_no:
-                status_item = self.table.item(row, self._COLUMNS.index("상태"))
+                status_item = self.table.item(row, self._COLUMNS.index("Status"))
                 if status_item is not None:
                     status_item.setText(label)
                 break
@@ -450,7 +447,6 @@ class BlueprintListPage(QWidget):
         """선택 컬럼 체크박스 상태가 바뀔 때마다 호출(체크박스 직접 클릭으로만
         발생 — 행 클릭은 더 이상 체크박스를 건드리지 않는다)."""
         self._apply_row_shade(row)
-        self.selection_changed.emit()
 
     def _on_item_clicked(self, item: QTableWidgetItem) -> None:
         # 선택 컬럼은 이제 setCellWidget(QCheckBox)라 이 아이템 자체가 없어
@@ -478,7 +474,7 @@ class BlueprintListPage(QWidget):
     def _show_cell_context_menu(self, pos) -> None:
         """셀 우클릭 — 클릭한 셀 하나의 텍스트만 클립보드에 복사하는 메뉴를 띄운다
         (프록시 테이블의 우클릭 메뉴 패턴과 동일한 뼈대: trigger/session.py의
-        _proxy_table_context_menu 참고). "관리"/"선택" 컬럼은 cellWidget이라
+        _proxy_table_context_menu 참고). "Run/Manage"/"Select" 컬럼은 cellWidget이라
         텍스트 아이템이 없으므로(item is None) 메뉴 자체를 띄우지 않는다."""
         index = self.table.indexAt(pos)
         if not index.isValid():

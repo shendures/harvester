@@ -91,8 +91,8 @@ class DashboardPageTriggers:
             return
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
             w = csv.writer(f)
-            w.writerow(["NO", "URL", "STATUS", "IP_ADDRESS", "USER-AGENT",
-                        "COOKIES", "LATENCY(PURE)", "LATENCY(TOTAL)", "JOB_NAME"])
+            w.writerow(["NO", "URL", "Status", "IP Address", "User Agent",
+                        "Cookies", "Latency (Pure)", "Latency (Total)", "Job Name"])
             for r in range(self.monitor_table.rowCount()):
                 w.writerow([
                     self.monitor_table.item(r, c).text()

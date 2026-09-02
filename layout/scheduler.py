@@ -56,7 +56,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
         self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(
-            ["NO", "Task Name", "대상", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
+            ["NO", "Task Name", "Target", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
         tl.addWidget(self.sched_table)
         bl.addWidget(tw, 1)
 

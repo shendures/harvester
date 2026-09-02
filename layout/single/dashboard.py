@@ -183,7 +183,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.monitor_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
         self.monitor_table.setColumnCount(9)
         self.monitor_table.setHorizontalHeaderLabels(
-            ["NO", "URL", "STATUS", "IP_ADDRESS", "USER-AGENT", "COOKIES", "LATENCY(PURE)", "LATENCY(TOTAL)", "JOB_NAME"])
+            ["NO", "URL", "Status", "IP Address", "User Agent", "Cookies", "Latency (Pure)", "Latency (Total)", "Job Name"])
         mon_tc.addWidget(self.monitor_table)
         bl.addWidget(mon_tcw, 1)
 

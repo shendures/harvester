@@ -22,7 +22,7 @@ class MonitorTargetListPage(QWidget):
 
     blueprint_selected = pyqtSignal(str)
 
-    _COLUMNS = ["제목", "상태"]
+    _COLUMNS = ["Title", "Status"]
     _SEQ_NO_COL = 0
 
     def __init__(self):
@@ -35,7 +35,11 @@ class MonitorTargetListPage(QWidget):
         root = QVBoxLayout(self)
         # 좌우 14px — "수집 목록"(blueprint_list.py의 bl.setContentsMargins)과
         # 동일한 규칙으로, 카드 좌측 끝을 대시보드 페이지 카드들과 맞춘다.
-        root.setContentsMargins(14, 0, 14, 0)
+        # 하단 14px — 오른쪽 "선택 항목 상세" 카드(build_scroll_body의 콘텐츠 하단
+        # 여백 14px)와 이 카드의 하단선을 맞추기 위함. monitor_split(QSplitter)의
+        # 좌/우 패널은 항상 같은 높이를 공유하므로, 여기서 하단 여백을 오른쪽과
+        # 동일하게 맞추면 두 카드의 하단선이 정확히 일직선이 된다.
+        root.setContentsMargins(14, 0, 14, 14)
         root.setSpacing(0)
 
         tcw, tc = parts.card_widget("수집 대상")
@@ -88,7 +92,7 @@ class MonitorTargetListPage(QWidget):
         label = BLUEPRINT_STATUS_LABELS.get(status, BLUEPRINT_STATUS_LABELS["idle"])
         row = self._row_of_seq(seq_no)
         if row != -1:
-            self.table.item(row, self._COLUMNS.index("상태")).setText(label)
+            self.table.item(row, self._COLUMNS.index("Status")).setText(label)
 
     def _apply_active_shade(self) -> None:
         row = self._row_of_seq(self._active_seq_no)
