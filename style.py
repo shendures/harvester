@@ -383,18 +383,29 @@ class NoFocusDelegate(QStyledItemDelegate):
 # ──────────────────────────────────────────────────────
 class EqualSpacingTable(QTableWidget):
     """
-    초기 Equal 분배 + 자유 리사이즈 + 가로 스크롤 테이블
+    초기 Equal 분배 + 자유 리사이즈 테이블 (항상 viewport 폭에 정확히 맞춤)
 
     ─────────────────────────────────────────────────────
     동작 원칙
     ─────────
-    • 초기(컬럼 수 확정 / 창 최초 표시): viewport 너비를 균등 분배
-    • 컬럼 드래그: 해당 컬럼 너비만 변경, 나머지 컬럼은 Fixed 유지
-      → 전체 컬럼 합산이 viewport 초과 시 가로 스크롤바 자동 활성화
+    • 초기(컬럼 수 확정 / 창 최초 표시): viewport 너비를 균등 분배(단, 어떤
+      컬럼의 최소 폭이 균등폭보다 넓으면 그 컬럼은 최소 폭으로 고정하고
+      나머지를 다시 나눔)
+    • 컬럼 드래그: 해당 컬럼 너비가 바뀐 만큼 그 **오른쪽에 있는 컬럼들
+      에게만** 차액을 비례 배분한다(_rebalance_columns → _distribute) —
+      왼쪽 컬럼들은 전혀 건드리지 않는다(Qt가 경계 왼쪽 컬럼을 resized로
+      보고하므로, 오른쪽이 자연스러운 보정 대상 — 마지막 컬럼처럼 오른쪽에
+      보정할 컬럼이 없을 때만 예외적으로 왼쪽이 보정). 전체 합은 항상
+      viewport 폭과 정확히 같다 — 늘려도 줄여도 가로 스크롤이 생기지
+      않는다. 어떤 컬럼도 자신의 헤더 텍스트나 그 컬럼에 실제로 들어있는
+      행의 값이 잘리는 폭 밑으로는 줄지 않으며(컬럼마다 다른 최소 폭,
+      _min_col_widths — 헤더와 모든 셀 값 중 가장 넓은 것 기준,
+      _measure_column_width), 보정 대상 컬럼들이 이미 각자 최소 폭이라 더
+      내줄 공간이 없을 때만 그 이상 커지는 드래그가 막힌다.
     • 창 리사이즈: 컬럼들이 이미 사용자 지정된 경우 그대로 유지
       (초기 equal 분배 상태인 경우에만 재분배)
     • 헤더 구분선 더블클릭: 해당 컬럼의 모든 셀 + 헤더 텍스트 중
-      가장 긴 것에 맞춰 Auto-fit
+      가장 긴 것에 맞춰 Auto-fit(이때도 위와 동일하게 나머지 컬럼에 재배분)
 
     Public API
     ──────────
@@ -405,8 +416,8 @@ class EqualSpacingTable(QTableWidget):
     fit_column(logical)      지정 컬럼 Auto-fit (더블클릭과 동일)
     """
 
-    MIN_COL_W = 30  # 컬럼 최소 너비 (px)
-    H_PADDING = 20  # auto-fit 시 텍스트 양쪽 여유 패딩 (px, 한쪽 10)
+    MIN_COL_W = 30  # 컬럼 최소 너비의 절대 하한(px) — 헤더가 아주 짧아도 이 밑으로는 안 내려감
+    H_PADDING = 20  # auto-fit/최소 폭 계산 시 텍스트 양쪽 여유 패딩 (px, 한쪽 10)
 
     def __init__(
             self,
@@ -425,6 +436,14 @@ class EqualSpacingTable(QTableWidget):
         self._is_equal_state = True
         # sectionResized 재진입 방지
         self._resizing = False
+        # 컬럼별 최소 폭 (헤더 텍스트 + 행의 값 기준, _recompute_min_col_widths가 채움)
+        self._min_col_widths = []
+        # True: 헤더/셀 내용이 바뀌어 _min_col_widths를 다시 계산해야 함.
+        # 매번 즉시 다시 스캔하지 않고, 실제로 최소 폭이 필요한 시점
+        # (_min_width_of)에만 한 번 계산한다 — 드래그 중 sectionResized가
+        # 연달아 발생해도, 행이 많은 테이블에 여러 setItem이 연달아 호출돼도
+        # 매번 전체 스캔하지 않도록.
+        self._min_widths_dirty = True
 
         self.theme = THEME()
 
@@ -462,112 +481,203 @@ class EqualSpacingTable(QTableWidget):
         sb_w = vscroll.width() if vscroll.isVisible() else 0
         return max(1, self.viewport().width() - sb_w)
 
+    # ── 헤더/셀 내용이 바뀌는 지점들 — 최소 폭 재계산이 필요함을 표시만 해둠 ──
+    def setHorizontalHeaderLabels(self, labels) -> None:
+        super().setHorizontalHeaderLabels(labels)
+        self._min_widths_dirty = True
+
+    def setItem(self, row, column, item) -> None:
+        super().setItem(row, column, item)
+        self._min_widths_dirty = True
+
+    def setCellWidget(self, row, column, widget) -> None:
+        super().setCellWidget(row, column, widget)
+        self._min_widths_dirty = True
+
+    def setRowCount(self, rows: int) -> None:
+        super().setRowCount(rows)
+        self._min_widths_dirty = True
+
+    # ── 컬럼별 최소 폭 계산/조회 ───────────────────────
+    def _measure_column_width(self, col: int) -> int:
+        """col에 있는 헤더 텍스트·모든 행의 셀 텍스트·cellWidget 크기 중
+        가장 넓은 것에 맞춘 너비를 계산한다(fit_column의 Auto-fit 측정과
+        동일한 로직 — 둘이 공유)."""
+        hdr_fm = QFontMetrics(self.horizontalHeader().font())
+        cell_fm = QFontMetrics(self.font())
+
+        header_item = self.horizontalHeaderItem(col)
+        max_w = hdr_fm.horizontalAdvance(header_item.text() if header_item else "") + self.H_PADDING
+
+        for row in range(self.rowCount()):
+            widget = self.cellWidget(row, col)
+            if widget:
+                max_w = max(max_w, widget.sizeHint().width() + self.H_PADDING)
+            else:
+                item = self.item(row, col)
+                if item and item.text():
+                    tw = cell_fm.horizontalAdvance(item.text()) + self._col_padding * 2 + self.H_PADDING
+                    max_w = max(max_w, tw)
+        return max_w
+
+    def _recompute_min_col_widths(self) -> None:
+        """각 컬럼의 헤더 텍스트와 실제로 들어있는 행의 값들이 잘리지 않는
+        최소 폭을 계산해 둔다 — 드래그로 줄일 때 이 값 밑으로는 못
+        내려가게 해 헤더 이름도, 행의 값도 화면에서 사라지지 않게 한다."""
+        self._min_col_widths = [
+            max(self.MIN_COL_W, self._measure_column_width(c))
+            for c in range(self.columnCount())
+        ]
+
+    def _min_width_of(self, col: int) -> int:
+        if self._min_widths_dirty:
+            self._recompute_min_col_widths()
+            self._min_widths_dirty = False
+        if 0 <= col < len(self._min_col_widths):
+            return self._min_col_widths[col]
+        return self.MIN_COL_W
+
     # ── Equal width 초기 분배 ─────────────────────────
     def _redistribute(self):
         """
-        viewport 너비를 컬럼 수로 균등 분할합니다.
-        나머지 픽셀은 마지막 컬럼에 흡수합니다.
+        viewport 너비를 컬럼 수로 균등 분할합니다. 균등폭이 어떤 컬럼의
+        헤더 최소 폭보다 작으면 그 컬럼은 최소 폭으로 고정하고 나머지를
+        다시 나눕니다(_distribute) — 컬럼이 많아도 초기 상태부터 헤더가
+        잘리지 않습니다.
         """
         n = self.columnCount()
         if n <= 0:
             return
 
         total = self._viewport_total()
-        base_w = max(self.MIN_COL_W, total // n)
-        rem = total - base_w * n
-
+        base_w = max(1, total // n)
         self._resizing = True
         try:
             for c in range(n):
-                self.setColumnWidth(c, base_w + (rem if c == n - 1 else 0))
+                self.setColumnWidth(c, base_w)
         finally:
             self._resizing = False
 
+        self._distribute(list(range(n)), total)
         self._is_equal_state = True
 
-    # ── 드래그 핸들러 — 해당 컬럼만 변경 ──────────────
+    # ── 드래그 핸들러 — 해당 컬럼 크기 변경 후 나머지에 재배분 ──
     def _on_section_resized(self, logical: int, old_w: int, new_w: int):
         """
-        드래그된 컬럼의 너비만 변경합니다.
-        다른 컬럼은 Fixed 유지 → 전체 합산 증가 시 H-scrollbar 활성화.
-        MIN_COL_W 미만으로는 줄일 수 없습니다.
+        드래그된 컬럼의 너비를 그 컬럼의 헤더 최소 폭(_min_width_of) 이상으로
+        클램프한 뒤, 나머지 컬럼들에게 차액을 재배분합니다(_rebalance_columns)
+        — 전체 합이 항상 viewport에 정확히 맞아 늘려도 줄여도 가로 스크롤이
+        생기지 않고, 어떤 컬럼도 헤더 텍스트가 잘릴 정도로 좁아지지 않습니다.
         """
         if self._resizing:
             return
 
-        # MIN_COL_W 클램프
-        if new_w < self.MIN_COL_W:
+        min_w = self._min_width_of(logical)
+        if new_w < min_w:
+            new_w = min_w
             self._resizing = True
             try:
-                self.setColumnWidth(logical, self.MIN_COL_W)
+                self.setColumnWidth(logical, new_w)
             finally:
                 self._resizing = False
 
         # 사용자가 직접 조작 → equal 상태 해제 (창 리사이즈 시 재분배 안 함)
         self._is_equal_state = False
-        self._fill_right_gap(logical)
+        self._rebalance_columns(logical, new_w)
 
-    # ── 컬럼 축소로 생긴 우측 여백 흡수 ────────────────
-    def _fill_right_gap(self, resized_logical: int) -> None:
-        """resized_logical 컬럼이 좁아져 전체 컬럼 폭 합이 viewport보다
-        작아졌으면(오른쪽에 여백 발생), 그 부족분을 마지막 컬럼에 더해
-        흡수한다. 단, 방금 좁힌 컬럼이 마지막 컬럼 자신이면(그 컬럼을 더
-        키워버리면 방금 한 리사이즈가 무효화되므로) 그 바로 앞 컬럼이 대신
-        흡수한다. 늘려서 viewport를 넘치는 경우(부족분이 음수)는 손대지 않아
-        기존 가로 스크롤 동작을 그대로 유지한다."""
+    # ── 컬럼 크기 변경 후 나머지 전체 컬럼에 차액 재배분 ──────
+    def _rebalance_columns(self, resized_logical: int, new_w: int) -> None:
+        """resized_logical 컬럼이 new_w로 바뀐 뒤, 그 오른쪽에 있는 컬럼들
+        에게만 차액을 재배분한다(_distribute) — 왼쪽 컬럼들은 전혀
+        건드리지 않는다. 마우스로 컬럼 경계를 드래그하면 Qt는 그 경계
+        왼쪽 컬럼을 resized_logical로 보고하므로(오른쪽 컬럼은 폭이 아니라
+        화면 위치만 밀림), 오른쪽이 자연스러운 보정 대상이다 — "경계
+        오른쪽을 드래그하면 오른쪽만, 왼쪽을 드래그하면 왼쪽만 바뀐다"는
+        요구사항과 일치한다. resized_logical이 마지막 컬럼이라 오른쪽에
+        보정할 컬럼이 없는 경우(실제 마우스 드래그로는 발생하지 않고
+        fit_column 같은 프로그램적 호출에서만 발생)에만 예외적으로 왼쪽
+        컬럼들이 대신 보정한다. 전체 합은 항상 viewport 폭과 정확히 같다."""
         last = self.columnCount() - 1
-        target = last if resized_logical != last else last - 1
-        if target < 0:
+        if resized_logical < last:
+            side = list(range(resized_logical + 1, self.columnCount()))
+            fixed_sum = sum(self.columnWidth(c) for c in range(resized_logical))
+        else:
+            side = list(range(resized_logical))
+            fixed_sum = 0
+        if not side:
             return
-        total = sum(self.columnWidth(c) for c in range(self.columnCount()))
-        deficit = self._viewport_total() - total
-        if deficit <= 0:
+
+        viewport = self._viewport_total()
+        side_min_sum = sum(self._min_width_of(c) for c in side)
+        max_allowed = max(self._min_width_of(resized_logical), viewport - fixed_sum - side_min_sum)
+        if new_w > max_allowed:
+            new_w = max_allowed
+            self._resizing = True
+            try:
+                self.setColumnWidth(resized_logical, new_w)
+            finally:
+                self._resizing = False
+
+        self._distribute(side, viewport - fixed_sum - new_w)
+
+    # ── 여러 컬럼에 목표 폭 합계를 비례 배분(최소 폭 준수) ──
+    def _distribute(self, cols: list, total_w: int) -> None:
+        """cols의 컬럼들에 total_w(정수 px)를 현재 폭 비율대로 나누되,
+        배분받은 폭이 그 컬럼의 최소 폭(_min_width_of)보다 작아지면 그
+        컬럼은 최소 폭으로 고정하고, 남은 만큼을 아직 고정되지 않은
+        컬럼들끼리 다시 비례 배분한다("물 채우기" — 컬럼이 최대 10여 개뿐
+        이라 반복해도 비용이 작다). 반올림 오차는 마지막 컬럼에 몰아
+        합계가 total_w와 정확히 같아지도록 맞춘다. 모든 컬럼을 최소 폭까지
+        줄여도 total_w를 못 맞추는 극단적인 경우(컬럼이 아주 많고 창이
+        아주 좁음)는 결과 합계가 total_w를 넘을 수 있다 — 이때만
+        가로 스크롤이 남는다."""
+        cols = sorted(cols)
+        if not cols:
             return
+        mins = {c: self._min_width_of(c) for c in cols}
+        current = {c: max(1, self.columnWidth(c)) for c in cols}
+
+        fixed = {}
+        free = list(cols)
+        remaining = total_w
+
+        while free:
+            current_sum = sum(current[c] for c in free) or len(free)
+            violated = [
+                c for c in free
+                if (remaining * current[c] / current_sum if current[c] else remaining / len(free)) < mins[c]
+            ]
+            if not violated:
+                break
+            for c in violated:
+                fixed[c] = mins[c]
+                remaining -= mins[c]
+                free.remove(c)
+
+        if free:
+            current_sum = sum(current[c] for c in free) or len(free)
+            allocated = 0
+            for c in free[:-1]:
+                w = round(remaining * current[c] / current_sum) if current_sum else remaining // len(free)
+                fixed[c] = w
+                allocated += w
+            fixed[free[-1]] = remaining - allocated
+
         self._resizing = True
         try:
-            self.setColumnWidth(target, self.columnWidth(target) + deficit)
+            for c, w in fixed.items():
+                self.setColumnWidth(c, w)
         finally:
             self._resizing = False
 
     # ── Auto-fit (더블클릭 / 공개 API) ────────────────
     def fit_column(self, logical: int):
         """
-        지정 컬럼의 너비를 해당 컬럼 내 가장 긴 텍스트에 맞춥니다.
-
-        측정 대상
-        ─────────
-        • 헤더 텍스트
-        • 모든 행의 셀 텍스트 (QTableWidgetItem)
-        • CellWidget이 있는 경우 위젯의 sizeHint().width()
-
-        폰트
-        ────
-        • 헤더: horizontalHeader().font()
-        • 셀:   self.font()
+        지정 컬럼의 너비를 해당 컬럼 내 가장 긴 텍스트에 맞춥니다
+        (측정은 _measure_column_width와 공유 — 헤더 텍스트, 모든 행의 셀
+        텍스트, cellWidget이 있으면 그 sizeHint().width()까지 비교).
         """
-        hdr = self.horizontalHeader()
-        hdr_font = hdr.font()
-        cell_font = self.font()
-
-        hdr_fm = QFontMetrics(hdr_font)
-        cell_fm = QFontMetrics(cell_font)
-
-        # 헤더 텍스트 너비
-        hdr_text = self.horizontalHeaderItem(logical)
-        max_w = hdr_fm.horizontalAdvance(hdr_text.text() if hdr_text else "") + self.H_PADDING
-
-        # 셀 텍스트 / 위젯 너비
-        for row in range(self.rowCount()):
-            widget = self.cellWidget(row, logical)
-            if widget:
-                max_w = max(max_w, widget.sizeHint().width() + self.H_PADDING)
-            else:
-                item = self.item(row, logical)
-                if item and item.text():
-                    tw = cell_fm.horizontalAdvance(item.text()) + self._col_padding * 2 + self.H_PADDING
-                    max_w = max(max_w, tw)
-
-        target_w = max(self.MIN_COL_W, max_w)
+        target_w = max(self._min_width_of(logical), self._measure_column_width(logical))
 
         self._resizing = True
         try:
@@ -577,7 +687,7 @@ class EqualSpacingTable(QTableWidget):
 
         # auto-fit 도 사용자 조작으로 간주 → equal 상태 해제
         self._is_equal_state = False
-        self._fill_right_gap(logical)
+        self._rebalance_columns(logical, target_w)
 
     # ── Qt 이벤트 오버라이드 ──────────────────────────
     def resizeEvent(self, event):
@@ -593,6 +703,7 @@ class EqualSpacingTable(QTableWidget):
     def setColumnCount(self, count: int):
         """컬럼 수 확정 직후 Equal 재분배 예약."""
         super().setColumnCount(count)
+        self._min_widths_dirty = True
         if count > 0:
             self._is_equal_state = True
             QTimer.singleShot(0, self._redistribute)
