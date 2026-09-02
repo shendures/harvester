@@ -21,6 +21,12 @@ if sys.platform == 'win32':
 def main():
 
     app = QApplication(sys.argv)
+    # Windows 네이티브 스타일(windowsvista/windows11)은 border+padding:0 조합의
+    # 초소형 QPushButton 등에서 QSS의 background-color를 온전히 반영하지 않는
+    # 경우가 있다 — 이 앱은 GLOBAL_QSS로 위젯을 전면 다크 테마 재스타일링하므로
+    # 네이티브 룩에 의존할 이유가 없어, 플랫폼 무관하게 QSS를 그대로 그리는
+    # Fusion 스타일을 고정한다(스타일시트 적용보다 먼저 호출).
+    app.setStyle("Fusion")
     theme.set_pallete(app)
     # 창/작업 표시줄 아이콘 — 미지정 시 PyInstaller --icon(exe 파일 아이콘)과 무관하게
     # 실행 중에는 기본 아이콘으로 표시됨(트레이 아이콘은 TrayManager가 별도로 설정 중)
