@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
-from trigger.common import _default_dialog_qss
+from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox
 from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon
 from ..common import (
     parts, build_scroll_body,
@@ -37,7 +37,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
         self._refine_rules = {
             "remove_null_row":   True,   # 모든 필드 null 행 제거
-            "custom_rule":       True,   # 커스텀 규칙(seq_no) 적용
+            "custom_rule":       True,   # __init__ 마지막에 _sync_custom_rule_checkbox로
+                                          # refine/{seq_no}.py 유무를 재확인해 덮어씀
             "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
             "remove_duplicate":  True,   # 중복 행 제거
             "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
@@ -47,6 +48,14 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._drop_column_names: list[str] = []   # 제외할 컬럼명 목록
         self._fill_null_value: str = ""            # null 치환값 (기본: 빈 값)
         self._build()
+
+        # "커스텀 정제 규칙 적용"은 파일이 없으면 절대 체크된 채로 시작하면 안
+        # 된다 — preprocess()/탭 재진입/수동 토글과 똑같은 판단을 위젯 생성
+        # 직후에도 적용해, 그 판단 기준이 trigger/common.py 한 곳에만 있도록
+        # 한다(파일이 있으면 위 기본값 True를 그대로 둠).
+        _sync_custom_rule_checkbox(
+            self._active_blueprint_info().get("seq_no"), self._rule_checkboxes
+        )
 
     def _build(self):
         root = QVBoxLayout(self)
@@ -483,6 +492,16 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # seq_no/needs_cleaning 등 정제 시 참조할 현재 작업 정보 보관
         self._current_task = task or {}
         self._cleaning_warned = False   # 새 수집 결과 — 팝업 안내 여부 초기화
+
+        # "커스텀 정제 규칙 적용"은 파일이 없으면 절대 체크된 채로 남아있으면 안
+        # 된다(최초 기본값·수동 토글 시에 이미 같은 불변식을 지키고 있음) — 세션
+        # 도중 스크립트가 지워진 경우까지 커버하기 위해 수집 완료 시점에도
+        # 재확인한다. 파일이 "있을" 때는 사용자가 마지막으로 남겨 둔 체크
+        # 상태를 그대로 둔다(강제로 다시 켜지 않음) — 사용자가 "이번만 적용
+        # 안 함"으로 일부러 꺼둔 선택을 존중하기 위함(_sync_custom_rule_checkbox
+        # 공용 — trigger/monitor.py의 _on_monitor_tab_changed, trigger/scheduler.py의
+        # 블루프린트 변경 재동기화와 동일한 규칙을 공유).
+        _sync_custom_rule_checkbox(self._current_task.get("seq_no"), self._rule_checkboxes)
 
         if not self._collected_data:
             if (task or {}).get("job") in self._SILENT_JOBS:

@@ -29,6 +29,7 @@ from .common import (
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT, GREEN, PURPLE,
     SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+    _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
 )
 
 class SchedulerPageTriggers:
@@ -752,19 +753,38 @@ class SchedulerPageTriggers:
         if sched_refine_fill_input is not None:
             sched_refine_fill_input.setText(_saved_fill_value)
 
-        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동 — MonitorPageSingle의
-        # _on_custom_rule_toggled()와 동일 로직(fill_null 제외,
-        # 2026-07-17), 이 패널의 로컬 checkboxes 딕셔너리에 대해서만 적용.
+        # "커스텀 정제 규칙 적용" 초기값 재확인 — 현재 선택된 "대상 블루프린트"에
+        # refine/{seq_no}.py가 없으면 위에서 넣은 _saved_refine_rules(기본값 또는
+        # 저장된 값)와 무관하게 무조건 꺼둔다. 파일이 있으면 그대로 둔다
+        # (MonitorPageSingle __init__과 동일한 규칙 — 판단 기준은
+        # trigger/common.py의 _sync_custom_rule_checkbox 한 곳뿐).
+        _sync_custom_rule_checkbox(sched_blueprint_combo.currentData(), sched_refine_checkboxes)
+
+        # "커스텀 정제 규칙 적용" 체크박스의 stateChanged 핸들러 — 실제
+        # 검증/자동 연동 로직은 trigger/common.py의 _handle_custom_rule_toggle이
+        # 전담하며(정제 페이지의 _on_custom_rule_toggled와 공유), 여기서는
+        # seq_no와 경고 콜백만 이 다이얼로그의 컨텍스트로 채워 넘긴다. seq_no는
+        # 이 패널이 아니라 "대상 블루프린트" 콤보의 현재 선택값에서 가져온다 —
+        # 이 다이얼로그는 seq_no가 고정이 아니라 콤보로 실행 중에 바뀌기 때문이다.
         _sched_refine_custom_cb = sched_refine_checkboxes.get("custom_rule")
         if _sched_refine_custom_cb is not None:
             def _on_sched_refine_custom_rule_toggled(chk_state):
-                if chk_state != Qt.CheckState.Checked.value:
-                    return
-                for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
-                    cb = sched_refine_checkboxes.get(key)
-                    if cb is not None:
-                        cb.setChecked(True)
+                seq_no = sched_blueprint_combo.currentData()
+                def _warn():
+                    bp = BlueprintStorage().get(seq_no) or {}
+                    _warn_custom_rule_missing(dlg, bp.get("title") or seq_no)
+                _handle_custom_rule_toggle(chk_state, seq_no, sched_refine_checkboxes, _warn)
             _sched_refine_custom_cb.stateChanged.connect(_on_sched_refine_custom_rule_toggled)
+
+            # "대상 블루프린트" 선택이 바뀔 때마다 그 블루프린트의 스크립트
+            # 존재 여부로 재동기화한다 — 정제 페이지의 "탭 재진입마다 재동기화"에
+            # 대응. 파일이 없으면 무조건 끄고(팝업 없이 조용히 — 콤보를 여러 번
+            # 눌러볼 때마다 모달이 뜨면 방해가 됨), 있으면 사용자가 남긴 상태를
+            # 그대로 둔다. 기존에 이 콤보에 이미 연결된 URL/렌더링 안전 한도
+            # 핸들러와는 무관하게 별도로 추가 연결한다.
+            def _sync_sched_custom_rule_on_blueprint_change(_):
+                _sync_custom_rule_checkbox(sched_blueprint_combo.currentData(), sched_refine_checkboxes)
+            sched_blueprint_combo.currentIndexChanged.connect(_sync_sched_custom_rule_on_blueprint_change)
 
         refine_panel_layout.addStretch()
 

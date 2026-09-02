@@ -10,12 +10,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 
 import db_conn
 from conf import DataStore
 from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
-from preprocess import DEFAULT_RULES
+from preprocess import DEFAULT_RULES, custom_rule_exists
 
 store    = DataStore()
 theme    = THEME()
@@ -91,6 +91,10 @@ def _normalize_save_type(raw):
 # 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
 # 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPageSingle "②
 # 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
+# custom_rule 값은 이 상수에서 시작점(폴백)만 가져올 뿐이다 — 실제 초기
+# 체크 상태는 trigger/scheduler.py가 "대상 블루프린트" 콤보의 현재 선택값으로
+# custom_rule_exists(seq_no)를 확인해 즉시 덮어쓴다(MonitorPageSingle과 동일한
+# 규칙: 파일 없으면 무조건 False, 있으면 이 기본값/저장된 값을 유지).
 # "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
 # 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
 # "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다(Raw 수집
@@ -187,6 +191,61 @@ def _show_db_conn_fail_dialog(parent, reason: str) -> None:
     msg.setInformativeText(reason)
     msg.setStyleSheet(_default_msgbox_qss(12))
     msg.exec()
+
+
+def _sync_custom_rule_checkbox(seq_no, checkboxes) -> bool:
+    """"커스텀 정제 규칙 적용" 체크박스를 refine/{seq_no}.py 존재 여부로
+    맞춘다 — 파일이 없으면 checkboxes["custom_rule"]을 무조건 끄고, 있으면
+    현재 체크 상태를 그대로 둔다(사용자가 남긴 선택 존중). 정제 페이지
+    (탭 재진입마다, 수집 완료 시)와 스케줄 등록 다이얼로그("대상 블루프린트"
+    변경 시)가 동일한 규칙을 공유한다.
+
+    Returns:
+        bool: 파일이 없어서(=missing) 체크를 껐으면 True, 아니면 False.
+    """
+    missing = bool(seq_no) and not custom_rule_exists(seq_no)
+    if missing:
+        cb = checkboxes.get("custom_rule")
+        if cb is not None:
+            cb.setChecked(False)
+    return missing
+
+
+def _handle_custom_rule_toggle(state, seq_no, checkboxes, warn_fn) -> None:
+    """"커스텀 정제 규칙 적용" 체크박스의 stateChanged 공통 처리 — 켜려는
+    시도인데 refine/{seq_no}.py가 없으면 체크를 되돌리고 warn_fn()을 호출한 뒤
+    끝내고(drop_columns 체크박스의 검증 패턴과 동일, style.py의
+    _on_drop_columns_toggled 참고), 있으면 규칙 ①③④(remove_null_row/
+    trim_whitespace/remove_duplicate)를 자동으로 켠다. fill_null은 대상에서
+    제외된다(커스텀 규칙이 정규화한 데이터라도 결측값 치환 여부는 별도로
+    판단해야 하기 때문). 정제 페이지(trigger/monitor.py)와 스케줄 등록
+    다이얼로그(trigger/scheduler.py)가 공유한다 — 두 호출부는 seq_no 조회
+    방식과 경고 title 조회 방식이 서로 달라(_active_blueprint_info() vs
+    BlueprintStorage().get()) warn_fn을 인자 없는 콜백으로 받는다."""
+    if state != Qt.CheckState.Checked.value:
+        return
+    # 경고가 뜨기 전에 체크박스를 먼저 되돌린다 — setChecked(False)가 이
+    # 핸들러를 재귀 호출하지만 state가 Unchecked라 위 guard에서 곧바로
+    # return되므로 안전하다.
+    if _sync_custom_rule_checkbox(seq_no, checkboxes):
+        warn_fn()
+        return
+    for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
+        cb = checkboxes.get(key)
+        if cb is not None:
+            cb.setChecked(True)
+
+
+def _warn_custom_rule_missing(parent, title) -> None:
+    """"커스텀 정제 규칙 적용"에 필요한 정제 스크립트가 없을 때 공통으로 띄우는
+    경고 — 정제 페이지(trigger/monitor.py)와 스케줄 등록 다이얼로그
+    (trigger/scheduler.py) 양쪽에서 동일한 문구로 재사용한다."""
+    QMessageBox.warning(
+        parent, "정제 규칙 없음",
+        f"'{title}'에 등록된 사용자 정의 정제 규칙이 존재하지 않습니다.\n"
+        f"'커스텀 정제 규칙 적용'을 사용하려면 정제 스크립트 파일을 "
+        f"먼저 등록해야 합니다."
+    )
 
 
 def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:

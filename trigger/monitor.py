@@ -19,13 +19,15 @@ import utility
 import customized_settings
 from conf import get_spider_mode, BlueprintStorage
 from style import TagButton, Divider, apply_render_safety_limits
-from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
+from preprocess import DataRefiner, RefineStats, load_custom_rule
 
 from .common import (
     parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss,
+    _warn_custom_rule_missing as _common_warn_custom_rule_missing,
+    _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
 )
 
 
@@ -179,43 +181,60 @@ class MonitorPageTriggers:
     # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
     def _on_monitor_tab_changed(self, index: int):
         """
-        "② 정제 규칙 설정" 탭(index=1) 진입 시, 이번 수집이 needs_cleaning=True인데
-        등록된 커스텀 규칙 파일이 없으면 팝업으로 안내합니다. 이번 수집 결과당 최초
-        1회만 확인하고(같은 결과를 보며 탭을 왔다갔다 해도 반복해서 뜨지 않음),
-        preprocess(task)에서 새 수집 결과가 들어올 때 다시 확인 가능하도록 리셋됩니다.
+        "② 정제 규칙 설정" 탭(index=1)에 들어올 때마다 "커스텀 정제 규칙 적용"
+        체크박스를 refine/{seq_no}.py 존재 여부로 재동기화합니다 — 파일이 없으면
+        무조건 체크를 해제하고(있을 때는 사용자가 남겨 둔 상태를 그대로 둠,
+        preprocess()의 동기화 규칙과 동일), 최초 생성 시점이나 마지막 수집 시점의
+        스냅샷에만 의존하지 않고 탭을 열 때마다 항상 최신 상태로 맞춥니다.
+        안내 팝업은 매번 뜨면 방해가 되므로 기존처럼 이번 수집 결과당 최초 1회만
+        띄웁니다(_cleaning_warned로 팝업만 게이팅 — 동기화 자체는 게이팅하지
+        않습니다). seq_no는 _current_task가 아니라 _active_blueprint_info()에서
+        읽는다 — 수집을 아직 한 번도 안 돌린 시점에도(=_current_task가 비어
+        있어도) 이 블루프린트 고유의 값을 즉시 알 수 있어야, 처음 탭을 열었을
+        때도 정상적으로 동작한다.
         """
-        if index != 1 or self._cleaning_warned:
+        if index != 1:
             return
 
-        seq_no         = self._current_task.get("seq_no")
-        needs_cleaning = self._current_task.get("needs_cleaning", False)
-        if not (needs_cleaning and seq_no):
+        seq_no = self._active_blueprint_info().get("seq_no")
+        if not seq_no:
             return
 
-        self._cleaning_warned = True
-        if not custom_rule_exists(seq_no):
-            QMessageBox.warning(
-                self, "정제 규칙 없음",
-                f"이 수집물(seq_no={seq_no})은 사용자 정의 정제 규칙이 필요하도록 "
-                f"표시되어 있으나(needs_cleaning=True), 등록된 규칙 파일이 없습니다.\n"
-                f"범용 규칙만 적용됩니다."
-            )
+        missing = _sync_custom_rule_checkbox(seq_no, self._rule_checkboxes)
+
+        # 안내 팝업의 "이번 수집 결과당 최초 1회"는 missing이 처음으로 True가
+        # 되는 시점 기준이다 — 파일이 있을 때 방문한 것만으로 이 1회성을
+        # 소모해버리면, 그 뒤 파일이 사라져도 다시는 안내가 뜨지 않게 된다.
+        if missing and not self._cleaning_warned:
+            self._cleaning_warned = True
+            self._warn_custom_rule_missing(seq_no)
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
+    def _warn_custom_rule_missing(self, seq_no) -> None:
+        """"커스텀 정제 규칙 적용"에 필요한 refine/{seq_no}.py 정제 스크립트가
+        없을 때 공통으로 띄우는 경고 — 체크박스를 직접 켤 때
+        (_on_custom_rule_toggled)와 "② 정제 규칙 설정" 탭에 처음 들어왔을 때
+        (_on_monitor_tab_changed) 양쪽에서 동일한 문구를 쓰기 위해 하나로
+        묶는다. 문구 자체는 trigger/common.py에 있다 — 스케줄 등록 다이얼로그
+        (trigger/scheduler.py)도 그 함수를 그대로 재사용한다(이 메서드는
+        self._active_blueprint_info()로 title을 얻어 전달만 함)."""
+        title = self._active_blueprint_info().get("title") or seq_no
+        _common_warn_custom_rule_missing(self, title)
+
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④(remove_null_row/
-        trim_whitespace/remove_duplicate)를 자동으로 켭니다. fill_null(⑥, 결측값
-        치환)은 대상에서 제외됩니다(2026-07-17, 사용자 요청 — 커스텀 규칙이
-        정규화한 데이터라도 결측값 치환 여부는 별도로 판단해야 한다는 판단).
-        체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ①③④에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        """"커스텀 정제 규칙 적용"(②) 체크박스의 stateChanged 핸들러 — 실제
+        검증/자동 연동 로직은 trigger/common.py의 _handle_custom_rule_toggle이
+        전담하며(스케줄 등록 다이얼로그와 공유), 여기서는 seq_no와 경고 콜백만
+        이 클래스의 컨텍스트(_active_blueprint_info/_rule_checkboxes)로
+        채워 넘긴다. fill_null(⑥, 결측값 치환)은 자동 연동 대상에서 제외된다
+        (2026-07-17, 사용자 요청 — 커스텀 규칙이 정규화한 데이터라도 결측값
+        치환 여부는 별도로 판단해야 한다는 판단).
         """
-        if state != Qt.CheckState.Checked.value:
-            return
-        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
-            cb = self._rule_checkboxes.get(key)
-            if cb is not None:
-                cb.setChecked(True)
+        seq_no = self._active_blueprint_info().get("seq_no")
+        _handle_custom_rule_toggle(
+            state, seq_no, self._rule_checkboxes,
+            lambda: self._warn_custom_rule_missing(seq_no),
+        )
 
     # ── 정제 실행 ─────────────────────────────────────────────────────
     def _run_refine(
