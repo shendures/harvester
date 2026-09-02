@@ -82,6 +82,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.monitor_split.setStretchFactor(1, 75)
         self.monitor_split.setSizes([250, 750])
         self.monitor_split.setChildrenCollapsible(False)
+        self.monitor_split.setHandleWidth(9)
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()       # 3 — 전역 단일
@@ -93,7 +94,6 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
         self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
         self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
-        self.blueprint_list_page.selection_changed.connect(self._sync_toolbar_url_for_selection)
         # "대시보드"(구 NAV_MONITOR 페이지)를 "수집 목록" 위/아래에 통합한다 — 카드
         # 순서를 "대기중 상태바 → 작업 진행 상태 → 수집 목록 → 세션 통계 → 수집
         # 모니터링"으로 맞추기 위해 progress_slot(대기중 상태바)·step_slot(작업 진행
@@ -193,24 +193,3 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         # 동일 블루프린트 — 여기서 BlueprintStorage().get()을 또 호출해
         # deepcopy를 반복할 필요가 없다.
         self.global_toolbar.activate_blueprint(bundle.dashboard.blueprint_info)
-        # 수집 목록에서 2개 이상 체크된 상태로 행을 클릭했을 수 있으므로,
-        # 방금 위에서 채운 URL을 선택 개수 기준으로 다시 확정한다.
-        self._sync_toolbar_url_for_selection()
-
-    def _sync_toolbar_url_for_selection(self) -> None:
-        """
-        수집 목록의 선택 컬럼 체크 개수에 따라 상단 URL 입력창(과 방식 라벨)을
-        갱신한다 — 실제 활성 블루프린트를 전환하지는 않고 표시만 바꾼다.
-        - 2개 이상 체크: 대상이 하나로 특정되지 않으므로 빈 값
-        - 정확히 1개 체크: 체크된 그 블루프린트의 URL
-        - 0개 체크: 현재 활성 블루프린트의 URL로 복원
-        """
-        checked = self.blueprint_list_page.checked_seq_nos()
-        if len(checked) >= 2:
-            self.global_toolbar.url_input.setText("")
-            self.global_toolbar._method_label.setText("")
-        elif len(checked) == 1:
-            checked_info = BlueprintStorage().get(checked[0])
-            self.global_toolbar.activate_blueprint(checked_info or {})
-        else:
-            self.global_toolbar.activate_blueprint(self.dashboard.blueprint_info)

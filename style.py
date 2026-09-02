@@ -108,6 +108,15 @@ class THEME:
         QCheckBox::indicator:checked {{
             background: {self.ACCENT}; border-color: {self.ACCENT};
         }}
+        QSplitter::handle {{
+            background: {self.BORDER_LIGHT};
+        }}
+        QSplitter::handle:horizontal {{
+            width: 1px; margin: 0 4px;
+        }}
+        QSplitter::handle:vertical {{
+            height: 1px; margin: 4px 0;
+        }}
         """
 
     @property
@@ -398,14 +407,17 @@ class EqualSpacingTable(QTableWidget):
       보정할 컬럼이 없을 때만 예외적으로 왼쪽이 보정). 전체 합은 항상
       viewport 폭과 정확히 같다 — 늘려도 줄여도 가로 스크롤이 생기지
       않는다. 어떤 컬럼도 자신의 헤더 텍스트나 그 컬럼에 실제로 들어있는
-      행의 값이 잘리는 폭 밑으로는 줄지 않으며(컬럼마다 다른 최소 폭,
-      _min_col_widths — 헤더와 모든 셀 값 중 가장 넓은 것 기준,
-      _measure_column_width), 보정 대상 컬럼들이 이미 각자 최소 폭이라 더
-      내줄 공간이 없을 때만 그 이상 커지는 드래그가 막힌다.
+      조작 위젯(체크박스·버튼 등)이 잘리는 폭 밑으로는 줄지 않으며(컬럼마다
+      다른 최소 폭, _min_col_widths — 헤더와 위젯 중 가장 넓은 것 기준,
+      _measure_min_column_width), 보정 대상 컬럼들이 이미 각자 최소 폭이라
+      더 내줄 공간이 없을 때만 그 이상 커지는 드래그가 막힌다. 단, 일반
+      텍스트 셀 값의 길이는 최소 폭에 영향을 주지 않으므로, 값이 헤더보다
+      길면 컬럼이 헤더 길이까지 좁아졌을 때 Qt 기본 elide로 "…" 표시된다.
     • 창 리사이즈: 컬럼들이 이미 사용자 지정된 경우 그대로 유지
       (초기 equal 분배 상태인 경우에만 재분배)
     • 헤더 구분선 더블클릭: 해당 컬럼의 모든 셀 + 헤더 텍스트 중
       가장 긴 것에 맞춰 Auto-fit(이때도 위와 동일하게 나머지 컬럼에 재배분)
+      — 드래그 최소 폭과 달리 이 동작은 셀 값까지 모두 고려한다
 
     Public API
     ──────────
@@ -436,7 +448,7 @@ class EqualSpacingTable(QTableWidget):
         self._is_equal_state = True
         # sectionResized 재진입 방지
         self._resizing = False
-        # 컬럼별 최소 폭 (헤더 텍스트 + 행의 값 기준, _recompute_min_col_widths가 채움)
+        # 컬럼별 최소 폭 (헤더 텍스트 + 조작 위젯 크기 기준, _recompute_min_col_widths가 채움)
         self._min_col_widths = []
         # True: 헤더/셀 내용이 바뀌어 _min_col_widths를 다시 계산해야 함.
         # 매번 즉시 다시 스캔하지 않고, 실제로 최소 폭이 필요한 시점
@@ -498,11 +510,11 @@ class EqualSpacingTable(QTableWidget):
         super().setRowCount(rows)
         self._min_widths_dirty = True
 
-    # ── 컬럼별 최소 폭 계산/조회 ───────────────────────
+    # ── 컬럼별 폭 계산/조회 ───────────────────────────
     def _measure_column_width(self, col: int) -> int:
         """col에 있는 헤더 텍스트·모든 행의 셀 텍스트·cellWidget 크기 중
-        가장 넓은 것에 맞춘 너비를 계산한다(fit_column의 Auto-fit 측정과
-        동일한 로직 — 둘이 공유)."""
+        가장 넓은 것에 맞춘 너비를 계산한다(fit_column의 Auto-fit 전용 —
+        드래그 최소 폭 계산에는 _measure_min_column_width를 쓴다)."""
         hdr_fm = QFontMetrics(self.horizontalHeader().font())
         cell_fm = QFontMetrics(self.font())
 
@@ -520,12 +532,28 @@ class EqualSpacingTable(QTableWidget):
                     max_w = max(max_w, tw)
         return max_w
 
+    def _measure_min_column_width(self, col: int) -> int:
+        """드래그로 줄일 때의 하한선을 계산한다. 헤더 텍스트와, 실제 조작
+        위젯(체크박스·버튼 등)의 크기만 보호 대상으로 삼는다 — 일반 텍스트
+        셀 값은 헤더보다 짧아지는 것을 막지 않는다(헤더보다 좁아지면 Qt
+        기본 elide로 "…" 표시)."""
+        hdr_fm = QFontMetrics(self.horizontalHeader().font())
+        header_item = self.horizontalHeaderItem(col)
+        max_w = hdr_fm.horizontalAdvance(header_item.text() if header_item else "") + self.H_PADDING
+
+        for row in range(self.rowCount()):
+            widget = self.cellWidget(row, col)
+            if widget:
+                max_w = max(max_w, widget.sizeHint().width() + self.H_PADDING)
+        return max_w
+
     def _recompute_min_col_widths(self) -> None:
-        """각 컬럼의 헤더 텍스트와 실제로 들어있는 행의 값들이 잘리지 않는
-        최소 폭을 계산해 둔다 — 드래그로 줄일 때 이 값 밑으로는 못
-        내려가게 해 헤더 이름도, 행의 값도 화면에서 사라지지 않게 한다."""
+        """각 컬럼의 헤더 텍스트와, 그 컬럼에 들어있는 조작 위젯이 잘리지
+        않는 최소 폭을 계산해 둔다 — 드래그로 줄일 때 이 값 밑으로는 못
+        내려가게 해 헤더 이름과 위젯이 화면에서 사라지지 않게 한다(일반
+        텍스트 셀 값은 이 최소 폭에 영향을 주지 않는다)."""
         self._min_col_widths = [
-            max(self.MIN_COL_W, self._measure_column_width(c))
+            max(self.MIN_COL_W, self._measure_min_column_width(c))
             for c in range(self.columnCount())
         ]
 

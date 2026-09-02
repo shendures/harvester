@@ -400,6 +400,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(9)
 
         raw_w, raw_l = parts.card_widget("Raw 데이터")
         popup_raw_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
