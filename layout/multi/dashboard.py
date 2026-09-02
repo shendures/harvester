@@ -24,13 +24,22 @@ class DashboardPageMulti(DashboardPageSingle):
     def _place_step_card(self, bl) -> None:
         """"작업 진행 상태" 행을 이 페이지 자신의 스크롤 영역에 넣지 않는다 — 대신
         main_window가 step_card_widget을 "수집 목록" 위쪽의 별도 스택(step_slot)에
-        직접 마운트해, 모니터링 페이지 카드 순서를 "작업 진행 상태 → 수집 목록 →
-        (이 페이지에 남은 나머지 카드들)"로 만든다."""
+        직접 마운트해, 대시보드 페이지 카드 순서를 "대기중 상태바 → 작업 진행 상태 →
+        수집 목록 → (이 페이지에 남은 나머지 카드들)"로 만든다."""
         # cfg(QHBoxLayout)의 기본 여백(9px)을 걷어내되, 좌우 14px은 다른 카드들
         # (bl.setContentsMargins(14, ..., 14, ...))과 동일하게 맞춰 왼쪽/오른쪽 끝선이
         # 일직선으로 정렬되게 한다. 위아래는 0으로 둔다 — main_window의
         # root.setSpacing()이 카드 사이 세로 간격을 전담한다.
         self.step_card_widget.layout().setContentsMargins(14, 0, 14, 0)
+
+    def _place_progress_card(self, bl) -> None:
+        """"대기중 상태바" 행을 이 페이지 자신의 스크롤 영역에 넣지 않는다 — 대신
+        main_window가 progress_card_widget을 "작업 진행 상태"(step_slot)보다 더
+        위쪽의 별도 스택(progress_slot)에 직접 마운트해, 대시보드 페이지 카드 순서
+        맨 앞을 "대기중 상태바"가 차지하게 한다. progress_slot도 step_slot과 마찬가지로
+        여백 0인 root에 바로 꽂히므로, _place_step_card와 동일하게 래퍼(progress_card_widget)의
+        좌우 여백을 14px로 보정해 다른 카드들과 왼쪽 끝을 맞춘다."""
+        self.progress_card_widget.layout().setContentsMargins(14, 0, 14, 0)
 
     def _configure_body_margins(self, bl) -> None:
         """다중은 위쪽 여백을 없앤다 — "수집 목록" 카드와의 경계 간격은

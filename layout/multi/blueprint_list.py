@@ -149,8 +149,16 @@ class BlueprintListPage(QWidget):
         bl.addWidget(tcw, 1)
 
     def attach_step_panel(self, widget: QWidget) -> None:
-        """활성 블루프린트의 "작업 진행 상태"(main_window의 step_slot)를 목록 위쪽 맨
-        위에 결합한다 — 카드 순서 "작업 진행 상태 → 수집 목록 → (나머지)"를 위함."""
+        """활성 블루프린트의 "작업 진행 상태"(main_window의 step_slot)를 목록 위쪽에
+        결합한다 — attach_progress_panel이 반드시 이 호출 뒤에 다시 맨 위(0)에 끼워
+        넣어야 최종 카드 순서가 "대기중 상태바 → 작업 진행 상태 → 수집 목록 →
+        (나머지)"가 된다."""
+        self._root.insertWidget(0, widget)
+
+    def attach_progress_panel(self, widget: QWidget) -> None:
+        """활성 블루프린트의 "대기중 상태바"(main_window의 progress_slot)를 맨 위(0)에
+        결합한다 — attach_step_panel보다 나중에 호출해야 "작업 진행 상태" 카드보다
+        위에 놓인다."""
         self._root.insertWidget(0, widget)
 
     def attach_detail_panel(self, widget: QWidget) -> None:

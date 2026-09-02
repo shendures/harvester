@@ -1,3 +1,6 @@
+import os
+import re
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget,
@@ -6,8 +9,11 @@ from PyQt6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
 )
 
-from PyQt6.QtCore import ( Qt, QTimer, QPoint )
-from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics )
+from PyQt6.QtCore import ( Qt, QTimer, QPoint, QSize, QByteArray )
+from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter )
+from PyQt6.QtSvg import QSvgRenderer
+
+import utility
 
 
 # ══════════════════════════════════════════════════════
@@ -258,18 +264,49 @@ class THEME:
         app.setPalette(palette)
 
 
+def _load_svg_icon(name: str, color: str, stroke_width: str, size: int) -> QIcon:
+    """icon/<name>.svg를 읽어 QIcon으로 렌더링한다. lucide.dev에서 개별 내려받은
+    원본 svg들은 색상·굵기가 제각각(currentColor/#ffffff, stroke-width 2/1.5 등
+    혼재)이라, Qt QSvgRenderer가 지원하지 않는 currentColor 대신 렌더링 시점에
+    stroke/stroke-width를 문자열 치환으로 강제 통일한다(6개 아이콘 전부 동일한
+    색상·굵기로 보이도록)."""
+    svg_path = os.path.join(utility.resource_path(), "icon", f"{name}.svg")
+    with open(svg_path, "r", encoding="utf-8") as f:
+        svg = f.read()
+    svg = re.sub(r'stroke="[^"]*"', f'stroke="{color}"', svg, count=1)
+    svg = re.sub(r'stroke-width="[^"]*"', f'stroke-width="{stroke_width}"', svg, count=1)
+
+    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    # HiDPI에서도 흐려 보이지 않도록 2배 해상도로 그린 뒤 devicePixelRatio로 축소 표시한다.
+    scale = 2
+    pixmap = QPixmap(size * scale, size * scale)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
+
+
 class NavItem(QPushButton):
-    def __init__(self, icon_char, label):
+    # 사이드바 아이콘 6개(대시보드/데이터 정제/스케줄러/통계 분석/세션 설정/인증
+    # 관리) 전부 이 크기·색상·굵기로 통일해 렌더링한다.
+    _ICON_SIZE = 14
+    _ICON_STROKE_WIDTH = "2"
+
+    def __init__(self, icon_name, label):
         super().__init__()
         self.theme = THEME()
-        self.setText(f"  {icon_char}   {label}")
+        self.setIcon(_load_svg_icon(icon_name, self.theme.TEXT_SECONDARY, self._ICON_STROKE_WIDTH, self._ICON_SIZE))
+        self.setIconSize(QSize(self._ICON_SIZE, self._ICON_SIZE))
+        self.setText(f"  {label}")
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(38)
         self.setStyleSheet(f"""
             QPushButton {{
                 background:transparent; color:{self.theme.TEXT_SECONDARY};
-                text-align:left; padding-left:12px;
+                text-align:left; padding-left:28px;
                 border:none; border-left:2px solid transparent; font-size:13px;
             }}
             QPushButton:hover {{ background:{self.theme.BG_HOVER}; color:{self.theme.TEXT_PRIMARY}; }}

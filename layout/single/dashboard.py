@@ -142,7 +142,17 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.prog_pct.setMinimumWidth(36)
         pbl.addWidget(self.prog_pct)
 
-        bl.addWidget(pb_card)
+        # pb_card 자체가 테두리를 가진 리프 위젯이라, 다중 레이아웃이 좌우 여백을
+        # 보정하려면(_place_progress_card 참고) 여백 없는 투명 래퍼가 하나 더
+        # 필요하다 — step_card_widget이 stw를 감싸는 것과 동일한 구조.
+        progress_wrap = QWidget()
+        progress_wrap_layout = QHBoxLayout(progress_wrap)
+        progress_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        progress_wrap_layout.addWidget(pb_card)
+
+        self.progress_card_widget = progress_wrap
+        self._place_progress_card(bl)
+
         stw, stl = parts.card_widget("세션 통계")
         sg = QHBoxLayout()
         sg.setSpacing(10)
@@ -182,8 +192,20 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         같은 세로 스택(이 페이지 자체의 스크롤 영역)에 그대로 넣는다(단일 레이아웃).
         DashboardPageMulti는 이 훅을 오버라이드해 아무것도 하지 않는다 — 그 대신
         main_window가 step_card_widget을 "수집 목록" 위쪽의 별도 스택에 직접
-        마운트한다(요구사항: 모니터링 페이지 카드 순서에 "수집 목록"을 끼워 넣기 위함)."""
+        마운트한다(요구사항: 대시보드 페이지 카드 순서를 "대기중 상태바 → 작업 진행
+        상태 → 수집 목록 → …"로 만들기 위함)."""
         bl.addWidget(self.step_card_widget)
+
+    def _place_progress_card(self, bl: QVBoxLayout) -> None:
+        """"대기중 상태바" 행(self.progress_card_widget — 마진 없는 래퍼 안에 실제
+        카드 pb_card가 들어있음)을 배치한다. 기본은 다른 카드들과 같은 세로
+        스택에 그대로 넣는다(단일 레이아웃 — "작업 진행 상태" 바로 다음, "세션
+        통계" 바로 앞) — 이 경우 래퍼의 마진이 0이므로 bl 자체의 좌우 14px 마진이
+        그대로 적용된다. DashboardPageMulti는 이 훅을 오버라이드해 bl에 넣는 대신
+        래퍼의 마진을 직접 14px로 보정한다 — main_window가 progress_card_widget을
+        "작업 진행 상태"보다 더 위쪽의 별도 스택(bl과 무관한 여백 0인 컨테이너)에
+        직접 마운트하기 때문이다."""
+        bl.addWidget(self.progress_card_widget)
 
     def _configure_body_margins(self, bl: QVBoxLayout) -> None:
         """bl(스크롤 영역 내부 콘텐츠)의 여백을 조정하는 훅. 기본은 그대로 둔다(단일
