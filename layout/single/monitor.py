@@ -31,28 +31,34 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._refined_data   = []   # 정제 후 데이터
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._cleaning_warned = False   # 이번 수집에 대해 "규칙 없음" 팝업을 이미 띄웠는지
+        self._refine_tab_entered = False   # "② 정제 규칙 설정" 탭에 최초 진입했는지(그 뒤로는 True 고정)
         self._out_mode       = None
         self.output_info     = self._active_blueprint_info().get("output_settings") or customized_settings.get_output_settings()
 
-        # 정제 규칙 기본값 — True: 활성화 / False: 비활성화
+        # 정제 규칙 기본값 — 블루프린트에 저장된 값이 있으면 그 값을, 없으면
+        # 아래 기본값을 사용한다(True: 활성화 / False: 비활성화). custom_rule은
+        # 저장 대상이 아니다 — 탭 진입마다 needs_cleaning/스크립트 존재 여부로
+        # 항상 재계산되기 때문(trigger/monitor.py의 _on_monitor_tab_changed).
+        saved_refine = self._active_blueprint_info().get("refine_settings") or {}
         self._refine_rules = {
-            "remove_null_row":   True,   # 모든 필드 null 행 제거
-            "custom_rule":       True,   # __init__ 마지막에 _sync_custom_rule_checkbox로
-                                          # refine/{seq_no}.py 유무를 재확인해 덮어씀
-            "trim_whitespace":   True,   # 문자열 앞뒤 공백 trim
-            "remove_duplicate":  True,   # 중복 행 제거
-            "drop_columns":      False,  # 선택 필드 제외 (비활성 기본)
-            "fill_null":         False,  # null → 지정값 치환 (비활성 기본)
-            "cast_numeric":      False,  # 숫자 타입 변환 (비활성 기본)
+            "remove_null_row":   saved_refine.get("remove_null_row", True),    # 모든 필드 null 행 제거
+            "custom_rule":       True,   # 탭 최초 진입 시 needs_cleaning으로, 이후 재진입마다 스크립트 존재 여부로 재계산됨
+            "trim_whitespace":   saved_refine.get("trim_whitespace", True),    # 문자열 앞뒤 공백 trim
+            "remove_duplicate":  saved_refine.get("remove_duplicate", True),   # 중복 행 제거
+            "drop_columns":      saved_refine.get("drop_columns", False),     # 선택 필드 제외 (비활성 기본)
+            "fill_null":         saved_refine.get("fill_null", False),        # null → 지정값 치환 (비활성 기본)
+            "cast_numeric":      saved_refine.get("cast_numeric", False),     # 숫자 타입 변환 (비활성 기본)
         }
-        self._drop_column_names: list[str] = []   # 제외할 컬럼명 목록
-        self._fill_null_value: str = ""            # null 치환값 (기본: 빈 값)
+        self._drop_column_names: list[str] = list(saved_refine.get("drop_column_names", []))   # 제외할 컬럼명 목록
+        self._fill_null_value: str = saved_refine.get("fill_null_value", "")   # null 치환값 (기본: 빈 값)
         self._build()
 
         # "커스텀 정제 규칙 적용"은 파일이 없으면 절대 체크된 채로 시작하면 안
-        # 된다 — preprocess()/탭 재진입/수동 토글과 똑같은 판단을 위젯 생성
-        # 직후에도 적용해, 그 판단 기준이 trigger/common.py 한 곳에만 있도록
-        # 한다(파일이 있으면 위 기본값 True를 그대로 둠).
+        # 된다 — 위젯 생성 직후에도 그 판단을 적용해 둔다. 탭에 실제로
+        # 진입했을 때의 판단(최초 1회는 needs_cleaning, 재진입부터는 스크립트
+        # 존재 여부로 무조건 재설정)은 trigger/monitor.py의
+        # _on_monitor_tab_changed가 별도로 전담하며, 여기서는 그 전까지의
+        # 과도 상태만 정리한다(파일이 있으면 위 기본값 True를 그대로 둠).
         _sync_custom_rule_checkbox(
             self._active_blueprint_info().get("seq_no"), self._rule_checkboxes
         )
@@ -200,11 +206,22 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
             fit_desc_one_line=True,   # 탭 폭이 넉넉해 두 행만 줄바꿈되던 문제 해결
         )
         self.fill_null_input = result["fill_null_input"]
+        self.fill_null_input.setText(self._fill_null_value)
         self.drop_columns_summary_lbl = result["drop_columns_summary_lbl"]
 
         # 커스텀 정제 규칙 체크 시 규칙 ①③④(remove_null_row/trim_whitespace/
         # remove_duplicate)를 자동으로 켬 (fill_null 제외, 2026-07-17. 해제 시에는 영향 없음)
         self._rule_checkboxes["custom_rule"].stateChanged.connect(self._on_custom_rule_toggled)
+
+        # custom_rule을 제외한 나머지 규칙은 수집 대상(블루프린트)별로 마지막
+        # 설정값을 기억한다 — 바뀔 때마다 즉시 저장(trigger/monitor.py의
+        # _persist_refine_settings)해, 정제를 실행하지 않고 화면을 벗어나거나
+        # 앱을 종료해도 값이 남도록 한다.
+        for key, cb in self._rule_checkboxes.items():
+            if key == "custom_rule":
+                continue
+            cb.stateChanged.connect(self._persist_refine_settings)
+        self.fill_null_input.editingFinished.connect(self._persist_refine_settings)
 
         rl.addSpacing(12)
 
@@ -499,8 +516,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 재확인한다. 파일이 "있을" 때는 사용자가 마지막으로 남겨 둔 체크
         # 상태를 그대로 둔다(강제로 다시 켜지 않음) — 사용자가 "이번만 적용
         # 안 함"으로 일부러 꺼둔 선택을 존중하기 위함(_sync_custom_rule_checkbox
-        # 공용 — trigger/monitor.py의 _on_monitor_tab_changed, trigger/scheduler.py의
-        # 블루프린트 변경 재동기화와 동일한 규칙을 공유).
+        # 공용 — trigger/scheduler.py의 블루프린트 변경 재동기화와 동일한 규칙을
+        # 공유. trigger/monitor.py의 _on_monitor_tab_changed는 "탭 진입" 시점의
+        # 별도 규칙(최초 1회는 needs_cleaning, 재진입부터는 무조건 강제 재설정)을
+        # 쓰므로 이 규칙과는 다르다).
         _sync_custom_rule_checkbox(self._current_task.get("seq_no"), self._rule_checkboxes)
 
         if not self._collected_data:

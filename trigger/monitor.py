@@ -19,7 +19,7 @@ import utility
 import customized_settings
 from conf import get_spider_mode, BlueprintStorage
 from style import TagButton, Divider, apply_render_safety_limits
-from preprocess import DataRefiner, RefineStats, load_custom_rule
+from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 from .common import (
     parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -27,7 +27,7 @@ from .common import (
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
-    _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
+    _handle_custom_rule_toggle,
 )
 
 
@@ -181,17 +181,30 @@ class MonitorPageTriggers:
     # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
     def _on_monitor_tab_changed(self, index: int):
         """
-        "② 정제 규칙 설정" 탭(index=1)에 들어올 때마다 "커스텀 정제 규칙 적용"
-        체크박스를 refine/{seq_no}.py 존재 여부로 재동기화합니다 — 파일이 없으면
-        무조건 체크를 해제하고(있을 때는 사용자가 남겨 둔 상태를 그대로 둠,
-        preprocess()의 동기화 규칙과 동일), 최초 생성 시점이나 마지막 수집 시점의
-        스냅샷에만 의존하지 않고 탭을 열 때마다 항상 최신 상태로 맞춥니다.
-        안내 팝업은 매번 뜨면 방해가 되므로 기존처럼 이번 수집 결과당 최초 1회만
-        띄웁니다(_cleaning_warned로 팝업만 게이팅 — 동기화 자체는 게이팅하지
-        않습니다). seq_no는 _current_task가 아니라 _active_blueprint_info()에서
-        읽는다 — 수집을 아직 한 번도 안 돌린 시점에도(=_current_task가 비어
-        있어도) 이 블루프린트 고유의 값을 즉시 알 수 있어야, 처음 탭을 열었을
-        때도 정상적으로 동작한다.
+        "② 정제 규칙 설정" 탭(index=1)에 처음 들어올 때와 그 이후 재진입할 때를
+        서로 다른 기준으로 판단합니다.
+
+        - 최초 진입(이 페이지 인스턴스에서 이 탭에 처음 들어왔을 때, 1회뿐):
+          needs_cleaning(블루프린트가 DB에서 내려주는 "정제 필요" 플래그)만
+          보고 "커스텀 정제 규칙 적용" 체크박스를 세팅합니다. 스크립트 파일
+          존재 여부는 보지 않으며 경고 팝업도 띄우지 않습니다.
+        - 재진입(2회차부터): refine/{seq_no}.py 존재 여부로 체크박스를 무조건
+          세팅합니다(있으면 켜짐, 없으면 꺼짐) — _sync_custom_rule_checkbox와
+          달리 "있으면 사용자가 남긴 상태를 유지"하지 않고 항상 강제로
+          맞춥니다. 없으면 경고를 띄우되, 방해가 되지 않도록 이번 수집
+          결과당 최초 1회만 띄웁니다(_cleaning_warned로 게이팅).
+
+        두 경우 모두 체크박스는 blockSignals로 감싸 setChecked합니다 —
+        그냥 setChecked(True)를 부르면 stateChanged가
+        _on_custom_rule_toggled → _handle_custom_rule_toggle로 이어지며 그
+        안에서 다시 스크립트 존재 여부를 검사해 없을 때 경고를 띄우는데,
+        이는 최초 진입 시의 "경고 없음" 요구와 충돌하고 재진입 시에는
+        아래에서 이미 자체적으로 경고를 처리하므로 중복 팝업이 뜬다.
+
+        seq_no는 _current_task가 아니라 _active_blueprint_info()에서 읽는다 —
+        수집을 아직 한 번도 안 돌린 시점에도(=_current_task가 비어 있어도)
+        이 블루프린트 고유의 값을 즉시 알 수 있어야, 처음 탭을 열었을 때도
+        정상적으로 동작한다.
         """
         if index != 1:
             return
@@ -200,12 +213,26 @@ class MonitorPageTriggers:
         if not seq_no:
             return
 
-        missing = _sync_custom_rule_checkbox(seq_no, self._rule_checkboxes)
+        cb = self._rule_checkboxes.get("custom_rule")
 
-        # 안내 팝업의 "이번 수집 결과당 최초 1회"는 missing이 처음으로 True가
-        # 되는 시점 기준이다 — 파일이 있을 때 방문한 것만으로 이 1회성을
-        # 소모해버리면, 그 뒤 파일이 사라져도 다시는 안내가 뜨지 않게 된다.
-        if missing and not self._cleaning_warned:
+        if not self._refine_tab_entered:
+            self._refine_tab_entered = True
+            if cb is not None:
+                cb.blockSignals(True)
+                cb.setChecked(bool(self._active_blueprint_info().get("needs_cleaning")))
+                cb.blockSignals(False)
+            return
+
+        exists = custom_rule_exists(seq_no)
+        if cb is not None:
+            cb.blockSignals(True)
+            cb.setChecked(exists)
+            cb.blockSignals(False)
+
+        # 안내 팝업의 "이번 수집 결과당 최초 1회"는 파일이 없어진 시점 기준이다 —
+        # 파일이 있을 때 방문한 것만으로 이 1회성을 소모해버리면, 그 뒤 파일이
+        # 사라져도 다시는 안내가 뜨지 않게 된다.
+        if not exists and not self._cleaning_warned:
             self._cleaning_warned = True
             self._warn_custom_rule_missing(seq_no)
 
@@ -354,6 +381,25 @@ class MonitorPageTriggers:
                 f"{custom_rule_note})"
             )
 
+    # ── 정제 규칙 설정 영속화 ─────────────────────────────────────────
+    def _persist_refine_settings(self):
+        """"정제 규칙 설정" 탭의 체크박스/입력값을 블루프린트에 영속화한다 —
+        출력 설정(_open_output_settings_dialog)과 동일하게 BlueprintStorage에
+        저장해 다음에 이 수집 대상을 열었을 때 그대로 복원되도록 한다.
+        custom_rule은 탭 진입마다 needs_cleaning/스크립트 존재 여부로 항상
+        재계산되므로(_on_monitor_tab_changed) 저장 대상에서 제외한다."""
+        seq_no = self._active_blueprint_info().get("seq_no")
+        if not seq_no:
+            return
+        refine_settings = {
+            key: cb.isChecked()
+            for key, cb in self._rule_checkboxes.items()
+            if key != "custom_rule"
+        }
+        refine_settings["fill_null_value"] = self.fill_null_input.text()
+        refine_settings["drop_column_names"] = self._drop_column_names
+        BlueprintStorage().update_settings(seq_no, refine_settings=refine_settings)
+
     # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
     def _update_drop_columns_summary(self):
         n = len(self._drop_column_names)
@@ -442,6 +488,7 @@ class MonitorPageTriggers:
         def _apply():
             self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
             self._update_drop_columns_summary()
+            self._persist_refine_settings()
             dlg.accept()
 
         apply_btn = parts.action_btn("적용")
