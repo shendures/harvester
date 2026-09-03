@@ -240,12 +240,16 @@ def _warn_custom_rule_missing(parent, title) -> None:
     """"커스텀 정제 규칙 적용"에 필요한 정제 스크립트가 없을 때 공통으로 띄우는
     경고 — 정제 페이지(trigger/monitor.py)와 스케줄 등록 다이얼로그
     (trigger/scheduler.py) 양쪽에서 동일한 문구로 재사용한다."""
-    QMessageBox.warning(
-        parent, "정제 규칙 없음",
+    msg = QMessageBox(parent)
+    msg.setWindowTitle("정제 규칙 없음")
+    msg.setText(
         f"'{title}'에 등록된 사용자 정의 정제 규칙이 존재하지 않습니다.\n"
         f"'커스텀 정제 규칙 적용'을 사용하려면 정제 스크립트 파일을 "
         f"먼저 등록해야 합니다."
     )
+    msg.setIcon(QMessageBox.Icon.Warning)
+    msg.setStyleSheet(_default_msgbox_qss(13))
+    msg.exec()
 
 
 def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
