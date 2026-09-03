@@ -6,15 +6,16 @@
 > - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
 > - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
 
-- **최신 갱신**: 2026-08-26 02:01
+- **최신 갱신**: 2026-09-03 21:44
 
 ---
 
 ## 0. 전제 조건
 
-- **반드시 Windows 환경(PowerShell)에서 실행**해야 합니다. `build-exe.ps1`/`build-installer.ps1`
-  모두 Windows 전용 스크립트이며, PyInstaller가 만드는 `.exe`도 Windows 바이너리입니다
-  (WSL/Linux에서는 빌드할 수 없습니다).
+- **반드시 Windows 환경에서 실행**해야 합니다(PowerShell 또는 일반 명령 프롬프트/cmd 모두
+  가능 — 아래 `build-exe.bat` 참고). `build-exe.ps1`/`build-installer.ps1` 모두 Windows 전용
+  스크립트이며, PyInstaller가 만드는 `.exe`도 Windows 바이너리입니다(WSL/Linux에서는 빌드할
+  수 없습니다).
 - Python 3.12 이상 + `requirements.txt`의 패키지가 설치되어 있어야 합니다(`pyinstaller`,
   `pyinstaller-hooks-contrib` 포함). 가상환경을 쓰는 경우:
   ```powershell
@@ -27,6 +28,9 @@
   있습니다 — 이 클론에서 위 명령을 그대로 실행하면 그 가상환경을 덮어씁니다. Windows
   빌드는 반드시 Windows 네이티브 경로(`/mnt/c`, `/mnt/d` 등)의 별도 클론에서, 또는 최소한
   다른 이름(`.venv-win` 등)의 가상환경으로 진행하세요.
+  이 최초 1회 준비(가상환경 생성 + `pip install`)는 `build-exe.bat`이 대신해주지 않습니다 —
+  아래 2단계의 자동 활성화는 **이미 만들어진** `.venv`/`.venv-win`을 찾아 매번 activate하는
+  것만 대신합니다.
 - 설치 프로그램(`Setup.exe`)까지 만들려면 [Inno Setup](https://jrsoftware.org/isinfo.php)이
   추가로 필요합니다(무료, Windows 전용 외부 도구 — Python 패키지 아님).
 
@@ -37,33 +41,55 @@
 레포 루트에 다음을 준비합니다.
 
 1. **`request_info.json`** — 배포할 고객의 수집 설정. `.gitignore` 대상이라 각자 로컬에
-   준비해야 합니다. `seq_no` 필드가 이번에 빌드할 고객 번호와 일치해야 합니다.
+   준비해야 합니다. 단일 블루프린트(객체) 또는 다중 블루프린트(배열 — 2개 이상이면
+   `main.py`가 다중 수집 레이아웃을 자동 선택)를 담을 수 있습니다. 여기 담긴 `seq_no`
+   전체가 이번에 빌드할 고객 번호이며(2단계의 `build_manifest.py`가 이 파일에서 자동으로
+   읽습니다), `-SeqNo`를 직접 지정하는 경우에만 그 값과 일치하는지 대조합니다.
 2. **(필요 시) 커스텀 규칙** — `render/{seq_no}.py`(렌더링), `login/{seq_no}.py`(로그인),
-   `refine/{seq_no}.py`(정제) 중 해당 고객에게 필요한 파일. 규칙 작성법은
-   `PREPROCESS.md` §3.1a 참고.
+   `refine/{seq_no}.py`(정제) 중 해당 고객에게 필요한 파일. 다중 블루프린트라면
+   각 `seq_no`별로 필요한 파일을 모두 준비합니다. 규칙 작성법은 `PREPROCESS.md` §3.1a 참고.
 
 > `render/`·`login/`·`refine/`은 여러 고객의 규칙 파일을 함께 보관하는 개발자용 폴더입니다.
-> 다음 단계의 빌드 스크립트가 **지정한 `seq_no` 파일만** 골라 담기 때문에, 이 폴더에 다른
-> 고객 파일이 섞여 있어도 이번 빌드에는 포함되지 않습니다.
+> 2단계의 `build_manifest.py`가 `request_info.json`에 실제로 담긴 **`seq_no`의 파일만**
+> 골라 담기 때문에, 이 폴더에 다른 고객 파일이 섞여 있어도 이번 빌드에는 포함되지 않습니다.
 
 ---
 
 ## 2. exe 빌드 — `build-exe.ps1`
 
 ```powershell
-.\build-exe.ps1 -SeqNo 000001 -AppName DataCrawler
+.\build-exe.ps1 -AppName DataCrawler
+# seq_no를 request_info.json에서 자동으로 읽습니다(다중 블루프린트도 전부 자동 포함).
+# 특정 고객임을 직접 확인하고 싶을 때만 -SeqNo를 지정하세요(다중이면 모두 나열).
+.\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler
 ```
+
+> PowerShell을 직접 열지 않고 탐색기에서 더블클릭하거나 `cmd`에서 실행하고 싶다면
+> 같은 폴더의 `build-exe.bat`을 대신 써도 됩니다(`build-exe.bat DataCrawler`처럼
+> seq_no 없이, 또는 `build-exe.bat 000000,000022 DataCrawler`처럼 seq_no를 쉼표로
+> 구분, 인자를 생략하면 실행 중 입력받되 비워두면 자동 감지). 내부적으로
+> `build-exe.ps1`을 그대로 호출하는 얇은 래퍼이며 빌드 로직은 동일합니다.
+>
+> `build-exe.bat`은 실행 시 레포 루트의 `.venv`(없으면 `.venv-win`, `.venv` 우선)를 자동으로
+> 찾아 activate하므로, PowerShell에서 미리 activate하지 않고 **일반 cmd 창을 새로 열거나
+> 탐색기에서 바로 더블클릭해도** 동작합니다. 이미 다른 방식으로 venv를 activate한 상태라면
+> 그 설정을 그대로 존중해 재탐지하지 않습니다. 둘 다 찾지 못하거나 `python`/`pyinstaller`를
+> 실행할 수 없으면 PowerShell을 호출하기 전에 안내 메시지를 띄우고 중단합니다.
 
 | 파라미터 | 필수 | 설명 |
 |---|---|---|
-| `-SeqNo` | 필수 | 배포할 고객의 seq_no. `request_info.json`의 실제 `seq_no`와 다르면 즉시 중단됩니다(고객 파일 오혼입 방지). |
+| `-SeqNo` | 선택 | 배포할 고객의 seq_no(복수 지정 가능). 생략하면 `request_info.json`에 담긴 seq_no를 그대로 자동 사용합니다. 지정하면 `request_info.json`의 실제 seq_no 집합과 하나라도 다를 때 즉시 중단합니다(고객 파일 오혼입 방지). |
 | `-AppName` | 선택 (기본값 `CollectorApp`) | exe 파일명이자, 실행 시 데이터가 저장되는 `%LOCALAPPDATA%\<AppName>\` 폴더명도 함께 결정합니다. |
 
 **스크립트가 하는 일 (요약)**
-1. `request_info.json` 존재 및 `seq_no` 일치 검증
-2. 해당 `seq_no`의 `{render,login,refine}/{SeqNo}.py`만 임시 스테이징 폴더로 격리
-3. PyInstaller `--onefile --windowed`로 `main.py`를 빌드하면서, 동적 import라 자동 탐지되지
-   않는 `scrapy.cfg`/`settings.py`/`pipelines.py`/`middlewares.py`/`spiders/`/아이콘 파일,
+1. `build_manifest.py`(Python)가 `request_info.json`을 검증하고, (모든 블루프린트의)
+   `seq_no`별로 `{render,login,refine}/{seq_no}.py`가 있는지 `conf.CustomModuleStorage`의
+   기존 경로 판별 로직으로 확인해 임시 스테이징 폴더로 격리 — request_info.json 원본과
+   고정 아이콘 자산(`combine-harvester.ico`, `icon/`)도 함께 포함 목록(매니페스트)에 기록
+2. PowerShell이 그 매니페스트를 읽어 PyInstaller `--add-data` 인자로 변환
+3. PyInstaller `--onefile --windowed`로 `main.py`를 빌드하면서, 매니페스트의 목록에 더해
+   동적 import라 자동 탐지되지 않는 `scrapy.cfg`/`settings.py`/`pipelines.py`/
+   `middlewares.py`/`spiders/`(고객 콘텐츠와 무관한 고정 항목이라 PowerShell이 직접 추가),
    그리고 Scrapy/Twisted 계열이 필요로 하는 패키지 메타데이터(`--copy-metadata`)를 함께 번들
 4. 스테이징 폴더 정리
 
