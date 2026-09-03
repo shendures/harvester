@@ -449,6 +449,7 @@ class MonitorPageTriggers:
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         vl.addLayout(btn_row)
 
@@ -955,6 +956,7 @@ class MonitorPageTriggers:
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         vl.addLayout(btn_row)
 

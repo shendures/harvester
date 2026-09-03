@@ -1212,6 +1212,7 @@ class SchedulerPageTriggers:
         apply_btn.clicked.connect(lambda: self._apply_schedule(dlg=dlg, sched_info_dict=sched_info_dict))
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         root.addLayout(btn_row)
 

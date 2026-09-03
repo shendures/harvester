@@ -351,8 +351,9 @@ class SessionSettingsPageTriggers:
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.close)
         btn_row.addStretch()
-        btn_row.addWidget(cancel_btn)
         btn_row.addWidget(ok_btn)
+        btn_row.addSpacing(8)
+        btn_row.addWidget(cancel_btn)
         root.addLayout(btn_row)
         dlg.exec()
 

@@ -85,6 +85,7 @@ class AuthManagerPageTriggers:
         ok_btn.clicked.connect(_do_add)
         btn_row.addStretch()
         btn_row.addWidget(cancel_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(ok_btn)
         vl.addLayout(btn_row)
         dlg.adjustSize()
