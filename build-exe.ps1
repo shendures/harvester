@@ -1,9 +1,9 @@
 # 고객 배포용 exe 빌드 스크립트 (Windows PowerShell 전용)
-# 사용법: .\build-exe.ps1                                    (request_info.json에서 seq_no 자동 감지)
-#        .\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (seq_no 직접 지정 시 대조 검증)
+# 사용법: .\build-exe.ps1                                    (DB의 active 블루프린트 전체 사용)
+#        .\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (특정 seq_no 포함 여부 검증)
 #
-# 무엇을 --add-data로 담을지는 build_manifest.py(레포 루트)가 결정합니다. request_info.json
-# (.gitignore 대상, 배포할 고객의 blueprint — 단일 객체 또는 다중 블루프린트 배열 모두 가능)의
+# 무엇을 --add-data로 담을지는 build_manifest.py(레포 루트)가 결정합니다. build_manifest.py는
+# 매 실행마다 DB(tb_blueprint, active=True)를 조회해 request_info.json을 새로 생성한 뒤, 그
 # 내용을 근거로 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
 # (combine-harvester.ico, icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
 # 저장합니다 — render/login/refine 파일의 실제 위치 판별은 conf.CustomModuleStorage.resolve_path()를
@@ -11,12 +11,13 @@
 #
 # render/·login/·refine/은 여러 고객의 규칙 파일을 함께 보관하는 "개발자용" 폴더입니다 — 그대로
 # 통째로 번들에 넣으면 다른 고객의 정제/렌더링/로그인 로직까지 이번 exe에 함께 유출됩니다.
-# build_manifest.py가 request_info.json에 실제로 담긴 seq_no의 파일만 골라 스테이징하는 방식으로
-# 이를 방지합니다.
+# build_manifest.py가 DB에서 가져온 active seq_no의 파일만 골라 스테이징하는 방식으로 이를
+# 방지합니다.
 #
-# -SeqNo를 지정하면 request_info.json에 담긴 seq_no 전체 집합과 대조해, 하나라도 다르면 즉시
-# 중단합니다 — 잘못된 고객 조합으로 패키징하는 실수를 빌드 시점에 막기 위함입니다. 생략하면
-# request_info.json의 seq_no를 그대로 자동 사용합니다.
+# 이번 빌드에 포함할 고객은 로컬 파일이 아니라 DB에서 active로 표시하는 것으로 결정합니다.
+# -SeqNo는 그 결과를 검증하는 용도입니다 — 지정하면 DB에서 가져온 active seq_no 목록에
+# 지정한 값이 전부 포함되는지(부분집합) 확인해, 하나라도 없으면(예: 다중 사이트 고객인데
+# 사이트 하나를 active 켜는 걸 깜빡한 경우) 즉시 중단합니다. 생략하면 이 검증을 건너뜁니다.
 
 param(
     [string[]]$SeqNo = @(),
@@ -33,7 +34,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = $PSScriptRoot
 
 # ── 1. 매니페스트 산출 (build_manifest.py) ──────────────────────────
-# request_info.json 검증과 seq_no별 render/login/refine 스테이징을 Python이 전담합니다
+# request_info.json 생성(DB 조회)과 seq_no별 render/login/refine 스테이징을 Python이 전담합니다
 # (conf.py의 기존 경로 판별 로직을 그대로 재사용 — PowerShell에 같은 지식을 따로 두지 않기 위함).
 $stagingRoot = Join-Path $repoRoot "_build_staging"
 if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }

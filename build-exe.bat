@@ -1,14 +1,14 @@
 @echo off
 REM 고객 배포용 exe 빌드 배치 파일 (Windows 전용)
 REM cmd/탐색기에서 PowerShell 스크립트(build-exe.ps1)를 바로 실행하기 위한 래퍼입니다.
-REM 실제 빌드 로직(요청 정보 검증, staging, PyInstaller 옵션)은 build-exe.ps1에 있습니다.
+REM 실제 빌드 로직(request_info.json 생성, staging, PyInstaller 옵션)은 build-exe.ps1에 있습니다.
 REM 사용법: build-exe.bat [SeqNo[,SeqNo...]] [AppName]
-REM   SeqNo는 선택 사항입니다 — 비워두면(Enter만 입력) request_info.json에 담긴
-REM   seq_no를 자동으로 사용합니다(build_manifest.py가 판단). 특정 고객임을 직접
-REM   확인하고 싶을 때만 지정하면, request_info.json 내용과 대조해 다르면 중단합니다.
-REM   다중 블루프린트(request_info.json이 여러 고객 배열)를 지정할 때는 SeqNo를
-REM   쉼표로 구분해 전부 나열합니다(AppName과 위치가 섞이지 않도록 명령줄 인자로
-REM   줄 때는 반드시 쉼표 사용). 예: build-exe.bat 000000,000022 DataCrawler
+REM   request_info.json은 매 빌드마다 DB(tb_blueprint, active=True)에서 자동으로 생성됩니다
+REM   (build_manifest.py). SeqNo는 선택 사항이며 필터가 아니라 검증용입니다 — 비워두면
+REM   (Enter만 입력) DB의 active 블루프린트 전체를 그대로 포함하고, 지정하면 그 seq_no가
+REM   실제로 active 목록에 포함돼 있는지만 확인해 없으면 중단합니다.
+REM   여러 seq_no를 검증하려면 쉼표로 구분해 전부 나열합니다(AppName과 위치가 섞이지
+REM   않도록 명령줄 인자로 줄 때는 반드시 쉼표 사용). 예: build-exe.bat 000000,000022 DataCrawler
 REM   인자를 생략하면 실행 중 직접 입력받으며, 이때는 쉼표·공백 둘 다 가능합니다.
 
 chcp 65001 >nul
@@ -57,7 +57,7 @@ exit /b 1
 :env_ready
 
 if "%SEQ_NO%"=="" (
-    set /p SEQ_NO=배포할 고객의 seq_no를 입력하세요(비워두면 자동 감지, 다중이면 쉼표 또는 공백으로 구분):
+    set /p SEQ_NO=포함 여부를 검증할 seq_no를 입력하세요(비워두면 검증 생략, 다중이면 쉼표 또는 공백으로 구분):
 )
 REM PowerShell -SeqNo는 배열 파라미터([string[]])이므로 쉼표를 공백으로 바꿔
 REM 여러 개의 개별 인자로 전달한다(아래 powershell 호출에서 따옴표 없이 확장).
