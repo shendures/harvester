@@ -10,6 +10,7 @@ import subprocess
 from PyQt6.QtWidgets import (
     QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget, QSizePolicy, QScrollArea,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -23,7 +24,8 @@ from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_e
 
 from .common import (
     parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
+    TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, ROW_ORIGIN_ROLE,
+    _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
@@ -575,6 +577,7 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
+            no_item.setData(ROW_ORIGIN_ROLE, row_idx)  # raw_data를 그대로 enumerate하므로 row_idx가 곧 원본 인덱스
             self.cmp_raw_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(columns, start=1):
@@ -597,6 +600,14 @@ class MonitorPageTriggers:
         for row_idx, entry in enumerate(refined_data):
             self.cmp_ref_table.insertRow(row_idx)
             is_modified = row_idx in modified_rows_set
+            # stats가 없거나 orig_indices가 비어 있으면(정제 전 등) row_idx를
+            # 그대로 원본 인덱스로 취급 — 이 경우 Raw/정제 행 수가 같다는
+            # 전제이므로 어차피 어긋날 상황이 아니다.
+            orig_idx = (
+                stats.orig_indices[row_idx]
+                if stats and row_idx < len(stats.orig_indices)
+                else row_idx
+            )
 
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
@@ -605,6 +616,7 @@ class MonitorPageTriggers:
             # 보고 "정제됨"을 역추론하지 않고 이 값을 그대로 읽도록 명시적으로
             # 저장해 둔다 — 화면 표시 방식(색)과 데이터(정제 여부)를 분리.
             no_item.setData(Qt.ItemDataRole.UserRole, is_modified)
+            no_item.setData(ROW_ORIGIN_ROLE, orig_idx)
             self.cmp_ref_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(ref_columns, start=1):
@@ -684,6 +696,51 @@ class MonitorPageTriggers:
             if item is not None and item.text() == col_name:
                 target.sortByColumn(i, order)
                 return
+
+    def _sync_cmp_row_selection(self, source, target) -> None:
+        """source에서 현재 선택된 행의 ROW_ORIGIN_ROLE(원본 raw_data 인덱스)과
+        같은 행을 target에서 찾아 선택·스크롤합니다. 이 값은 정렬 상태와
+        무관하게 각 QTableWidgetItem에 그대로 붙어 다니므로, 두 테이블이
+        서로 다르게 정렬돼 있어도 정확히 매칭됩니다. 대응 행이 없으면(Raw
+        쪽에서 정제 중 삭제된 행을 클릭한 경우) target의 선택을 해제합니다.
+
+        target.selectRow()/clearSelection()도 itemSelectionChanged를 emit해
+        반대 방향 핸들러를 다시 불러들이므로(무한 재귀), 플래그로 막습니다.
+        clearSelection()은 currentRow()를 초기화하지 않아 "target이 이미
+        source와 같은 행을 가리키는지" 비교만으로는 재귀를 막을 수 없어
+        (target의 stale currentRow가 다시 source를 엉뚱한 행으로 되돌림)
+        이 방식을 씁니다.
+        """
+        if getattr(self, "_cmp_row_selection_syncing", False):
+            return
+        row = source.currentRow()
+        if row < 0:
+            return
+        source_item = source.item(row, 0)
+        if source_item is None:
+            return
+        origin_id = source_item.data(ROW_ORIGIN_ROLE)
+
+        self._cmp_row_selection_syncing = True
+        try:
+            for r in range(target.rowCount()):
+                item = target.item(r, 0)
+                if item is not None and item.data(ROW_ORIGIN_ROLE) == origin_id:
+                    target.selectRow(r)
+                    target.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+                    return
+            target.clearSelection()  # 정제 중 삭제된 Raw 행 — 대응하는 정제 행 없음
+        finally:
+            self._cmp_row_selection_syncing = False
+
+    def _link_row_selection(self, table_a, table_b) -> None:
+        """table_a/table_b의 NO 컬럼에 저장된 ROW_ORIGIN_ROLE을 이용해, 한쪽의
+        선택 행이 바뀌면 반대쪽에서 같은 원본 행을 찾아 선택·스크롤합니다.
+        Before/After 비교 탭 본체와 "새 창에서 함께 보기" 팝업이 공용으로
+        호출합니다.
+        """
+        table_a.itemSelectionChanged.connect(lambda: self._sync_cmp_row_selection(table_a, table_b))
+        table_b.itemSelectionChanged.connect(lambda: self._sync_cmp_row_selection(table_b, table_a))
 
     def _render_detail(self, table, label, row, columns):
         """행 상세 정보를 컬럼별로 렌더링해 label에 표시한다 (_show_detail/_show_refined_detail 공용)."""

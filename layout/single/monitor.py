@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
-from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox
+from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
 from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon
 from ..common import (
     parts, build_scroll_body,
@@ -347,13 +347,18 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_ref_table.horizontalHeader().sortIndicatorChanged.connect(
             lambda idx, order: self._sync_cmp_sort(self.cmp_ref_table, self.cmp_raw_table, idx, order))
 
+        # 좌우 테이블 행 선택 동기화 (같은 원본 raw_data 행끼리)
+        self._link_row_selection(self.cmp_raw_table, self.cmp_ref_table)
+
         self.tab_widget.addTab(cmp_widget, "④ Before / After 비교")
 
     @staticmethod
     def _copy_table_contents(dest: EqualSpacingTable, source: EqualSpacingTable) -> None:
         """source(Raw/정제 비교 테이블)의 헤더 라벨과 모든 셀 텍스트를 dest에
         그대로 복사한다. 위젯 자체를 옮기는 게 아니라 내용만 복사하므로
-        source는 원래 자리에 그대로 남는다."""
+        source는 원래 자리에 그대로 남는다. NO 컬럼(0번)의 ROW_ORIGIN_ROLE도
+        함께 복사해, 팝업 테이블에서도 행 선택 동기화(_link_row_selection)가
+        같은 원본 행을 찾을 수 있게 한다."""
         col_count = source.columnCount()
         dest.setColumnCount(col_count)
         dest.setHorizontalHeaderLabels([
@@ -364,7 +369,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         for r in range(source.rowCount()):
             for c in range(col_count):
                 src_item = source.item(r, c)
-                dest.setItem(r, c, QTableWidgetItem(src_item.text() if src_item else ""))
+                dest_item = QTableWidgetItem(src_item.text() if src_item else "")
+                if c == 0 and src_item is not None:
+                    dest_item.setData(ROW_ORIGIN_ROLE, src_item.data(ROW_ORIGIN_ROLE))
+                dest.setItem(r, c, dest_item)
 
     @staticmethod
     def _apply_refined_text_color(popup_table: EqualSpacingTable, source_table: EqualSpacingTable) -> None:
@@ -441,6 +449,9 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 별도로 동기화돼 있고(위 327-328행), 팝업과 원본은 서로 독립적으로
         # 스크롤돼야 하므로 여기서 원본 테이블을 함께 묶지 않는다.
         self._link_vscroll_group([popup_raw_table, popup_ref_table])
+
+        # 행 선택 동기화도 팝업 안의 두 테이블끼리만 묶는다(원본 탭과는 독립).
+        self._link_row_selection(popup_raw_table, popup_ref_table)
 
         dlg.show()
 

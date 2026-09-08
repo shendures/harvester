@@ -45,6 +45,14 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 # 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
 LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
 
+# Before/After 비교 탭의 NO 컬럼 아이템에 원본 raw_data 인덱스를 저장해 두는
+# 커스텀 role. 같은 값을 가진 Raw/정제 행이 서로 대응하는 원본 레코드임을
+# 나타내며, 정렬 상태와 무관하게 두 테이블의 행 선택을 동기화하는 데 쓰인다.
+# 기존에 "정제됨" 여부로 이미 쓰고 있는 Qt.ItemDataRole.UserRole과 겹치지
+# 않도록 그다음 값을 쓴다(enum에 직접 산술하면 PyQt6에서 타입 오류가 나므로
+# .value로 정수를 뽑아 더한다).
+ROW_ORIGIN_ROLE = Qt.ItemDataRole.UserRole.value + 1
+
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
 
