@@ -8,7 +8,7 @@
 ; 전제: build-exe.ps1로 dist\{#AppName}.exe가 이미 빌드돼 있어야 합니다.
 
 #ifndef AppName
-  #define AppName "CollectorApp"
+  #define AppName "DataCrawler"
 #endif
 #ifndef AppVersion
   #define AppVersion "1.0.0"

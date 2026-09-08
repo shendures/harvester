@@ -6,7 +6,7 @@
 > - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
 > - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
 
-- **최신 갱신**: 2026-09-03 22:19
+- **최신 갱신**: 2026-09-04 00:12
 
 ---
 
@@ -110,7 +110,7 @@
 | 파라미터 | 필수 | 설명 |
 |---|---|---|
 | `-SeqNo` | 선택 | 이번 빌드에 반드시 포함되어야 할 고객 seq_no(복수 지정 가능) — **포함 대상을 고르는 필터가 아니라 검증용**입니다. DB에서 조회한 active 블루프린트 전체가 항상 request_info.json에 포함되며, `-SeqNo`를 지정하면 그 값이 전부 active 목록에 있는지만 확인해 하나라도 없으면(예: 다중 사이트 고객인데 사이트 하나를 active 켜는 걸 깜빡함) 즉시 중단합니다. 생략하면 이 검증을 건너뜁니다. |
-| `-AppName` | 선택 (기본값 `CollectorApp`) | exe 파일명이자, 실행 시 데이터가 저장되는 `%LOCALAPPDATA%\<AppName>\` 폴더명도 함께 결정합니다. |
+| `-AppName` | 선택 (기본값 `DataCrawler`) | exe 파일명이자, 실행 시 데이터가 저장되는 `%LOCALAPPDATA%\<AppName>\` 폴더명도 함께 결정합니다. |
 
 **스크립트가 하는 일 (요약)**
 1. `build_manifest.py`(Python)가 DB(`tb_blueprint`, `active=True`)를 조회해
@@ -138,9 +138,16 @@ exe 파일을 그대로 전달하는 대신 설치/제거·바로가기 생성�
 .\build-installer.ps1 -AppName DataCrawler -AppVersion 1.0.0
 ```
 
+> PowerShell을 직접 열지 않고 탐색기에서 더블클릭하거나 `cmd`에서 실행하고 싶다면
+> 같은 폴더의 `build-installer.bat`을 대신 써도 됩니다(`build-installer.bat DataCrawler
+> 1.0.0`처럼 인자로, 또는 인자를 생략해 실행 중 입력받아도 됩니다 — 비워두면
+> `build-installer.ps1`과 동일한 기본값 사용). 내부적으로 `build-installer.ps1`을 그대로
+> 호출하는 얇은 래퍼이며, `dist\<AppName>.exe`가 아직 없으면 PowerShell을 호출하기 전에
+> 안내 메시지를 띄우고 중단합니다.
+
 | 파라미터 | 필수 | 설명 |
 |---|---|---|
-| `-AppName` | 선택 (기본값 `CollectorApp`) | 2단계와 **동일한 값**을 사용해야 합니다(`dist\<AppName>.exe`를 찾아 감쌈). |
+| `-AppName` | 선택 (기본값 `DataCrawler`) | 2단계와 **동일한 값**을 사용해야 합니다(`dist\<AppName>.exe`를 찾아 감쌈). |
 | `-AppVersion` | 선택 (기본값 `1.0.0`) | 설치 프로그램에 표시될 버전. |
 | `-AppPublisher` | 선택 (기본값 `-AppName`과 동일) | 설치 프로그램에 표시될 배포자명. |
 
@@ -148,7 +155,14 @@ Inno Setup의 커맨드라인 컴파일러 `ISCC.exe`를 PATH → `Program Files
 `Program Files (x86)\Inno Setup 6` → `%LOCALAPPDATA%\Programs\Inno Setup 6`(winget 사용자별
 설치 경로) 순으로 탐색합니다.
 
-**결과물**: `dist\<AppName>-Setup.exe`
+> **삭제 프로그램(uninstaller)은 별도 단계 없이 자동으로 포함됩니다.** Inno Setup이 만드는
+> `Setup.exe`는 설치 시 제거 프로그램(`unins000.exe`)도 함께 설치하며, 제어판
+> "프로그램 추가/제거"와 시작 메뉴 "`<AppName>` 제거" 바로가기로 바로 실행할 수 있습니다
+> (`installer.iss`의 `[Icons]`/`UninstallDisplayIcon` 참고). 단, `%LOCALAPPDATA%\<AppName>\`
+> 의 앱 데이터(request_info.json/render/login/refine/schedules.json 등)는 고객이 직접
+> 수정했을 수 있어 제거 시 **의도적으로 삭제하지 않습니다** — 데이터 유실 방지.
+
+**결과물**: `dist\<AppName>-Setup.exe` (설치·제거 기능 모두 포함)
 
 ---
 

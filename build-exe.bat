@@ -64,7 +64,7 @@ REM 여러 개의 개별 인자로 전달한다(아래 powershell 호출에서 �
 set "SEQ_NO=%SEQ_NO:,= %"
 
 if "%APP_NAME%"=="" (
-    set /p APP_NAME=AppName을 입력하세요 [Enter=CollectorApp]:
+    set /p APP_NAME=AppName을 입력하세요 [Enter=DataCrawler]:
 )
 
 if "%SEQ_NO%"=="" (
