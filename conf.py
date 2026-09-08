@@ -32,6 +32,7 @@ class DataStore:
             cls._instance._url_map_list = []  # list[dict]
             cls._instance._schedules   = []  # list[dict]
             cls._instance._sessions    = []  # list[dict] — 완료된 세션 요약
+            cls._instance._load_stats_history()
         return cls._instance
 
     # ── url maps ──────────────────────────────────────
@@ -94,6 +95,37 @@ class DataStore:
 
     def get_sessions(self) -> list:
         return list(self._sessions)
+
+    def clear_sessions(self) -> None:
+        self._sessions.clear()
+
+    # ── 통계 이력 영속화 (통계 분석 페이지 전용: url_maps + sessions) ──
+    def _stats_history_path(self) -> str:
+        app_dir = utility.data_dir(utility.get_app_name())
+        return os.path.join(app_dir, "stats_history.json")
+
+    def _load_stats_history(self) -> None:
+        path = self._stats_history_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self._url_map_list = data.get("url_maps", [])
+                self._sessions = data.get("sessions", [])
+        except Exception as e:
+            logger.error("[DataStore] 통계 이력 로드 실패: %s", e)
+
+    def save_stats_history(self) -> None:
+        path = self._stats_history_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"url_maps": self._url_map_list, "sessions": self._sessions},
+                    f, ensure_ascii=False, indent=2,
+                )
+        except Exception as e:
+            logger.error("[DataStore] 통계 이력 저장 실패: %s", e)
 
 
 # ══════════════════════════════════════════════════════

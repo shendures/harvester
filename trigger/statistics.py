@@ -17,10 +17,12 @@ class StatisticsPageTriggers:
 
     # ── data ───────────────────────────────────
     def reload(self):
+        toolbar = getattr(self.window(), "global_toolbar", None)
+        running = bool(getattr(toolbar, "_running", False)) if toolbar else False
+        self.reset_btn.setEnabled(not running)
+
         rows = store.get_url_maps()
         sessions = store.get_sessions()
-        if not rows and not sessions:
-            return
 
         total = len(rows)  # URL_LIST
         ok = sum(1 for r in rows if str(r["status_code"]) == "200")  # URL_LIST 중 RESPONSE = 200인 것
@@ -63,15 +65,14 @@ class StatisticsPageTriggers:
         self.legend_lay.addStretch()
 
         # Response bar (bucket 0.2 intervals) ( 통계 분석 - 응답 시간 분포  )
-        if times:
-            buckets = defaultdict(int)
-            for t in times:
-                b = round(round(t / 0.2) * 0.2, 1)
-                buckets[b] += 1
-            sorted_b = sorted(buckets.items())
-            labels = [str(k) for k, _ in sorted_b]
-            values = [v for _, v in sorted_b]
-            self.resp_bar.set_data(labels, values, BLUE)
+        buckets = defaultdict(int)
+        for t in times:
+            b = round(round(t / 0.2) * 0.2, 1)
+            buckets[b] += 1
+        sorted_b = sorted(buckets.items())
+        labels = [str(k) for k, _ in sorted_b]
+        values = [v for _, v in sorted_b]
+        self.resp_bar.set_data(labels, values, BLUE)
 
         # Hourly trend (last 12 hours) ( 통계분석 - 시간대별 수집량 추이 )
         hour_ok = defaultdict(int)
@@ -112,3 +113,9 @@ class StatisticsPageTriggers:
                 item.setForeground(QColor(color))
                 self.session_table.setItem(r, col, item)
         self.session_table.setSortingEnabled(True)
+
+    # ── actions ────────────────────────────────
+    def _on_reset_clicked(self):
+        store.clear_url_maps()
+        store.clear_sessions()
+        self.reload()

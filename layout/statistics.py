@@ -22,6 +22,14 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
     def _build(self):
         bl = build_scroll_body(self)
 
+        # ── Reset ──────────────────────────────────
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.reset_btn = parts.action_btn("RESET")
+        self.reset_btn.clicked.connect(self._on_reset_clicked)
+        btn_row.addWidget(self.reset_btn)
+        bl.addLayout(btn_row)
+
         # ── Row 1: KPI cards ──────────────────────
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
