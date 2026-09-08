@@ -65,7 +65,7 @@ class BlueprintListPage(QWidget):
     """
 
     row_selected = pyqtSignal(str)
-    batch_start_requested = pyqtSignal(list)
+    batch_start_requested = pyqtSignal(list, bool)   # (seq_no_list, is_batch_all)
     settings_requested = pyqtSignal(str)   # "Run/Manage" 컬럼의 "⚙" 버튼 클릭 시 emit(seq_no)
     stop_requested = pyqtSignal()          # 실행 중이던 [수집]/[전체 수집] 재클릭 시 emit
 
@@ -396,7 +396,7 @@ class BlueprintListPage(QWidget):
             self._warn_no_selection()
             return
         self._activate_run_btn(self._collect_btn, seq_nos)
-        self.batch_start_requested.emit(seq_nos)
+        self.batch_start_requested.emit(seq_nos, False)
 
     def _on_collect_all_clicked(self) -> None:
         """"전체 수집" 버튼 — 평소엔 체크 여부와 무관하게 먼저 모든 행을 체크
@@ -415,7 +415,7 @@ class BlueprintListPage(QWidget):
             if id_item:
                 all_seq_nos.append(id_item.data(Qt.ItemDataRole.UserRole))
         self._activate_run_btn(self._batch_btn, all_seq_nos)
-        self.batch_start_requested.emit(all_seq_nos)
+        self.batch_start_requested.emit(all_seq_nos, True)
 
     def _activate_run_btn(self, btn, seq_nos: list) -> None:
         """실행을 시작한 버튼을 "⬛ 중지" 상태로 바꾸고, 반대쪽 버튼은 혼동을
@@ -477,7 +477,7 @@ class BlueprintListPage(QWidget):
             run_btn = self._run_btn_by_seq_no.get(seq_no)
             if run_btn is not None:
                 self._style_row_run_btn(run_btn, running=True)
-        self.batch_start_requested.emit([seq_no])
+        self.batch_start_requested.emit([seq_no], False)
 
     def _revert_row_run_btn(self) -> None:
         """실행 중이던 행 버튼만 원래 "▶" 상태로 되돌린다."""

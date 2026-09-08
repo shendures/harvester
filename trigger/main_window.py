@@ -260,6 +260,7 @@ class MainWindowTriggersSingle:
     def exit_app(self):
         self._pending_queue.clear()   # 종료 시 대기 큐 비워 후속 실행 방지
         _stop_worker_if_running(self._worker)
+        store.save_stats_history()    # 통계 페이지 이력 저장
         self.tray_manager.tray_icon.hide()
         QApplication.instance().quit()
 
@@ -315,13 +316,16 @@ class MainWindowTriggersSingle:
 # seq_no 인자화해 옮긴 것이므로, 그쪽을 수정하면 여기도 함께 확인해야 합니다.
 
 BATCH_JOB = "전체 수집"
+SELECT_JOB = "선택 수집"
+# 완료 즉시(대기 큐를 기다리지 않고) 모니터링 화면으로 전환하는 job 종류.
+IMMEDIATE_MONITOR_JOBS = ("수동 실행", SELECT_JOB)
 
 
 class MainWindowTriggersMulti(MainWindowTriggersSingle):
     """MainWindowMulti(다중 수집 레이아웃)의 순차 수집·번들 라우팅 메서드"""
 
     # ── 태스크 빌드 ───────────────────────────────────
-    def _build_task(self, seq_no: str) -> dict:
+    def _build_task(self, seq_no: str, job_name: str = BATCH_JOB) -> dict:
         """
         특정 블루프린트(seq_no)의 실행 태스크 dict를 구성합니다.
         (단일 GlobalToolbarTriggers._actual_start()와 공통 로직을 공유 —
@@ -332,7 +336,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         _apply_task_settings(
             task, collect=bundle.collect_settings, session_page=self.session_page,
             monitor_page=bundle.monitor_page, auth_page=bundle.auth_page,
-            job_name=BATCH_JOB,
+            job_name=job_name,
         )
         # 순차 수집은 대기 큐에 여러 태스크가 동시에 존재하므로,
         # monitor_page.output_info["extract"] 참조를 그대로 두면 나중에 그
@@ -342,13 +346,19 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         return task
 
     # ── 순차 수집 시작 ─────────────────────────────────
-    def _start_batch(self, seq_no_list: list):
-        """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다."""
+    def _start_batch(self, seq_no_list: list, is_batch_all: bool = False):
+        """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다.
+
+        is_batch_all: "전체 수집" 버튼에서 온 요청이면 True, 행별 개별 실행/
+        "선택 수집" 버튼에서 온 요청이면 False — job_name(및 완료 후 처리
+        방식)을 "전체 수집" vs "선택 수집"으로 가른다.
+        """
+        job_name = BATCH_JOB if is_batch_all else SELECT_JOB
         if not seq_no_list:
-            self.log_manager.append_log("warn", "[전체 수집] 선택된 블루프린트가 없습니다.")
+            self.log_manager.append_log("warn", f"[{job_name}] 선택된 블루프린트가 없습니다.")
             return
 
-        tasks = [self._build_task(s) for s in seq_no_list]
+        tasks = [self._build_task(s, job_name=job_name) for s in seq_no_list]
         for i, t in enumerate(tasks):
             t["batch_meta"] = {"index": i, "total": len(tasks)}
 
@@ -357,7 +367,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             self._pending_queue.extend(tasks)
             self.log_manager.append_log(
                 "info",
-                f"[전체 수집] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
+                f"[{job_name}] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
             )
             return
 
@@ -367,7 +377,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._reset_bundle_pages(first.get("seq_no"))
         self.log_manager.append_log(
             "info",
-            f"[전체 수집] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
+            f"[{job_name}] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
             f"'{first.get('title') or first.get('seq_no')}'"
         )
 
@@ -381,7 +391,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             dash._update_step_ui(1)
             _after_delay_unless_cancelled(
                 lambda: self._batch_start_cancelled,
-                lambda: self._launch_worker(first, job_name=BATCH_JOB),
+                lambda: self._launch_worker(first, job_name=job_name),
             )
 
         _after_delay_unless_cancelled(lambda: self._batch_start_cancelled, _to_setting)
@@ -451,9 +461,10 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         meta = next_cfg.get("batch_meta")
         if meta:
+            job_name = next_cfg.get("job", BATCH_JOB)
             self.log_manager.append_log(
                 "info",
-                f"[전체 수집] {meta['index'] + 1}/{meta['total']}번째 "
+                f"[{job_name}] {meta['index'] + 1}/{meta['total']}번째 "
                 f"'{next_cfg.get('title') or next_cfg.get('seq_no')}' 실행 "
                 f"(남은 대기: {remaining}건)"
             )
@@ -518,7 +529,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 )
             else:
                 _show_no_data_dialog(self, url_count, skipped, elapsed)
-                if task.get("job") == "수동 실행":
+                if task.get("job") in IMMEDIATE_MONITOR_JOBS:
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
             job_name = task.get("task_nm")
@@ -565,9 +576,10 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         if job_name:
             self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
 
-        # 수동 실행: 즉시 모니터링 화면으로. 전체 수집: 마지막 순번이 끝난
-        # 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링 화면으로 전환.
-        if task.get("job") == "수동 실행":
+        # 수동 실행·선택 수집: 완료되는 즉시 모니터링 화면으로. 전체 수집: 마지막
+        # 순번이 끝난 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링
+        # 화면으로 전환.
+        if task.get("job") in IMMEDIATE_MONITOR_JOBS:
             self._show_monitor_for(seq_no)
         elif task.get("job") == BATCH_JOB and not self._pending_queue:
             self.log_manager.append_log("info", "[전체 수집] 전체 순차 실행 완료")
