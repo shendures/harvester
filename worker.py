@@ -223,7 +223,7 @@ class MultiprocessWorker(QThread):
             )
             return
 
-        result_info["resp_info"]["timestamp"] = datetime.now()
+        result_info["resp_info"]["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         result_info["job_name"] = self.job_name
 
         # [수정] 기존: resp_info["url"](리다이렉트 후 최종 URL)로 url_list를 대조

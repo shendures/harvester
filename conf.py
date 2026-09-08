@@ -117,13 +117,15 @@ class DataStore:
 
     def save_stats_history(self) -> None:
         path = self._stats_history_path()
+        tmp_path = path + ".tmp"
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(
                     {"url_maps": self._url_map_list, "sessions": self._sessions},
-                    f, ensure_ascii=False, indent=2,
+                    f, ensure_ascii=False, indent=2, default=str,
                 )
+            os.replace(tmp_path, path)
         except Exception as e:
             logger.error("[DataStore] 통계 이력 저장 실패: %s", e)
 
