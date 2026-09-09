@@ -250,7 +250,12 @@ class MainWindowTriggersSingle:
         self._consume_pending_queue()
 
     def closeEvent(self, event):
-        if self.tray_manager.tray_icon.isVisible():
+        # tray_icon.isVisible()만으로는 부족하다 — 트레이 데몬이 없는 환경(WSL 등)에서도
+        # Qt는 show()가 호출됐다는 이유만으로 isVisible()이 True를 반환할 수 있어, 실제로는
+        # 아무도 못 보는 트레이 아이콘을 "떠 있다"고 오판해 창을 숨긴 채 프로세스가 영원히
+        # 종료되지 않는 좀비 상태가 된다. isSystemTrayAvailable()로 플랫폼에 트레이 자체가
+        # 있는지부터 먼저 확인해야 한다.
+        if QSystemTrayIcon.isSystemTrayAvailable() and self.tray_manager.tray_icon.isVisible():
             self.hide()
             self.tray_manager.show_message("알림", "프로그램이 트레이에서 실행 중입니다.")
             event.ignore()
@@ -260,7 +265,6 @@ class MainWindowTriggersSingle:
     def exit_app(self):
         self._pending_queue.clear()   # 종료 시 대기 큐 비워 후속 실행 방지
         _stop_worker_if_running(self._worker)
-        store.save_stats_history()    # 통계 페이지 이력 저장
         self.tray_manager.tray_icon.hide()
         QApplication.instance().quit()
 
