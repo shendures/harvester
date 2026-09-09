@@ -82,12 +82,17 @@ def get_scrapy_request(url, conditions, callback):
     """
 
     # 1. 공통 파라미터 딕셔너리 준비
+    # meta에 original_url(치환 전 요청 URL)을 함께 실어 보낸다 — POST 요청은 아래에서
+    # url_list 매칭용 쿼리스트링(JSON 리터럴)이 제거된 processed_url로 바뀌므로, 응답
+    # 쪽(get_response_status)에서 워커의 url_list와 대조 가능한 원본 URL을 복원하려면
+    # 이 값이 필요하다. dict를 복사해 넣는다 — conditions는 url_list의 모든 요청이
+    # 공유하는 같은 객체라 여기서 직접 mutate하면 마지막 요청의 url로 덮어써진다.
     request_kwargs = {
         'url': url,
         'callback': callback,
         'method': conditions['method'],
         'headers': conditions.get("headers"),  # headers가 None이어도 Request 객체는 이를 처리함
-        'meta': conditions
+        'meta': {**conditions, 'original_url': url},
     }
 
     if conditions['method'] == "GET":
@@ -229,11 +234,17 @@ def perform_logout(seq_no: str) -> None:
 
 
 def get_response_status(response):
-    # 리다이렉트 발생 시 response.url은 최종 URL이므로,
-    # 워커의 url_list 매칭용으로 최초 요청 URL을 별도로 보존합니다.
-    # (redirect_urls의 첫 번째 원소 = 리다이렉트 전 최초 요청 URL)
+    # 워커의 url_list 매칭용 URL을 복원합니다. 우선순위:
+    # 1) original_url — get_scrapy_request()가 심어둔, url_list 생성에 쓰인 것과 동일한
+    #    치환 전 원본 URL. POST 요청은 get_json_form()이 쿼리스트링(JSON 리터럴)을
+    #    떼어 바디로 옮기고 URL을 축약하므로, response.url은 이미 그 축약된 URL이라
+    #    url_list와 절대 매칭되지 않는다 — 반드시 이 값을 써야 한다.
+    # 2) redirect_urls[0] — 리다이렉트 발생 시 response.url은 최종 URL이므로 그 대신
+    #    최초 요청 URL(위 original_url이 없을 때의 하위 호환 폴백).
+    # 3) response.url — 그 외 기본값.
     redirect_urls = response.meta.get("redirect_urls")
-    req_url = redirect_urls[0] if redirect_urls else response.url
+    original_url = response.meta.get("original_url")
+    req_url = original_url or (redirect_urls[0] if redirect_urls else response.url)
 
     # Selenium 등으로 생성된 응답은 ip_address가 None일 수 있고,
     # 비표준 상태 코드는 HTTPStatus()가 ValueError를 발생시키므로 방어적으로 처리합니다.

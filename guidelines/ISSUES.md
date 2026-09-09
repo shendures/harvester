@@ -4,8 +4,8 @@
 > 프로젝트 구조는 `PROJECT_REPORT.md`, 완료된 작업 이력은 `HISTORY.md` 참고.
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-08-25 18:00
-- **현황**: 해결 25건 · 미해결 3건 · 보류 2건
+- **최신 갱신**: 2026-09-09 02:07
+- **현황**: 해결 26건 · 미해결 3건 · 보류 2건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -42,6 +42,7 @@
 | ㉗ | `build-exe.ps1`이 pyinstaller의 정상 INFO 로그를 오류로 오인해 빌드 첫 줄에서 강제 중단 | `build-exe.ps1:28,109` | 스크립트 최상단 `$ErrorActionPreference = "Stop"` 상태에서 `pyinstaller`(native 명령)가 진행 상황을 stderr에 INFO로 기록 — PowerShell 5.1이 stderr 첫 줄을 즉시 종료 오류로 승격시켜 실제로는 정상 진행 중인 빌드를 매번 시작 직후 중단시킴(Windows 실 빌드로 재현 — PR #64 도입 이후 이 스크립트로 완주된 적이 실제로 없었음, 기존 dist 산출물은 스크립트를 거치지 않은 수동 pyinstaller 실행 결과였음) | `pyinstaller` 호출 앞뒤로만 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고, 실패 여부는 `$LASTEXITCODE`로 직접 판별해 0이 아니면 명시적으로 중단 | Windows 실 빌드로 수정 전(첫 INFO 줄에서 `NativeCommandError`로 즉시 중단, exe 미생성) → 수정 후(정상 완주, `dist\DataCrawler.exe` 생성, `EXITCODE=0`) 확인. 이어서 `build-installer.ps1`도 검토 — Inno Setup(ISCC.exe) 자체가 이 머신에 미설치라 실행 검증은 보류 |
 | ㉘ | `build-installer.ps1`의 ISCC.exe 탐색 경로에 사용자별 설치 위치 누락 | `build-installer.ps1:33-36` | winget으로 Inno Setup을 설치(관리자 권한 없이 실행하면 기본이 사용자별 설치)하니 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`에 설치됐는데, 탐색 후보 목록은 시스템 전체 설치 경로(`Program Files`/`Program Files (x86)`)만 확인 — 사용자별 설치 시 항상 "찾을 수 없음"으로 실패 | 탐색 후보 목록에 `$Env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe`를 추가 | Windows 실 빌드 — winget으로 실제 Inno Setup 6.7.3 설치(사용자별 경로 확인) → 수정 전 탐색 실패 재현 → 수정 후 정상 탐색+컴파일, `dist\DataCrawler-Setup.exe`(PE32 GUI, 약 73MB) 생성 확인. `build-exe.ps1`(이슈㉗)→`build-installer.ps1` 전 과정이 실제 Windows 환경에서 처음부터 끝까지 완주됨을 최초로 확인 |
 | ㉚ | 무인(스케줄) 실행에서 0건 수집 시 모달이 프로세스를 막고, 스케줄 재무장(`mark_done`)도 스킵되어 해당 스케줄이 영구 정지 | `trigger.py:_on_finished()`(3793-3841), `trigger.py:mark_done()`(2323) | `total==0` 분기가 `is_unattended` 판별보다 앞에 있어 무인 실행에도 `QMessageBox.exec()`가 떠서 아무도 없는 자리에서 프로세스가 블로킹됨. 게다가 이 분기가 `mark_done()` 호출 전에 `return`해, 다음 회차 `run_at` 재계산·`_register_timer()` 재등록이 아예 일어나지 않아 스케줄이 조용히 죽음(HISTORY 재현: 0건 1회 발생 후 해당 스케줄은 GUI에 "대기"로 보여도 실제로는 다시 실행되지 않음) | ①무인 실행이면 모달 대신 `TrayManager.show_message(..., icon=Warning)`로 대체, ②0건이어도 `mark_done(job_name, total=0)`을 호출해 재무장 보장, ③`mark_done()`이 `total`을 받아 스케줄 dict에 `last_result`(건수·시각)를 기록·영속화, ④`SchedulerPage` 테이블에 "Last Result" 컬럼 추가해 0건 실행을 붉은색으로 표시 — `.agents/product-marketing.md`의 "GUI로 운영 가능" 문구 정정(2026-07-31) 과정에서 코드 검증 중 발견 | - |
+| ㉛ | POST + 쿼리스트링-JSON 리터럴 컨벤션을 쓰는 블루프린트는 응답이 전량 "URL 불일치"로 skip → 세션 이력에 Total/Success/Errors가 항상 0 | `engine.py`(`get_scrapy_request()`, `get_json_form()`, `get_response_status()`), `worker.py`(`_handle_line()`) | `callback_url`이 `<url>?{JSON}` 형태(쿼리스트링 자리에 JSON 리터럴, 예: 스타벅스·굽네치킨)인 POST 블루프린트는 `get_json_form()`이 실제 요청 시 `?` 이후를 파싱해 바디로 옮기고 URL은 물음표 이전으로 축약한다. 그런데 `worker.py`의 매칭 기준 `url_list`(`utility.generate_combined_urls(callback_url)`)는 이 축약을 모른 채 여전히 JSON이 붙은 원본 문자열이라, 실제 응답의 `req_url`(축약된 URL)과 절대 매칭되지 않아 `_handle_line()`이 매 응답을 "URL 불일치"로 skip — `_done`/`_errors`가 증가하지 않아 세션 이력이 영구히 0/0/0으로 남음(이슈 ①의 리다이렉트 대응 수정으로는 커버 안 되는 별개 케이스, GET 블루프린트나 쿼리스트링에 JSON이 없는 POST는 재현 안 됨) | `get_scrapy_request()`가 `meta`에 치환 전 원본 URL(`original_url`)을 함께 실어 보내고, `get_response_status()`의 `req_url` 산출 시 이 값을 최우선으로 사용하도록 변경 — `worker.py` 쪽 매칭 로직은 무수정. (검토 후 기각한 대안: `url_list` 쪽을 축약된 형태로 맞추는 방식 — 같은 엔드포인트로 가는 서로 다른 keyword 값 N개 요청이 전부 동일한 축약 URL로 수렴해버려 "중복 응답"으로 오판, 1건만 카운트되고 나머지 N-1건이 새로 스킵되는 걸 목업 검증 중 확인해 폐기) | - |
 
 ---
 
