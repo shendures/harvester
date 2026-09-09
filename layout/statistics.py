@@ -1,13 +1,13 @@
 # layout/statistics.py
 # 통계 분석 페이지 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QHBoxLayout
 from PyQt6.QtCore import QTimer
 
 from trigger import StatisticsPageTriggers
 from style import StatCard, EqualSpacingTable
 from .common import parts, build_scroll_body, BG_SECONDARY, BORDER, GREEN, BLUE, PURPLE
-from .charts import BarChart, LineChart, DonutChart
+from .charts import RankedBarChart, HeatStripChart, GroupedBarChart
 
 
 class StatisticsPage(QWidget, StatisticsPageTriggers):
@@ -42,41 +42,31 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
             kpi_row.addWidget(kpi, 1)
         bl.addLayout(kpi_row)
 
-        # ── Row 2: Status pie + bar chart ─────────
+        # ── Row 2: Status ranked list + heat strip + trend sparkline ──
         row2 = QHBoxLayout()
         row2.setSpacing(10)
 
-        # Status donut
+        # Status ranked list
         sw, sl = parts.card_widget("상태 코드 분포")
-        inner = QHBoxLayout()
-        inner.setSpacing(16)
-        self.donut = DonutChart()
-        inner.addWidget(self.donut)
-        legend_w = QWidget()
-        legend_w.setStyleSheet("background:transparent;")
-        self.legend_lay = QVBoxLayout(legend_w)
-        self.legend_lay.setSpacing(6)
-        self.legend_lay.setContentsMargins(0, 0, 0, 0)
-        inner.addWidget(legend_w)
-        inner.addStretch()
-        sl.addLayout(inner)
+        self.status_chart = RankedBarChart()
+        sl.addWidget(self.status_chart)
         row2.addWidget(sw, 1)
 
-        # Response time histogram (24 buckets)
+        # Response time heat strip
         rw2, rl2 = parts.card_widget("응답 시간 분포 (s)")
-        self.resp_bar = BarChart(color=BLUE)
-        rl2.addWidget(self.resp_bar)
-        row2.addWidget(rw2, 2)
+        self.resp_chart = HeatStripChart(color=BLUE)
+        rl2.addWidget(self.resp_chart)
+        row2.addWidget(rw2, 1)
+
+        # Hourly trend sparkline hero
+        lw, ll = parts.card_widget("시간대별 수집량 추이")
+        self.trend_chart = GroupedBarChart()
+        ll.addWidget(self.trend_chart)
+        row2.addWidget(lw, 1)
+
         bl.addLayout(row2)
 
-        # ── Row 3: Hourly trend line ───────────────
-        lw, ll = parts.card_widget("시간대별 수집량 추이")
-        self.trend_line = LineChart()
-        self.trend_line.setMinimumHeight(180)
-        ll.addWidget(self.trend_line)
-        bl.addWidget(lw)
-
-        # ── Row 4: Session history table ──────────
+        # ── Row 3: Session history table ──────────
         tw, tl = parts.card_widget("세션 이력")
         self.session_table = EqualSpacingTable(
             parent=self,
@@ -84,9 +74,9 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
             col_padding=10,
             hscroll_handle=50,
         )
-        self.session_table.setColumnCount(9)
+        self.session_table.setColumnCount(10)
         self.session_table.setHorizontalHeaderLabels(
-            ["Task Name", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration", "Start Time", "End Time"])
+            ["NO", "Task Name", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration", "Start Time", "End Time"])
         tl.addWidget(self.session_table)
         bl.addWidget(tw)
 
