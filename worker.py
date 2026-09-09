@@ -382,6 +382,7 @@ class MultiprocessWorker(QThread):
 
         summary = {
             "job":         self.job_name,
+            "title":       self.task.get("title", ""),
             "url":         callback_url,
             "total":       self._done,
             "errors":      self._errors,

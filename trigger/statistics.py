@@ -86,10 +86,13 @@ class StatisticsPageTriggers:
         for idx, s in enumerate(reversed(sessions), start=1):
             r = self.session_table.rowCount()
             self.session_table.insertRow(r)
-            vals = [str(idx), s["job"], s["url"], str(s["total"]), str(s["success"]),
-                    str(s["errors"]), f"{s['avg_time']}s", f"{s['elapsed']}s", s["started"], s["finished"]]
+            # title은 세션 레코드에 나중에 추가된 필드라 과거 stats_history.json에는
+            # 없을 수 있음 — job/url도 함께 .get()으로 통일해 방어적으로 접근한다.
+            vals = [str(idx), s.get("title", ""), s.get("url", ""), str(s["total"]), str(s["success"]),
+                    str(s["errors"]), f"{s['avg_time']}s", f"{s['elapsed']}s", s["started"], s["finished"],
+                    s.get("job", "")]
             colors = [TEXT_MUTED, TEXT_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, GREEN,
-                      RED, BLUE, TEXT_MUTED, TEXT_MUTED, TEXT_MUTED]
+                      RED, BLUE, TEXT_MUTED, TEXT_MUTED, TEXT_MUTED, TEXT_PRIMARY]
             for col, (val, color) in enumerate(zip(vals, colors)):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))
