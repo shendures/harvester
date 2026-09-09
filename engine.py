@@ -94,7 +94,7 @@ def handle_request_failure(failure):
         "ip_address": None,
         "user_agents": ua.decode('utf-8') if ua else "",
         "cookies": "",
-        "status": type(failure.value).__name__,  # 실패 유형(예: TimeoutError)을 상태코드 자리에
+        "status": "000",  # 상태 코드를 받지 못한 경우(연결 실패 등) — 실패 유형은 reason에 기록됨
         "reason": reason,
         "pure_latency": None,   # 응답이 없어 latency 없음 — 통계 페이지의 평균 응답시간 집계에서 자동 제외됨
         "total_latency": None,

@@ -42,7 +42,7 @@ class StatisticsPageTriggers:
         for r in rows:
             status_cnt[str(r["status_code"])] += 1
         # ── 수정: COLOR_MAP 키를 str 로 통일하여 단일 응답 시 Gray 오류 해소 ──
-        COLOR_MAP = {"200": GREEN, "301": BLUE, "404": AMBER, "429": PURPLE, "500": RED}
+        COLOR_MAP = {"200": GREEN, "301": BLUE, "404": AMBER, "429": PURPLE, "500": RED, "000": TEXT_MUTED}
         segments = [(k, v, COLOR_MAP.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
         self.status_chart.set_data(segments)
 

@@ -26,7 +26,7 @@ class DashboardPageTriggers:
         current_row = self.monitor_table.rowCount()
         self.monitor_table.insertRow(current_row)
 
-        STATUS_COLOR = {"200": GREEN, "404": RED, "429": AMBER, "500": RED, "301": BLUE}
+        STATUS_COLOR = {"200": GREEN, "404": RED, "429": AMBER, "500": RED, "301": BLUE, "000": TEXT_MUTED}
         vals = [
             current_row,
             target_url,
