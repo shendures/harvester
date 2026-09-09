@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QFrame, QCheckBox, QLineEdit,
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
+    QSplitter, QSplitterHandle,
 )
 
 from PyQt6.QtCore import ( Qt, QTimer, QPoint, QSize, QByteArray )
@@ -114,8 +115,12 @@ class THEME:
         QSplitter::handle:horizontal {{
             width: 1px; margin: 0 4px;
         }}
+        /* 세로 스플리터는 :horizontal과 달리 height/margin이 적용되지 않아
+           핸들 영역 전체(setHandleWidth)가 두꺼운 단색 막대로 그려진다(Qt QSS
+           함정) — border로 얇은 선만 그리고 나머지는 투명 처리해 우회한다. */
         QSplitter::handle:vertical {{
-            height: 1px; margin: 4px 0;
+            background: transparent;
+            border-top: 1px solid {self.BORDER_LIGHT};
         }}
         """
 
@@ -143,6 +148,15 @@ class THEME:
                 background: {self.BG_SECONDARY};
                 border: 1px solid {self.BORDER};
                 border-radius: 8px;
+            }}
+            /* 바레 QWidget 선택자가 서브클래스인 QSpinBox까지 스타일링 모드로
+               전환시켜, 화살표 서브컨트롤 크기를 명시하지 않으면 스핀 화살표가
+               그려지지 않는다(Qt QSS의 흔한 함정) — 크기만 지정해 복원. */
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+                width: 7px; height: 7px;
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+                width: 7px; height: 7px;
             }}
         """
 
@@ -190,6 +204,14 @@ class THEME:
             QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
                 background: {self.BG_HOVER};
                 border: none;
+            }}
+            /* up/down-button만 스타일링하고 화살표 서브컨트롤을 정의하지 않으면
+               화살표가 안 그려진다(Qt QSS의 흔한 함정) — 크기만 지정해 복원. */
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+                width: 7px; height: 7px;
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+                width: 7px; height: 7px;
             }}
             QPushButton {{
                 background: {self.BG_HOVER};
@@ -814,6 +836,28 @@ class Divider(QFrame):
         else:
             self.setFixedWidth(1)
 
+
+class _CenteredLineSplitterHandle(QSplitterHandle):
+    """세로(Vertical) 스플리터 전용 핸들 — Qt QSS의 ``QSplitter::handle:vertical``은
+    ``:horizontal``과 달리 height/margin이 적용되지 않아 handleWidth 영역 전체가
+    두꺼운 단색 막대로 그려진다(Qt 함정, 여러 QSS 조합으로 재현·확인함). 위아래
+    여백이 항상 같도록 직접 paintEvent로 handleWidth 정중앙에 1px 선만 그린다."""
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        y = (self.height() - 1) // 2
+        painter.fillRect(0, y, self.width(), 1, QColor(THEME().BORDER_LIGHT))
+
+
+class CenteredHandleSplitter(QSplitter):
+    """Vertical 방향일 때 _CenteredLineSplitterHandle을 사용하는 QSplitter.
+    Horizontal은 GLOBAL_QSS의 QSplitter::handle:horizontal이 이미 정상 동작하므로
+    기본 핸들을 그대로 쓴다."""
+    def createHandle(self):
+        if self.orientation() == Qt.Orientation.Vertical:
+            return _CenteredLineSplitterHandle(self.orientation(), self)
+        return super().createHandle()
+
+
 class BoundNoticeMixin:
     """상한/하한에서 더 못 움직일 때 QToolTip 말풍선으로 알려주는 스핀박스 동작.
     QSpinBox/QDoubleSpinBox 등 stepBy()를 갖는 베이스와 다중 상속으로 합성해서 쓴다.
@@ -918,6 +962,15 @@ class Parts:
                 background:{self.theme.BG_SECONDARY};
                 border:1px solid {self.theme.BORDER};
                 border-radius:8px;
+            }}
+            /* 바레 QWidget 선택자가 서브클래스인 QSpinBox까지 스타일링 모드로
+               전환시켜, 화살표 서브컨트롤 크기를 명시하지 않으면 카드 안
+               스핀박스의 화살표가 그려지지 않는다(Qt QSS의 흔한 함정). */
+            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+                width: 7px; height: 7px;
+            }}
+            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+                width: 7px; height: 7px;
             }}
         """)
         outer = QVBoxLayout(w)
@@ -1073,8 +1126,9 @@ def build_refine_rule_rows(
             (체크박스·버튼·라벨이 이미 꺼진 상태로 반영된 뒤 경고가 뜨도록
             순서를 맞추기 위해 check와 분리되어 있습니다).
         drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
-        fit_desc_one_line: True면 컨트롤이 붙는 행(drop_columns/fill_null)의
-            설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로 표시되도록 합니다.
+        fit_desc_one_line: True면 컨트롤이 text_col과 행 폭을 나눠 쓰는
+            drop_columns의 설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로
+            표시되도록 합니다.
             컨테이너 폭이 넉넉한 호출부(MonitorPageSingle 탭)에서만 켜야 합니다 —
             폭이 좁게 제한된 호출부(스케줄 등록 패널, 260~400px)에서 켜면
             최소폭 요구가 패널 최대폭을 넘어 레이아웃이 깨질 수 있습니다.
@@ -1104,7 +1158,11 @@ def build_refine_rule_rows(
         row_l = QHBoxLayout(row_w)
         row_l.setContentsMargins(12, 10, 12, 10)
         row_l.setSpacing(12)
-        row_l.addWidget(cb)
+        # 정렬 플래그 없이 추가하면 고정크기 위젯은 행 전체 높이의 세로 가운데로
+        # 배치된다 — fill_null처럼 체크 시 text_col 아래에 위젯이 추가되어 행
+        # 높이가 늘어나는 경우, 체크박스가 그 가운데 정렬을 따라 아래로 밀려난다.
+        # 상단 고정으로 체크 상태와 무관하게 위치를 유지한다.
+        row_l.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(2)
@@ -1125,13 +1183,18 @@ def build_refine_rule_rows(
         text_col.addWidget(desc_lbl)
 
         has_control = key in rows_with_control
-        if has_control and fit_desc_one_line:
+        # row_l에서 text_col과 폭을 나눠 써야 하는 행은 drop_columns뿐이다(버튼+
+        # 요약 라벨이 text_col 옆에 남아있음) — fill_null의 입력창은 이미 text_col
+        # 안(상세 설명 아래)으로 옮겨졌으므로 더 이상 해당하지 않는다. stretch=0으로
+        # 눌리면 wordWrap 설명 라벨이 가용 폭을 다 쓰지 못하고 일찍 줄바꿈된다.
+        needs_row_space = key == "drop_columns"
+        if needs_row_space and fit_desc_one_line:
             # 컨트롤이 붙는 행은 text_col의 stretch factor가 0이라 wordWrap
             # 라벨의 sizeHint()가 좁게 잡혀 컨테이너 폭이 넉넉해도 줄바꿈됨 —
             # 실측 텍스트 폭을 최소폭으로 지정해 한 줄 렌더링을 강제
             desc_lbl.setMinimumWidth(QFontMetrics(desc_lbl.font()).horizontalAdvance(desc_text) + 4)
-        row_l.addLayout(text_col, 0 if has_control else 1)
-        if has_control:
+        row_l.addLayout(text_col, 0 if needs_row_space else 1)
+        if needs_row_space:
             row_l.addSpacing(16)
 
         if key == "fill_null":
@@ -1146,7 +1209,14 @@ def build_refine_rule_rows(
             cb.stateChanged.connect(
                 lambda state, w=fill_input: w.setVisible(state == Qt.CheckState.Checked.value)
             )
-            row_l.addWidget(fill_input)
+            # QVBoxLayout(text_col)에 고정폭 위젯을 직접 addWidget하면 그 위젯의
+            # 고정폭이 text_col 전체의 최대폭으로 전파되어(desc_lbl까지 그 폭 안에서만
+            # 줄바꿈됨) 설명 라벨이 가용 폭을 못 쓰고 일찍 줄바꿈된다 — 가로
+            # 서브레이아웃 + addStretch()로 감싸 폭 제한이 text_col에 전파되지 않게 한다.
+            fill_input_row = QHBoxLayout()
+            fill_input_row.addWidget(fill_input)
+            fill_input_row.addStretch()
+            text_col.addLayout(fill_input_row)
             result["fill_null_input"] = fill_input
 
         if key == "drop_columns":

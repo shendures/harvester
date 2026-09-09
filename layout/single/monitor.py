@@ -11,7 +11,7 @@ from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
 from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
-from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon
+from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter
 from ..common import (
     parts, build_scroll_body,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
@@ -152,13 +152,24 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.result_table.itemClicked.connect(self._show_detail)
         self.result_table.currentItemChanged.connect(self._on_current_item_changed)
         tc.addWidget(self.result_table)
-        bl.addWidget(tcw, 1)
 
         # 선택 항목 상세
         dw, dl = parts.card_widget("선택 항목 상세")
         self.detail_lbl = parts.make_label("테이블에서 행을 클릭하세요.", TEXT_MUTED, 12)
         dl.addWidget(self.detail_lbl)
-        bl.addWidget(dw)
+
+        # 두 카드를 Splitter로 묶어 드래그로 비율 조절 가능하게 함(layout/multi/
+        # main_window.py의 monitor_split, _open_compare_popup()과 동일한 패턴).
+        # CenteredHandleSplitter: 세로 핸들은 QSS margin/height가 안 먹는 Qt 함정이
+        # 있어(style.py 참고) 핸들 중앙에 선을 직접 그려 위아래 여백을 항상 같게 한다.
+        raw_split = CenteredHandleSplitter(Qt.Orientation.Vertical)
+        raw_split.setChildrenCollapsible(False)
+        raw_split.setHandleWidth(9)
+        raw_split.addWidget(tcw)
+        raw_split.addWidget(dw)
+        raw_split.setStretchFactor(0, 1)   # RAW 테이블이 기본적으로 더 넓게
+        raw_split.setStretchFactor(1, 0)
+        bl.addWidget(raw_split, 1)
 
         self.tab_widget.addTab(raw_widget, "① Raw 수집 결과")
 

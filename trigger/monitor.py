@@ -796,11 +796,12 @@ class MonitorPageTriggers:
         dlg.setWindowTitle(title)
         # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
         # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
-        # "수집 설정" 섹션도 Delay/Threads/Timeout/Retry를 한 줄로 배치하므로 동일하게
-        # 넓은 폭이 필요하다. collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃
-        # 호출) 폭을 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px
-        # 그대로.
-        dlg.setFixedWidth(680 if (collect is not None or auth_page is not None) else 500)
+        # "수집 설정" 섹션도 Delay(s)/Threads/Timeout(s)/Retry 4개 라벨+스핀박스를
+        # 한 줄로 배치하므로(_build_collect_settings_fields single_row=True) 더 넓은
+        # 폭이 필요하다 — 특히 가장 긴 라벨인 "Timeout(s)"가 680px에서는 잘렸다.
+        # collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃 호출) 폭을 넓힌다 —
+        # 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px 그대로.
+        dlg.setFixedWidth(760 if (collect is not None or auth_page is not None) else 500)
         dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
