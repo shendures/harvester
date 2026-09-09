@@ -78,6 +78,7 @@ class HtmlSeleniumSpider(BaseExtractorSpider):
 
             if response.status != 200:
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
+                yield engine.build_failure_item(response, self.request_info)
                 return
 
             # 인증이 필요한 URL은 리다이렉트를 거쳐 response.url이 로그인 페이지 등으로
@@ -114,8 +115,10 @@ class HtmlSeleniumSpider(BaseExtractorSpider):
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
 
     def closed(self, reason):
         """스파이더 종료 시 Scrapy가 자동 호출 — 로그인 상태 정리 후, 세션 전체에서 재사용한 driver를 한 번만 종료합니다."""

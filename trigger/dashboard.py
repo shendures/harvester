@@ -20,9 +20,6 @@ class DashboardPageTriggers:
         if not row or "resp_info" not in row:
             return
         resp_info = row["resp_info"]
-        data = resp_info.get("data")
-        if not data or isinstance(data, dict):
-            return
 
         target_url = resp_info.get("url", "")
         self.monitor_table.setSortingEnabled(False)
@@ -60,8 +57,7 @@ class DashboardPageTriggers:
         self.monitor_table.setSortingEnabled(True)
         self.mon_row_count_lbl.setText(f"{self.monitor_table.rowCount()} rows")
 
-        ERROR_STATUSES = {"404", "500", "503", "502", "429"}
-        if str(resp_info.get("status", "")).strip() in ERROR_STATUSES:
+        if str(resp_info.get("status", "")).strip() != "200":
             self._session_error_count += 1
         try:
             self._session_latency_sum += float(resp_info.get("pure_latency", ""))

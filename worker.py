@@ -270,18 +270,13 @@ class MultiprocessWorker(QThread):
         })
         self._done += 1
 
-        # 상태 코드별 로그 레벨
-        if status_code in (404, 500, 502, 503):
-            self._errors += 1
-            level = "err"
-        elif status_code == 429:
-            level = "warn"
-        elif status_code == 301:
-            level = "info"
-        elif status_code == 200:
+        # 200이면 성공, 그 외(비정상 상태코드 + engine.handle_request_failure()가 보고하는
+        # 커넥션 실패 유형 문자열 포함)는 전부 실패로 집계
+        if status_code == 200:
             level = "ok"
         else:
-            level = "info"
+            self._errors += 1
+            level = "err"
 
         self.log_message.emit(level, str(reason))
 

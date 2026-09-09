@@ -25,6 +25,7 @@ class DetailExtractorSpider(BaseExtractorSpider):
         try:
             if response.status != 200:
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
+                yield engine.build_failure_item(response, self.request_info)
                 return
 
             # 상세 페이지 요청할 정보가 있는 메인 페이지
@@ -53,8 +54,10 @@ class DetailExtractorSpider(BaseExtractorSpider):
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
 
 
     def parse(self, response):
@@ -65,6 +68,7 @@ class DetailExtractorSpider(BaseExtractorSpider):
 
             if response.status != 200:
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
+                yield engine.build_failure_item(response, self.request_info)
                 return
 
             excluded_keys = {'detail_root', 'detail', 'main_root', 'root'}
@@ -86,8 +90,10 @@ class DetailExtractorSpider(BaseExtractorSpider):
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
 
 
 

@@ -76,6 +76,32 @@ def get_spider(request_info: dict):
         raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
 
 
+def handle_request_failure(failure):
+    """응답 자체를 못 받은 요청(타임아웃/DNS 실패/연결거부 등, 재시도 소진 후)의 Scrapy
+    errback — worker.py가 다른 응답과 동일하게 집계하도록 RESULT_INFO를 직접 보고한다.
+    실제 Response가 없어 get_response_status()/DonasItemLoader(selector 필요)를 쓸 수
+    없으므로 Request/Failure에서 복원 가능한 필드만으로 최소 resp_info를 직접 구성한다."""
+    request = failure.request
+    reason = failure.getErrorMessage() or type(failure.value).__name__
+    logger.warning("[handle_request_failure] 요청 실패: %s | %s", request.url, reason)
+
+    ua = request.headers.get('User-Agent')
+    resp_info = {
+        "url": request.url,
+        "req_url": request.meta.get("original_url", request.url),
+        "method": request.method,
+        "params": request.body.decode('utf-8', errors='replace') if request.body else "",
+        "ip_address": None,
+        "user_agents": ua.decode('utf-8') if ua else "",
+        "cookies": "",
+        "status": type(failure.value).__name__,  # 실패 유형(예: TimeoutError)을 상태코드 자리에
+        "reason": reason,
+        "pure_latency": None,   # 응답이 없어 latency 없음 — 통계 페이지의 평균 응답시간 집계에서 자동 제외됨
+        "total_latency": None,
+    }
+    print(f"RESULT_INFO:{json.dumps({'resp_info': resp_info}, ensure_ascii=False)}")
+
+
 def get_scrapy_request(url, conditions, callback):
     """
     조건 딕셔너리에 따라 Scrapy Request 또는 FormRequest 객체를 생성합니다.
@@ -90,6 +116,7 @@ def get_scrapy_request(url, conditions, callback):
     request_kwargs = {
         'url': url,
         'callback': callback,
+        'errback': handle_request_failure,  # 응답 자체를 못 받은 요청(타임아웃 등)도 집계되도록
         'method': conditions['method'],
         'headers': conditions.get("headers"),  # headers가 None이어도 Request 객체는 이를 처리함
         'meta': {**conditions, 'original_url': url},
@@ -385,6 +412,21 @@ def set_item_loader(response, collect_info, data):
     loader.add_value('result_info', result_info)
 
     return loader
+
+
+def build_failure_item(response, collect_info, error=None):
+    """비정상 상태코드 또는 추출 중 예외가 발생한 응답을 데이터 없는 최소 아이템으로
+    변환한다 — 실제 추출 결과는 없지만 RESULT_INFO로 흘러들어가 worker.py가 실패로
+    집계할 수 있게 한다. error가 주어지면(추출 단계에서 발생한 예외) resp_info의
+    status/reason을 실제 HTTP 상태코드 대신 그 예외 정보로 덮어써서, 200 응답인데
+    추출이 깨진 경우를 진짜 200 성공과 구분해서 보여준다(handle_request_failure()가
+    커넥션 실패를 예외 타입명으로 표시하는 것과 동일한 관례)."""
+    loader = set_item_loader(response, collect_info, None)
+    item = loader.load_item()
+    if error is not None:
+        item['result_info']['resp_info']['status'] = type(error).__name__
+        item['result_info']['resp_info']['reason'] = str(error)
+    return item
 
 
 def set_cookies(response):

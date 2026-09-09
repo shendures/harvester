@@ -15,6 +15,7 @@ class JsonExtractorSpider(BaseExtractorSpider):
 
             if response.status != 200:
                 self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
+                yield engine.build_failure_item(response, self.request_info)
                 return
 
             root = self.request_info["conditions"]["items"]["root"]
@@ -28,7 +29,9 @@ class JsonExtractorSpider(BaseExtractorSpider):
 
         except IndexError as e:
             self.logger.error('IndexError : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
         except Exception as e:
             self.logger.error('Exception : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
 
 
