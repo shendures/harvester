@@ -484,8 +484,16 @@ def build_failure_item(response, collect_info, error=None):
 
 def set_cookies(response):
     """
-    DB에 저장할 쿠키값으로 수정
+    DB/대시보드에 표시할 쿠키값을 반환합니다.
+
+    RandomCookieMiddleware 등이 이번 요청에 실제로 실어 보낸 Cookie 헤더를
+    우선 사용하고, 없으면(랜덤 쿠키 비활성 등) 서버가 Set-Cookie로 내려준
+    값을 대신 반환합니다.
     """
+
+    req_cookie = response.request.headers.get('Cookie')
+    if req_cookie:
+        return req_cookie.decode('utf-8')
 
     cookies = response.headers.getlist('Set-Cookie')
     cookie = ""

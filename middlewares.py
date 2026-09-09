@@ -295,6 +295,12 @@ class RandomCookieMiddleware:
         # 5. 핵심 우회 설정: IP 로테이션 시 쿠키 병합 방지
         request.meta['dont_merge_cookies'] = True
 
+        # dont_merge_cookies가 True면 Scrapy 내장 CookiesMiddleware가
+        # request.cookies → Cookie 헤더 변환을 건너뛰므로, 여기서 직접 헤더를 채운다.
+        request.headers['Cookie'] = '; '.join(
+            f'{name}={value}' for name, value in request.cookies.items()
+        )
+
         spider.logger.debug(f"🍪 랜덤 쿠키 주입: UUID={random_uuid_session}")
 
         return None  # 다음 미들웨어로 요청 전달
