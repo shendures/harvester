@@ -359,7 +359,11 @@ class MonitorPageTriggers:
         try:
             refined, stats = refiner.run(self._collected_data)
         except (TypeError, ValueError) as e:
-            QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
+            if skip_ui_update:
+                if lm:
+                    lm.append_log("err", f"정제 중 오류가 발생했습니다: {e}")
+            else:
+                QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
             return
 
         self._refined_data = refined
@@ -1149,7 +1153,7 @@ class MonitorPageTriggers:
                             writer.writeheader()
                             writer.writerows(data)
                     else:
-                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type)
+                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm)
 
                 elif file_format == "JSON":
                     if save_type is None:
@@ -1210,13 +1214,21 @@ class MonitorPageTriggers:
                     else:
                         self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
-                    QMessageBox.critical(
-                        self, "DB 저장 실패",
-                        f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
+                    if silent:
+                        if lm:
+                            lm.append_log("err", f"DB 저장 실패 — DB 접속 및 로그인 정보가 올바르지 않습니다: {e}")
+                    else:
+                        QMessageBox.critical(
+                            self, "DB 저장 실패",
+                            f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
         except Exception as e:
-            QMessageBox.critical(self, "추출 오류", str(e))
+            if silent:
+                if lm:
+                    lm.append_log("err", f"추출 오류: {e}")
+            else:
+                QMessageBox.critical(self, "추출 오류", str(e))
 
-    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type):
+    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type, lm=None):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.csv")
         if save_type == "new":
@@ -1224,6 +1236,8 @@ class MonitorPageTriggers:
                 file_name, "{base} ({count})",
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
             )
+            if final_file_name != file_name and lm:
+                lm.append_log("info", f"'{file_name}.csv' 파일이 이미 존재 — '{final_file_name}.csv'(으)로 새로 저장합니다.")
             full_path = os.path.join(file_path, f"{final_file_name}.csv")
             mode, write_header = 'w', True
         elif save_type == "overwrite":
@@ -1245,6 +1259,8 @@ class MonitorPageTriggers:
                 file_name, "{base} ({count})",
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.json")),
             )
+            if lm:
+                lm.append_log("info", f"'{file_name}.json' 파일이 이미 존재 — '{final_file_name}.json'(으)로 새로 저장합니다.")
             full_path = os.path.join(file_path, f"{final_file_name}.json")
             out_data = data
         elif save_type == "append" and os.path.exists(full_path):
