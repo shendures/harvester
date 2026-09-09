@@ -559,13 +559,15 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                         rules_override=sched_refine_rules, skip_ui_update=True,
                         fill_value_override=sched_fill_value,
                     )
-                # 스케줄 실행일 때만 스케줄 자신의 extract 설정을 강제 주입 (단일과
-                # 동일). 배치는 각 번들의 화면 설정 스냅샷을 그대로 사용한다.
-                is_schedule = task.get("job") == "스케줄 실행"
+                # 무인 실행(스케줄·전체 수집)은 저장 대상 충돌 시 확인 모달 대신
+                # extract_override로 결정론적 저장(schedule_save_type 없으면 "new"
+                # 기본값)을 태운다 — task["extract"]는 제출 시점 스냅샷(deepcopy)
+                # 이므로 화면 설정이 나중에 바뀌어도 영향받지 않는다. "선택 수집"은
+                # 완료 즉시 화면을 지켜보는 것을 전제로 하므로 제외한다.
                 mon._extract_result_table(
                     source=auto_save_source,
                     silent=is_unattended,
-                    extract_override=extract_cfg if is_schedule else None,
+                    extract_override=extract_cfg if is_unattended else None,
                 )
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")

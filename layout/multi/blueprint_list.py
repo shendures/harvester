@@ -317,6 +317,8 @@ class BlueprintListPage(QWidget):
                 self._revert_row_run_btn()
             self._pending_run_seq_nos.discard(seq_no)
             if self._active_run_btn is not None and not self._pending_run_seq_nos:
+                if self._active_run_btn is self._batch_btn:
+                    self._uncheck_all_checkboxes()
                 self._revert_active_run_btn()
 
     def _make_action_button_cell(self, specs: list) -> tuple[QWidget, list]:
@@ -353,6 +355,13 @@ class BlueprintListPage(QWidget):
         """선택 컬럼 셀 위젯(래퍼) 안의 실제 QCheckBox를 반환한다."""
         wrap = self.table.cellWidget(row, self._CHECK_COL)
         return wrap.checkbox if wrap else None
+
+    def _uncheck_all_checkboxes(self) -> None:
+        """Select 컬럼 체크박스를 전부 해제한다."""
+        for row in range(self.table.rowCount()):
+            checkbox = self._checkbox_at(row)
+            if checkbox:
+                checkbox.setChecked(False)
 
     def _row_of(self, wrap: QWidget) -> int:
         """정렬로 행 순서가 바뀌어도 이 셀 위젯이 현재 위치한 행 번호를 찾는다."""
