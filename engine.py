@@ -76,6 +76,58 @@ def get_spider(request_info: dict):
         raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
 
 
+REQUIRED_CONDITION_KEYS = {
+    "html":        ["method", "items.root"],
+    "json":        ["method", "items.root"],
+    "xml":         ["method", "items.root"],
+    "html_render": ["method", "items.root"],
+}
+
+
+def _dig(d: dict, dotted_path: str):
+    for key in dotted_path.split("."):
+        if not isinstance(d, dict) or key not in d:
+            return None
+        d = d[key]
+    return d
+
+
+def validate_blueprint_conditions(request_info: dict) -> str | None:
+    """수집 시작 전 conditions에 스파이더 타입별 필수 키가 채워져 있는지 검사한다.
+    문제 없으면 None, 있으면 사용자에게 보여줄 안내 문자열을 반환한다 — URL마다
+    반복해서 같은 KeyError를 내며 낭비하는 대신 요청을 한 건도 보내기 전에 막는다."""
+    mode = conf.get_spider_mode(request_info)
+    conditions = request_info.get("conditions") or {}
+    missing = []
+
+    if mode == "detail":
+        for path in ("mainUrl", "mainFormat"):
+            if not _dig(conditions, path):
+                missing.append(path)
+        main_format = conditions.get("mainFormat")
+        if main_format == "html" and not _dig(conditions, "items.detail"):
+            missing.append("items.detail")
+        elif main_format == "json":
+            for path in ("items.detail_root", "items.detail", "items.main_root"):
+                if not _dig(conditions, path):
+                    missing.append(path)
+        elif main_format not in ("html", "json"):
+            missing.append("mainFormat(html 또는 json이어야 함)")
+    else:
+        for path in REQUIRED_CONDITION_KEYS.get(mode, []):
+            if not _dig(conditions, path):
+                missing.append(path)
+
+    if not missing:
+        return None
+    title = request_info.get("title") or "(제목 없음)"
+    return (
+        f"'{title}' 블루프린트의 수집 설정(conditions)에 필수 항목이 비어 있어 "
+        f"수집을 시작할 수 없습니다.\n\n누락된 항목: {', '.join(missing)}\n\n"
+        f"블루프린트 편집에서 해당 항목을 채운 뒤 다시 시도하세요."
+    )
+
+
 def handle_request_failure(failure):
     """응답 자체를 못 받은 요청(타임아웃/DNS 실패/연결거부 등, 재시도 소진 후)의 Scrapy
     errback — worker.py가 다른 응답과 동일하게 집계하도록 RESULT_INFO를 직접 보고한다.
@@ -417,15 +469,16 @@ def set_item_loader(response, collect_info, data):
 def build_failure_item(response, collect_info, error=None):
     """비정상 상태코드 또는 추출 중 예외가 발생한 응답을 데이터 없는 최소 아이템으로
     변환한다 — 실제 추출 결과는 없지만 RESULT_INFO로 흘러들어가 worker.py가 실패로
-    집계할 수 있게 한다. error가 주어지면(추출 단계에서 발생한 예외) resp_info의
-    status/reason을 실제 HTTP 상태코드 대신 그 예외 정보로 덮어써서, 200 응답인데
-    추출이 깨진 경우를 진짜 200 성공과 구분해서 보여준다(handle_request_failure()가
-    커넥션 실패를 예외 타입명으로 표시하는 것과 동일한 관례)."""
+    집계할 수 있게 한다. status는 응답을 받은 이상 항상 실제 HTTP 상태코드를 유지한다
+    (worker.py의 성공/실패 판정 기준). error가 주어지면(추출 단계에서 발생한 예외)
+    reason에 예외 메시지를 남기고, extract_error에 예외 타입명을 별도로 기록해
+    "200 응답이지만 데이터 추출은 실패"한 경우를 status/성공 판정과 무관하게 구분할
+    수 있게 한다."""
     loader = set_item_loader(response, collect_info, None)
     item = loader.load_item()
     if error is not None:
-        item['result_info']['resp_info']['status'] = type(error).__name__
         item['result_info']['resp_info']['reason'] = str(error)
+        item['result_info']['resp_info']['extract_error'] = type(error).__name__
     return item
 
 

@@ -6,13 +6,14 @@ from copy import deepcopy
 import socket
 
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMessageBox,
+    QApplication, QFileDialog, QMessageBox, QSystemTrayIcon,
     QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QTimer
 
 import db_conn
+import engine
 from conf import DataStore
 from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
 from preprocess import DEFAULT_RULES, custom_rule_exists
@@ -205,6 +206,65 @@ def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon
     msg.setIcon(icon)
     msg.setStyleSheet(_default_msgbox_qss(font_size))
     msg.exec()
+
+
+def _validate_blueprint_before_run(parent, cfg: dict, log_manager, *,
+                                    is_unattended: bool, tray_manager) -> bool:
+    """cfg(블루프린트+런타임 설정 dict)가 실행 가능한지 검사 — 문제가 있으면
+    안내(대화형은 모달, 무인 실행은 트레이 알림)와 로그를 남기고 False, 정상이면
+    True를 반환한다. 요청을 한 건도 보내기 전에 막아, URL마다 같은 설정 오류
+    (KeyError)가 반복되는 것을 피한다. 무인(스케줄/전체 수집) 실행에서 모달을
+    띄우면 아무도 닫아줄 사람이 없어 그 자리에서 멈추므로, 이 프로젝트의 기존
+    관례(_on_finished의 0건 완료 분기 등)와 동일하게 트레이 알림으로 대체한다."""
+    error_msg = engine.validate_blueprint_conditions(cfg)
+    if error_msg is None:
+        return True
+    log_manager.append_log("err", error_msg)
+    if is_unattended:
+        tray_manager.show_message(
+            "⚠ 수집 설정 오류",
+            f"'{cfg.get('title') or cfg.get('task_nm', '')}' 실행을 시작할 수 없습니다 — "
+            f"블루프린트 설정을 확인해 주세요. (자세한 내용은 로그 참고)",
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
+    else:
+        _show_message_dialog(
+            parent, "수집 설정 오류", "<b>수집을 시작할 수 없습니다.</b>",
+            icon=QMessageBox.Icon.Critical, informative_text=error_msg,
+        )
+    return False
+
+
+# 예외 타입명 -> (설명, 해결 방법). "200 응답이지만 추출 실패"(build_failure_item이
+# resp_info["extract_error"]에 기록한 값) 발생 시 사용자에게 보여줄 정적 안내
+# 카탈로그 — style.py의 REFINE_RULE_DEFS와 같은 (키, 설명) 카탈로그 패턴.
+EXTRACT_ERROR_GUIDE = {
+    "KeyError": (
+        "블루프린트의 수집 설정(conditions)에 필요한 항목이 비어 있어 데이터를 추출하지 못했습니다.",
+        "블루프린트 편집에서 수집 항목(items) 설정 — 특히 root/detail 등 필수 필드가 채워져 있는지 확인하세요.",
+    ),
+    "IndexError": (
+        "예상한 위치에 데이터가 없어 추출에 실패했습니다(페이지 구조 변경, 리다이렉트 등 원인일 수 있습니다).",
+        "대상 페이지가 실제로 어떻게 응답하는지 직접 확인하고, 셀렉터/URL 설정을 다시 점검하세요.",
+    ),
+}
+DEFAULT_EXTRACT_ERROR_GUIDE = (
+    "알 수 없는 이유로 데이터 추출에 실패했습니다.",
+    "로그를 확인하거나 블루프린트 설정을 다시 점검하세요.",
+)
+
+
+def _show_extract_error_dialog(parent, resp_info: dict) -> None:
+    """수집 모니터링 테이블에서 추출 실패(200 응답 + extract_error) 행을 클릭했을 때,
+    예외 타입별 설명 + 해결 방법 + 이번 건의 구체적인 사유(reason)를 보여준다."""
+    error_type = resp_info.get("extract_error", "")
+    desc, fix = EXTRACT_ERROR_GUIDE.get(error_type, DEFAULT_EXTRACT_ERROR_GUIDE)
+    reason = resp_info.get("reason", "")
+    detail = f"해결 방법: {fix}" + (f"\n\n누락/오류 세부 정보: {reason}" if reason else "")
+    _show_message_dialog(
+        parent, "추출 오류 안내", f"<b>{error_type or '추출 오류'}</b> — {desc}",
+        icon=QMessageBox.Icon.Warning, informative_text=detail,
+    )
 
 
 def _show_db_conn_fail_dialog(parent, reason: str) -> None:

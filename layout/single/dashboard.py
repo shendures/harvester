@@ -184,6 +184,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.monitor_table.setColumnCount(9)
         self.monitor_table.setHorizontalHeaderLabels(
             ["NO", "URL", "Status", "IP Address", "User Agent", "Cookies", "Latency (Pure)", "Latency (Total)", "Job Name"])
+        self.monitor_table.itemClicked.connect(self._on_monitor_item_clicked)
         mon_tc.addWidget(self.monitor_table)
         bl.addWidget(mon_tcw, 1)
 

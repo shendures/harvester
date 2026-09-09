@@ -12,7 +12,7 @@ from conf import BlueprintStorage
 from .common import (
     store, TEXT_SECONDARY, LOG_LEVEL_COLORS, SCHEDULED_REFINE_RULES,
     _apply_task_settings, _reset_pages, _show_no_data_dialog, _stop_worker_if_running,
-    _after_delay_unless_cancelled,
+    _after_delay_unless_cancelled, _validate_blueprint_before_run,
     NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
 )
 
@@ -87,6 +87,11 @@ class MainWindowTriggersSingle:
         self._reset_all_pages()
 
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        is_unattended = cfg.get("job") == "스케줄 실행"
+        if not _validate_blueprint_before_run(self, cfg, self.log_manager,
+                                               is_unattended=is_unattended, tray_manager=self.tray_manager):
+            self._abort_launch(cfg)
+            return
         # 수동 실행 경로는 기존과 동일하게 기존 워커를 중단하고 교체
         _stop_worker_if_running(self._worker)
 
@@ -103,11 +108,25 @@ class MainWindowTriggersSingle:
         self.dashboard._update_step_ui(2)
         self._activate_nav_page(NAV_MONITOR)
 
+    def _abort_launch(self, task: dict) -> None:
+        """_launch_worker()가 사전 검증 실패로 워커를 못 만들고 중단할 때 호출 —
+        _on_finished()의 '0건 완료' 분기와 동일하게 UI를 idle로 되돌리고, 스케줄을
+        재무장하고, 대기 중이던 다음 작업을 이어서 실행한다. 워커가 아예 시작되지
+        않아 finished 시그널이 없으므로, 이 정리를 대신 직접 해줘야 한다."""
+        self.global_toolbar.set_running(False)
+        self.reset_progress()
+        self.dashboard.set_running(False)
+        self.dashboard._update_step_ui(0)
+        job_name = task.get("task_nm")
+        if job_name:
+            self.schedule_page.mark_done(job_name, total=0)
+        self._consume_pending_queue()
+
     def _consume_pending_queue(self):
         """
         대기 큐에서 다음 스케줄 작업을 꺼내 실행합니다.
         큐가 비어 있으면 아무것도 하지 않습니다.
-        _on_finished() 말미에서만 호출됩니다.
+        _on_finished() 또는 _abort_launch()(사전 검증 실패) 말미에서 호출됩니다.
         """
         if not self._pending_queue:
             return
@@ -414,6 +433,11 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        is_unattended = cfg.get("job") in ("스케줄 실행", BATCH_JOB)
+        if not _validate_blueprint_before_run(self, cfg, self.log_manager,
+                                               is_unattended=is_unattended, tray_manager=self.tray_manager):
+            self._abort_launch(cfg)
+            return
         _stop_worker_if_running(self._worker)
 
         # 실행 대상 블루프린트로 화면 자동 포커스 — 이후 시그널은 아래에서
@@ -441,6 +465,25 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         # 다중 레이아웃은 "모니터링"이 "수집 목록"(NAV_BLUEPRINT_LIST) 하단 상세로
         # 통합됐으므로, 단일과 달리 NAV_MONITOR가 아니라 그쪽으로 전환한다.
         self._activate_nav_page(NAV_BLUEPRINT_LIST)
+
+    def _abort_launch(self, task: dict) -> None:
+        """_launch_worker()가 사전 검증 실패로 워커를 못 만들고 중단할 때 호출 —
+        _on_finished()의 '0건 완료' 분기와 동일하게 해당 번들 UI를 idle로 되돌리고,
+        스케줄을 재무장하고, 대기 큐(전체 수집의 나머지 블루프린트 포함)를 이어서
+        소비한다. 워커가 아예 시작되지 않아 finished 시그널이 없으므로, 이 정리를
+        대신 직접 해줘야 한다."""
+        seq_no = task.get("seq_no")
+        dash = self._get_or_create_bundle(seq_no).dashboard
+        self.global_toolbar.set_running(False)
+        self._reset_progress_for(dash)
+        dash.set_running(False)
+        dash._update_step_ui(0)
+        self._broadcast_blueprint_status(seq_no, "done")
+        self._broadcast_blueprint_status(seq_no, "idle")
+        job_name = task.get("task_nm")
+        if job_name:
+            self.schedule_page.mark_done(job_name, total=0)
+        self._consume_pending_queue()
 
     # ── 진행률 (번들별) ────────────────────────────────
     @staticmethod
