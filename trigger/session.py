@@ -54,7 +54,6 @@ class ProxyHealthCheckThread(QThread):
         # import된 행)만 검사든, 호출자가 실제 테이블 행 번호를 idx로 명시해 넘긴다.
         self._rows = rows
         self._executor = None
-        self._cancelled = False
 
     def cancel(self):
         """
@@ -62,7 +61,6 @@ class ProxyHealthCheckThread(QThread):
         요청은 자연 종료(최대 TIMEOUT초)까지만 기다린다. 취소 이후에도 all_checked는
         반드시 emit되므로 호출자는 완료를 기다리기만 하면 된다.
         """
-        self._cancelled = True
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
 

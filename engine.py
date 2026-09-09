@@ -39,7 +39,7 @@ def get_login_failure_phrases():
         "invalid credentials",
     ]
 
-def get_json_form(url, payload_yn):
+def get_json_form(url):
 
     if "?" not in url:
         raise ValueError(f"POST 요청 URL은 '<url>?<JSON 쿼리>' 형식이어야 합니다: {url!r}")
@@ -182,7 +182,7 @@ def get_scrapy_request(url, conditions, callback):
     # 2. POST 요청에 대한 추가 처리
     elif conditions['method'] == "POST":
 
-        processed_url, body = get_json_form(url, conditions.get("payload"))
+        processed_url, body = get_json_form(url)
 
         # URL이 변경되었을 경우 업데이트
         request_kwargs['url'] = processed_url

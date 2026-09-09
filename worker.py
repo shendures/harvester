@@ -54,7 +54,6 @@ class MultiprocessWorker(QThread):
     progress     = pyqtSignal(int, int)
     new_row      = pyqtSignal(dict)
     log_message  = pyqtSignal(str, str)   # (level: str, message: str)
-    stats_update = pyqtSignal(dict)
     finished     = pyqtSignal(dict, dict) # (task, summary)
 
     def __init__(self, task: dict, job_name: str = "수동 실행"):
@@ -68,7 +67,6 @@ class MultiprocessWorker(QThread):
         self._done     = 0
         self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
         self._resp_times: list[float] = []
-        self._resp_time_sum = 0.0   # _resp_times의 누적 합 — 매 응답마다 sum() 재계산 방지
         self.total        = None
         self._started_at: datetime | None = None
         self.store     = DataStore()
@@ -285,17 +283,8 @@ class MultiprocessWorker(QThread):
 
         if isinstance(resp_time, (int, float)):
             self._resp_times.append(float(resp_time))
-            self._resp_time_sum += float(resp_time)
-
-        avg = self._resp_time_sum / len(self._resp_times) if self._resp_times else 0.0
 
         self.progress.emit(self._done, total)
-        self.stats_update.emit({
-            "total":    self._done,
-            "errors":   self._errors,
-            "pages":    total,
-            "avg_time": f"{avg:.2f}s",
-        })
 
         # [수정] delay / threads — threads 검증은 run() 진입 시 완료됨
         sleep_sec = max(0.05, delay / threads)

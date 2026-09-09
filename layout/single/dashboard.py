@@ -36,8 +36,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         super().__init__()
         self.step_circles = []
         self.step_labels = []
-        self.step_arrow_groups = []
-        self._index = 0
         self._out_mode = None
         self.output_info = customized_settings.get_output_settings()
         self._running = False

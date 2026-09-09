@@ -14,11 +14,9 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     - URL 라벨 / URL 입력창 / URL 복사 버튼 / 시작·중지 버튼
     - start_requested : 시작 버튼 클릭 시 emit (request_info dict)
     - stop_requested  : 중지 버튼 클릭 시 emit
-    - reset_requested : 정의만 되어 있고 어디서도 emit/connect되지 않는 미사용 시그널
     """
     start_requested = pyqtSignal(dict)
     stop_requested = pyqtSignal()
-    reset_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

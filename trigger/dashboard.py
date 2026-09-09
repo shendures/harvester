@@ -111,7 +111,3 @@ class DashboardPageTriggers:
                     for c in range(9)
                 ])
         QMessageBox.information(self, "완료", f"저장 완료:\n{path}")
-
-    def update_stats(self, stats):
-        """세션 통계 시그널 수신 — 테이블 기반 집계로 처리하므로 pass."""
-        pass

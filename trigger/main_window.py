@@ -99,7 +99,6 @@ class MainWindowTriggersSingle:
         self._worker.new_row.connect(self.dashboard.add_row)
         self._worker.new_row.connect(self.monitor_page._add_realtime_row)
         self._worker.progress.connect(self.update_progress)
-        self._worker.stats_update.connect(self.dashboard.update_stats)
         self._worker.log_message.connect(self.log_manager.append_log)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()
@@ -453,7 +452,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._worker.new_row.connect(mon._add_realtime_row)
         self._worker.progress.connect(
             lambda done, total, d=dash: self._update_progress_for(d, done, total))
-        self._worker.stats_update.connect(dash.update_stats)
         self._worker.log_message.connect(self.log_manager.append_log)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()

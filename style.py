@@ -443,10 +443,6 @@ class EqualSpacingTable(QTableWidget):
 
     Public API
     ──────────
-    set_column_spacing(px)   셀 좌우 padding 변경 (시각적 간격)
-    set_hscroll_handle(px)   가로 스크롤바 핸들 최소 너비
-    set_row_height(px)       모든 행 높이 변경
-    reset_equal()            현재 viewport 기준으로 Equal 너비 재초기화
     fit_column(logical)      지정 컬럼 Auto-fit (더블클릭과 동일)
     """
 
@@ -801,29 +797,6 @@ class EqualSpacingTable(QTableWidget):
             QScrollBar::add-line:horizontal,
             QScrollBar::sub-line:horizontal {{ width: 0; }}
         """)
-
-    # ── Public API ────────────────────────────────────
-    def set_column_spacing(self, padding_px: int):
-        """셀 좌우 padding 변경 (시각적 간격)."""
-        self._col_padding = padding_px
-        self._apply_style()
-
-    def set_hscroll_handle(self, width_px: int):
-        """가로 스크롤바 핸들 최소 너비 변경."""
-        self._hscroll_handle = width_px
-        self._apply_style()
-
-    def set_row_height(self, height_px: int):
-        """모든 행의 기본 높이 변경."""
-        self._row_height = height_px
-        self.verticalHeader().setDefaultSectionSize(height_px)
-        for r in range(self.rowCount()):
-            self.setRowHeight(r, height_px)
-
-    def reset_equal(self):
-        """현재 viewport 기준으로 Equal 너비를 재초기화합니다."""
-        self._redistribute()
-
 
 class Divider(QFrame):
     def __init__(self, orientation="h", parent=None):
