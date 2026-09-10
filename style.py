@@ -994,6 +994,10 @@ class Parts:
         if title:
             lbl = self.make_label(title.upper(), self.theme.TEXT_SECONDARY, 12)
             lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1px;")
+            # 이웃 카드가 더 커서 이 카드가 강제로 늘어날 때, 여분 공간이 제목
+            # 라벨까지 비례 배분되면 구분선이 아래로 밀린다. 라벨을 고정 높이로
+            # 만들어 여분 공간이 본문 콘텐츠 쪽으로만 흡수되게 한다.
+            lbl.setFixedHeight(lbl.sizeHint().height())
             outer.addWidget(lbl)
             outer.addWidget(Divider())
         return w, outer
