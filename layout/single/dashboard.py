@@ -224,6 +224,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         content, widgets = _build_collect_settings_fields(
             self._active_blueprint_info().get("collect_settings") or DEFAULT_COLLECT_SETTINGS
         )
+        # _build_collect_settings_fields()는 다중 레이아웃의 "⚙ 수집 설정" 다이얼로그와도
+        # 공유되므로 여백은 거기서 건드리지 않고, 단일 대시보드 카드에서만 덮어쓴다.
+        content.layout().setContentsMargins(8, 6, 8, 6)
         c1.addWidget(content)
 
         self.delay_spin       = widgets["delay_spin"]
@@ -243,7 +246,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 customized_settings.get_render_safety_limits(),
             )
 
-        c1w.setFixedWidth(320)
+        # 카드 폭을 매직넘버로 고정하지 않고, 어떤 폰트/환경에서도 라벨이 잘리지 않도록
+        # content의 실제 sizeHint(현재 패딩 포함)에 카드 테두리 여백을 더해 계산한다.
+        margins = c1.contentsMargins()
+        c1w.setFixedWidth(content.sizeHint().width() + margins.left() + margins.right())
         cfg.addWidget(c1w, 1)
 
     # 단계 사이 (선)
