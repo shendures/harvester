@@ -155,7 +155,7 @@ class GroupedBarChart(QWidget):
             p.setPen(QColor(TEXT_SECONDARY))
             p.setFont(QFont("Consolas", 8))
             p.drawText(int(lx) + 12, 2, 60, 12, Qt.AlignmentFlag.AlignVCenter, str(label))
-            lx += 12 + 8 + len(label) * 7
+            lx += 12 + 8 + len(label) * 7 + 6
 
         # 격자선
         p.setPen(QPen(QColor(BORDER), 1, Qt.PenStyle.DotLine))
