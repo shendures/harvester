@@ -306,7 +306,8 @@ class MainWindowTriggersSingle:
         self.status_level.setStyleSheet(
             f"color:{color}; font-size:11px; font-weight:bold;"
         )
-        self.status_msg.setText(message)
+        last_line = message.splitlines()[-1] if message else message
+        self.status_msg.setText(last_line)
         self.status_msg.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px;")
 
     # ── 전체 로그 다이얼로그 ─────────────────────────
