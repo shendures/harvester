@@ -7,11 +7,11 @@ from PyQt6.QtWidgets import (
     QFrame, QCheckBox, QLineEdit,
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
-    QSplitter, QSplitterHandle,
+    QSplitter, QSplitterHandle, QProxyStyle,
 )
 
 from PyQt6.QtCore import ( Qt, QTimer, QPoint, QSize, QByteArray )
-from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter )
+from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
 from PyQt6.QtSvg import QSvgRenderer
 
 import utility
@@ -102,7 +102,6 @@ class THEME:
             border: 1px solid {self.BORDER_LIGHT}; border-radius: 4px;
             padding: 3px 6px; font-size: 12px;
         }}
-        {self.SPINBOX_ARROW_QSS}
         QCheckBox {{ color: {self.TEXT_SECONDARY}; spacing: 6px; }}
         QCheckBox::indicator {{
             width: 14px; height: 14px; border-radius: 3px;
@@ -128,32 +127,20 @@ class THEME:
 
     @property
     def SPINBOX_ARROW_QSS(self) -> str:
-        """QSpinBox/QDoubleSpinBox 위·아래 화살표를 CSS 삼각형(테두리 기법)으로 그린다.
-        trigger/scheduler.py의 QDateEdit::down-arrow와 동일한 image:none + border
-        삼각형 기법이며, 활성 상태는 흰색, 비활성(:disabled) 상태는 TEXT_MUTED로
-        갈라 비활성 여부를 시각적으로 구분한다. bare QWidget 선택자로 감싼 카드
-        컨테이너(PROXY_CARD_ENABLED_QSS/PROXY_CARD_DISABLED_QSS/card_widget)는
-        로컬 스타일시트에 화살표 서브컨트롤 규칙이 없으면 화살표가 사라지는 Qt QSS
-        함정이 있어, 이 스니펫을 그대로 재사용해 전역과 카드 3곳 모두 동일하게
-        적용한다."""
+        """화살표 모양·색상 자체는 SpinArrowProxyStyle이 QPainter로 직접 그린다
+        (QSS의 border 기반 삼각형 기법은 이 Qt 버전에서 대각선 모서리를 깎지
+        않고 사각형을 그대로 칠해버려 실제 삼각형이 나오지 않음을 확인했다).
+        이 프로퍼티는 크기만 선언해 서브컨트롤 존재를 "복원"하는 역할만 한다 —
+        bare QWidget 선택자로 감싼 카드 컨테이너(PROXY_CARD_ENABLED_QSS/
+        PROXY_CARD_DISABLED_QSS/card_widget)는 화살표 서브컨트롤에 아무 규칙도
+        없으면 QStyleSheetStyle이 그 서브컨트롤을 아예 그리지 않는 Qt QSS
+        함정이 있어, 크기 선언이 있어야 SpinArrowProxyStyle로 그리기가 위임된다."""
         return f"""
         QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-            image: none; width: 0; height: 0;
-            border-left: 3px solid transparent;
-            border-right: 3px solid transparent;
-            border-bottom: 4px solid {self.WHITE};
+            width: 8px; height: 8px;
         }}
         QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-            image: none; width: 0; height: 0;
-            border-left: 3px solid transparent;
-            border-right: 3px solid transparent;
-            border-top: 4px solid {self.WHITE};
-        }}
-        QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled {{
-            border-bottom: 4px solid {self.TEXT_MUTED};
-        }}
-        QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
-            border-top: 4px solid {self.TEXT_MUTED};
+            width: 8px; height: 8px;
         }}
         """
 
@@ -224,11 +211,6 @@ class THEME:
                 color: {self.TEXT_MUTED};
                 border: 1px solid {self.BORDER};
                 border-radius: 4px;
-            }}
-            QSpinBox::up-button, QSpinBox::down-button,
-            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-                background: {self.BG_HOVER};
-                border: none;
             }}
             {self.SPINBOX_ARROW_QSS}
             QPushButton {{
@@ -311,6 +293,56 @@ class THEME:
         palette.setColor(QPalette.ColorRole.Highlight, QColor(self.ACCENT))
         palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
         app.setPalette(palette)
+
+
+class SpinArrowProxyStyle(QProxyStyle):
+    """QSpinBox/QDoubleSpinBox 위·아래 화살표를 실제 삼각형으로 그린다.
+    QSS의 border 기반 삼각형 기법(border-left/right:transparent + border-top/bottom
+    solid + width:0;height:0)은 이 Qt 버전에서 모서리를 대각선으로 깎지 않고
+    사각형을 그대로 칠해버려(스크린샷으로 실측 확인) 원하는 모양이 나오지 않는다
+    — PE_IndicatorSpinUp/Down 프리미티브를 직접 그려 우회한다. main.py에서
+    app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))로
+    등록해 사용한다."""
+
+    _HALF_BASE = 4
+    _HALF_HEIGHT = 2
+
+    def __init__(self, base_style, theme):
+        super().__init__(base_style)
+        self._theme = theme
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element in (
+            QStyle.PrimitiveElement.PE_IndicatorSpinUp,
+            QStyle.PrimitiveElement.PE_IndicatorSpinDown,
+        ):
+            self._draw_spin_arrow(element, option, painter)
+            return
+        super().drawPrimitive(element, option, painter, widget)
+
+    def _draw_spin_arrow(self, element, option, painter) -> None:
+        is_enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
+        color = QColor(self._theme.WHITE if is_enabled else self._theme.TEXT_MUTED)
+        cx = option.rect.center().x()
+        cy = option.rect.center().y()
+        if element == QStyle.PrimitiveElement.PE_IndicatorSpinUp:
+            points = [
+                QPoint(cx - self._HALF_BASE, cy + self._HALF_HEIGHT),
+                QPoint(cx + self._HALF_BASE, cy + self._HALF_HEIGHT),
+                QPoint(cx, cy - self._HALF_HEIGHT),
+            ]
+        else:
+            points = [
+                QPoint(cx - self._HALF_BASE, cy - self._HALF_HEIGHT),
+                QPoint(cx + self._HALF_BASE, cy - self._HALF_HEIGHT),
+                QPoint(cx, cy + self._HALF_HEIGHT),
+            ]
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawPolygon(QPolygon(points))
+        painter.restore()
 
 
 def _load_svg_icon(name: str, color: str, stroke_width: str, size: int) -> QIcon:

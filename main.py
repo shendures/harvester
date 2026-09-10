@@ -7,10 +7,11 @@ import sys
 import ctypes
 import multiprocessing
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QStyleFactory
 from PyQt6.QtGui import QIcon
 from layout import MainWindowSingle, theme
 from conf import BlueprintStorage, DataStore
+from style import SpinArrowProxyStyle
 import utility
 
 # Windows 작업 표시줄 아이콘 해결을 위한 코드
@@ -29,8 +30,10 @@ def main():
     # 초소형 QPushButton 등에서 QSS의 background-color를 온전히 반영하지 않는
     # 경우가 있다 — 이 앱은 GLOBAL_QSS로 위젯을 전면 다크 테마 재스타일링하므로
     # 네이티브 룩에 의존할 이유가 없어, 플랫폼 무관하게 QSS를 그대로 그리는
-    # Fusion 스타일을 고정한다(스타일시트 적용보다 먼저 호출).
-    app.setStyle("Fusion")
+    # Fusion 스타일을 고정한다(스타일시트 적용보다 먼저 호출). SpinArrowProxyStyle로
+    # 감싸 스핀박스 화살표만 흰색/회색 삼각형으로 직접 그린다(QSS의 border 기반
+    # 삼각형 기법으로는 진짜 삼각형이 그려지지 않아 우회).
+    app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))
     theme.set_pallete(app)
     # 창/작업 표시줄 아이콘 — 미지정 시 PyInstaller --icon(exe 파일 아이콘)과 무관하게
     # 실행 중에는 기본 아이콘으로 표시됨(트레이 아이콘은 TrayManager가 별도로 설정 중)
