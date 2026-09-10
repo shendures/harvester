@@ -38,6 +38,7 @@ class THEME:
         self.RED = "#f87171"
         self.BLUE = "#60a5fa"
         self.PURPLE = "#a78bfa"
+        self.WHITE = "#ffffff"
 
     @property
     def GLOBAL_QSS(self) -> str:
@@ -101,6 +102,7 @@ class THEME:
             border: 1px solid {self.BORDER_LIGHT}; border-radius: 4px;
             padding: 3px 6px; font-size: 12px;
         }}
+        {self.SPINBOX_ARROW_QSS}
         QCheckBox {{ color: {self.TEXT_SECONDARY}; spacing: 6px; }}
         QCheckBox::indicator {{
             width: 14px; height: 14px; border-radius: 3px;
@@ -121,6 +123,37 @@ class THEME:
         QSplitter::handle:vertical {{
             background: transparent;
             border-top: 1px solid {self.BORDER_LIGHT};
+        }}
+        """
+
+    @property
+    def SPINBOX_ARROW_QSS(self) -> str:
+        """QSpinBox/QDoubleSpinBox 위·아래 화살표를 CSS 삼각형(테두리 기법)으로 그린다.
+        trigger/scheduler.py의 QDateEdit::down-arrow와 동일한 image:none + border
+        삼각형 기법이며, 활성 상태는 흰색, 비활성(:disabled) 상태는 TEXT_MUTED로
+        갈라 비활성 여부를 시각적으로 구분한다. bare QWidget 선택자로 감싼 카드
+        컨테이너(PROXY_CARD_ENABLED_QSS/PROXY_CARD_DISABLED_QSS/card_widget)는
+        로컬 스타일시트에 화살표 서브컨트롤 규칙이 없으면 화살표가 사라지는 Qt QSS
+        함정이 있어, 이 스니펫을 그대로 재사용해 전역과 카드 3곳 모두 동일하게
+        적용한다."""
+        return f"""
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            image: none; width: 0; height: 0;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-bottom: 4px solid {self.WHITE};
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            image: none; width: 0; height: 0;
+            border-left: 3px solid transparent;
+            border-right: 3px solid transparent;
+            border-top: 4px solid {self.WHITE};
+        }}
+        QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled {{
+            border-bottom: 4px solid {self.TEXT_MUTED};
+        }}
+        QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
+            border-top: 4px solid {self.TEXT_MUTED};
         }}
         """
 
@@ -149,15 +182,7 @@ class THEME:
                 border: 1px solid {self.BORDER};
                 border-radius: 8px;
             }}
-            /* 바레 QWidget 선택자가 서브클래스인 QSpinBox까지 스타일링 모드로
-               전환시켜, 화살표 서브컨트롤 크기를 명시하지 않으면 스핀 화살표가
-               그려지지 않는다(Qt QSS의 흔한 함정) — 크기만 지정해 복원. */
-            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-                width: 7px; height: 7px;
-            }}
-            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-                width: 7px; height: 7px;
-            }}
+            {self.SPINBOX_ARROW_QSS}
         """
 
     @property
@@ -205,14 +230,7 @@ class THEME:
                 background: {self.BG_HOVER};
                 border: none;
             }}
-            /* up/down-button만 스타일링하고 화살표 서브컨트롤을 정의하지 않으면
-               화살표가 안 그려진다(Qt QSS의 흔한 함정) — 크기만 지정해 복원. */
-            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-                width: 7px; height: 7px;
-            }}
-            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-                width: 7px; height: 7px;
-            }}
+            {self.SPINBOX_ARROW_QSS}
             QPushButton {{
                 background: {self.BG_HOVER};
                 color: {self.TEXT_MUTED};
@@ -936,15 +954,7 @@ class Parts:
                 border:1px solid {self.theme.BORDER};
                 border-radius:8px;
             }}
-            /* 바레 QWidget 선택자가 서브클래스인 QSpinBox까지 스타일링 모드로
-               전환시켜, 화살표 서브컨트롤 크기를 명시하지 않으면 카드 안
-               스핀박스의 화살표가 그려지지 않는다(Qt QSS의 흔한 함정). */
-            QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-                width: 7px; height: 7px;
-            }}
-            QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-                width: 7px; height: 7px;
-            }}
+            {self.theme.SPINBOX_ARROW_QSS}
         """)
         outer = QVBoxLayout(w)
         outer.setContentsMargins(14, 12, 14, 12)
