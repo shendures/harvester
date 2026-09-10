@@ -9,7 +9,7 @@ from conf import BlueprintStorage
 
 from .common import (
     store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages,
-    _after_delay_unless_cancelled,
+    _after_delay_unless_cancelled, _get_log_manager,
 )
 
 
@@ -153,9 +153,10 @@ class GlobalToolbarTriggers:
                 QPushButton:hover{{background:{ACCENT_HOVER};}}""")
 
     def _log(self, level: str, message: str) -> None:
-        """log_manager가 주입된 경우에만 로그를 출력합니다."""
-        if self.log_manager is not None:
-            self.log_manager.append_log(level, message)
+        """log_manager가 준비된 경우에만 로그를 출력합니다."""
+        lm = _get_log_manager(self)
+        if lm is not None:
+            lm.append_log(level, message)
 
     def _main_window(self):
         """부모 위젯을 순회하여 MainWindowSingle 인스턴스를 반환합니다. 없으면 None."""
@@ -178,7 +179,3 @@ class GlobalToolbarTriggers:
             self.session_page = session_page
         if auth_page    is not None:
             self.auth_page    = auth_page
-
-    def set_log_manager(self, log_manager) -> None:
-        """MainWindowSingle 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
-        self.log_manager = log_manager

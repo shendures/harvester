@@ -60,6 +60,25 @@ def _next_available_name(base_name: str, suffix_fmt: str, exists) -> str:
         count += 1
 
 
+def _apply_table_search_filter(table, search_box, count_lbl) -> None:
+    """search_box의 키워드와 table.matches_column_filters(컬럼 고유값 필터)를 AND로
+    결합해 각 행의 표시 여부를 정하고, 보이는 행 수를 count_lbl에 반영한다.
+    수집 결과/정제 결과/비교 탭 검색 필터가 동일한 패턴을 공유한다."""
+    keyword = search_box.text().lower().strip()
+    visible = 0
+    for r in range(table.rowCount()):
+        col_ok = table.matches_column_filters(r)
+        kw_ok = not keyword or any(
+            table.item(r, c) and keyword in table.item(r, c).text().lower()
+            for c in range(table.columnCount())
+        )
+        show = col_ok and kw_ok
+        table.setRowHidden(r, not show)
+        if show:
+            visible += 1
+    count_lbl.setText(f"{visible} rows")
+
+
 class MonitorPageTriggers:
     """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
 
@@ -143,67 +162,22 @@ class MonitorPageTriggers:
         self.sum_warn.update_value(dup_rows)
 
     def _apply_filter(self):
-        keyword = self.search_box.text().lower().strip()
-        if not keyword:
-            for r in range(self.result_table.rowCount()):
-                self.result_table.setRowHidden(r, False)
-            self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
-            return
-        visible = 0
-        for r in range(self.result_table.rowCount()):
-            matched = any(
-                self.result_table.item(r, c) and
-                keyword in self.result_table.item(r, c).text().lower()
-                for c in range(self.result_table.columnCount())
-            )
-            self.result_table.setRowHidden(r, not matched)
-            if matched:
-                visible += 1
-        self.count_lbl.setText(f"{visible} rows")
+        """수집 결과 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
+        _apply_table_search_filter(self.result_table, self.search_box, self.count_lbl)
 
     def _apply_refined_filter(self):
-        """정제 결과 탭 검색 필터"""
-        keyword = self.refined_search_box.text().lower().strip()
-        if not keyword:
-            for r in range(self.refined_table.rowCount()):
-                self.refined_table.setRowHidden(r, False)
-            self.refined_count_lbl.setText(f"{self.refined_table.rowCount()} rows")
-            return
-        visible = 0
-        for r in range(self.refined_table.rowCount()):
-            matched = any(
-                self.refined_table.item(r, c) and
-                keyword in self.refined_table.item(r, c).text().lower()
-                for c in range(self.refined_table.columnCount())
-            )
-            self.refined_table.setRowHidden(r, not matched)
-            if matched:
-                visible += 1
-        self.refined_count_lbl.setText(f"{visible} rows")
+        """정제 결과 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
+        _apply_table_search_filter(
+            self.refined_table, self.refined_search_box, self.refined_count_lbl
+        )
 
     def _apply_compare_filter(self):
-        """Before/After 비교 탭 검색 필터"""
-        keyword = self.cmp_search_box.text().lower().strip()
+        """Before/After 비교 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
         for table, count_lbl in (
             (self.cmp_raw_table, self.cmp_raw_count),
             (self.cmp_ref_table, self.cmp_ref_count),
         ):
-            if not keyword:
-                for r in range(table.rowCount()):
-                    table.setRowHidden(r, False)
-                count_lbl.setText(f"{table.rowCount()} rows")
-                continue
-            visible = 0
-            for r in range(table.rowCount()):
-                matched = any(
-                    table.item(r, c) and
-                    keyword in table.item(r, c).text().lower()
-                    for c in range(table.columnCount())
-                )
-                table.setRowHidden(r, not matched)
-                if matched:
-                    visible += 1
-            count_lbl.setText(f"{visible} rows")
+            _apply_table_search_filter(table, self.cmp_search_box, count_lbl)
 
     # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
     def _on_monitor_tab_changed(self, index: int):
@@ -670,8 +644,9 @@ class MonitorPageTriggers:
         self.cmp_rate.update_value(rate)
 
     # ── 비교 탭 좌우 테이블 스크롤·정렬 동기화 ──────────────────────────
-    def _sync_cmp_vscroll(self, source, target, value):
-        """비교 탭 좌우 테이블의 세로 스크롤 위치를 상호 동기화합니다."""
+    def _sync_cmp_vscroll(self, target, value):
+        """비교 탭 좌우 테이블의 세로 스크롤 위치를 동기화합니다 (이미 같은 값이면
+        손대지 않아 피드백 루프를 방지)."""
         if target.verticalScrollBar().value() == value:
             return
         target.verticalScrollBar().setValue(value)
@@ -685,13 +660,12 @@ class MonitorPageTriggers:
         무한 루프 없이 안전하다."""
         for table in tables:
             others = [t for t in tables if t is not table]
-            # src/targets를 기본 인자로 묶어야 한다 — 그냥 클로저로 table/others를
-            # 참조하면 파이썬의 late binding 때문에 모든 람다가 루프의 마지막
-            # table 값을 공유해버린다(지금은 _sync_cmp_vscroll이 source 인자를
-            # 안 쓰고 있어 겉으로 드러나지 않을 뿐, 잠재 버그이므로 바로잡는다).
+            # targets를 기본 인자로 묶어야 한다 — 클로저로 그냥 참조하면 파이썬의
+            # late binding 때문에 모든 람다가 루프의 마지막 table의 others를
+            # 공유해버린다.
             table.verticalScrollBar().valueChanged.connect(
-                lambda value, src=table, targets=others: [
-                    self._sync_cmp_vscroll(src, t, value) for t in targets
+                lambda value, targets=others: [
+                    self._sync_cmp_vscroll(t, value) for t in targets
                 ]
             )
 

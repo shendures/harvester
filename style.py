@@ -8,9 +8,10 @@ from PyQt6.QtWidgets import (
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
     QSplitter, QSplitterHandle, QProxyStyle,
+    QMenu, QListWidget, QListWidgetItem, QWidgetAction,
 )
 
-from PyQt6.QtCore import ( Qt, QTimer, QPoint, QSize, QByteArray )
+from PyQt6.QtCore import ( Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal )
 from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -103,13 +104,7 @@ class THEME:
             padding: 3px 6px; font-size: 12px;
         }}
         QCheckBox {{ color: {self.TEXT_SECONDARY}; spacing: 6px; }}
-        QCheckBox::indicator {{
-            width: 14px; height: 14px; border-radius: 3px;
-            border: 1px solid {self.BORDER_LIGHT}; background: {self.BG_PRIMARY};
-        }}
-        QCheckBox::indicator:checked {{
-            background: {self.ACCENT}; border-color: {self.ACCENT};
-        }}
+        {self._indicator_qss("QCheckBox::indicator")}
         QSplitter::handle {{
             background: {self.BORDER_LIGHT};
         }}
@@ -144,6 +139,22 @@ class THEME:
         }}
         """
 
+    def _indicator_qss(self, selector: str) -> str:
+        """14x14 체크박스형 인디케이터(둥근 사각형, 체크 시 ACCENT로 채움) 공유 조각.
+        GLOBAL_QSS의 QCheckBox::indicator와 COLUMN_FILTER_MENU_QSS의
+        QListWidget::indicator가 값이 완전히 동일해 이 헬퍼로 공유한다.
+        (PROXY_CARD_DISABLED_QSS/PROXY_TABLE_INDICATOR_QSS는 색상 구성이
+        달라 별개로 유지한다.)"""
+        return f"""
+        {selector} {{
+            width: 14px; height: 14px; border-radius: 3px;
+            border: 1px solid {self.BORDER_LIGHT}; background: {self.BG_PRIMARY};
+        }}
+        {selector}:checked {{
+            background: {self.ACCENT}; border-color: {self.ACCENT};
+        }}
+        """
+
     @property
     def CB_STYLE(self):
         return f"""
@@ -162,7 +173,8 @@ class THEME:
     # ── SessionSettingsPage 전용 QSS 프로퍼티 ────────────
     @property
     def PROXY_CARD_ENABLED_QSS(self) -> str:
-        """프록시 카드 — 활성 상태 스타일 (기본 카드 외형)"""
+        """프록시 카드 — 활성 상태 스타일 (기본 카드 외형). Parts.card_widget()의
+        범용 카드 템플릿으로도 재사용된다(색상·모양이 동일한 어두운 테두리 카드)."""
         return f"""
             QWidget {{
                 background: {self.BG_SECONDARY};
@@ -280,6 +292,24 @@ class THEME:
             QMenu::item:selected {{ background:{self.BG_HOVER}; color:{self.ACCENT_LIGHT}; }}
         """
 
+    @property
+    def COLUMN_FILTER_MENU_QSS(self) -> str:
+        """테이블 헤더 고유값 필터 팝업(EqualSpacingTable) — QMenu에 담긴
+        검색창/전체선택/체크리스트 위젯 스타일"""
+        return f"""
+            QMenu {{
+                background:{self.BG_SECONDARY}; border:1px solid {self.BORDER};
+                border-radius:6px;
+            }}
+            QListWidget {{
+                background:{self.BG_PRIMARY}; color:{self.TEXT_PRIMARY};
+                border:1px solid {self.BORDER}; border-radius:4px; outline:none;
+            }}
+            QListWidget::item {{ padding:4px 6px; }}
+            QListWidget::item:hover {{ background:{self.BG_HOVER}; }}
+            {self._indicator_qss("QListWidget::indicator")}
+        """
+
     def set_pallete(self, app):
         app.setStyleSheet(self.GLOBAL_QSS)
         palette = QPalette()
@@ -291,7 +321,7 @@ class THEME:
         palette.setColor(QPalette.ColorRole.Button, QColor(self.BG_SECONDARY))
         palette.setColor(QPalette.ColorRole.ButtonText, QColor(self.TEXT_PRIMARY))
         palette.setColor(QPalette.ColorRole.Highlight, QColor(self.ACCENT))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(self.WHITE))
         app.setPalette(palette)
 
 
@@ -405,7 +435,7 @@ class TagButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(f"""
             QPushButton {{
-                background:#1a1040; color:#a78bfa;
+                background:#1a1040; color:{self.theme.PURPLE};
                 border:1px solid #312e81; border-radius:4px;
                 padding:3px 10px; font-size:11px;
             }}
@@ -458,6 +488,117 @@ class NoFocusDelegate(QStyledItemDelegate):
         super().paint(painter, option, index)
 
 
+def _filter_list_items(list_widget: QListWidget, keyword: str) -> None:
+    """검색어와 텍스트가 일치하지 않는 체크리스트 항목을 숨긴다(컬럼 필터
+    팝업의 검색창 전용)."""
+    keyword = keyword.lower()
+    for i in range(list_widget.count()):
+        item = list_widget.item(i)
+        item.setHidden(keyword not in item.text().lower())
+
+
+def _set_all_checked(list_widget: QListWidget, checked: bool) -> None:
+    """컬럼 필터 팝업의 "전체 선택" 체크박스에 연동 — 목록 전체의 체크
+    상태를 한 번에 맞춘다."""
+    state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+    for i in range(list_widget.count()):
+        list_widget.item(i).setCheckState(state)
+
+
+def _build_column_filter_widget(values: list, allowed: set):
+    """컬럼 필터 팝업 내부 위젯(검색창 + 전체선택 + 고유값 체크리스트 +
+    확인/초기화 버튼)을 만들어 (container, list_widget, reset_btn, ok_btn)을
+    반환한다."""
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(8, 8, 8, 8)
+    layout.setSpacing(6)
+
+    search_box = QLineEdit()
+    search_box.setPlaceholderText("값 검색")
+    layout.addWidget(search_box)
+
+    select_all_cb = QCheckBox("전체 선택")
+    select_all_cb.setChecked(len(allowed) == len(values))
+    layout.addWidget(select_all_cb)
+
+    list_widget = QListWidget()
+    list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+    list_widget.setMaximumHeight(220)
+    for value in values:
+        item = QListWidgetItem(value or "(비어 있음)")
+        item.setData(Qt.ItemDataRole.UserRole, value)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if value in allowed else Qt.CheckState.Unchecked)
+        list_widget.addItem(item)
+    layout.addWidget(list_widget)
+
+    search_box.textChanged.connect(lambda text: _filter_list_items(list_widget, text))
+    select_all_cb.toggled.connect(lambda checked: _set_all_checked(list_widget, checked))
+
+    parts = Parts()
+    btn_row = QHBoxLayout()
+    reset_btn = parts.outline_btn("초기화")
+    ok_btn = parts.action_btn("확인")
+    btn_row.addWidget(reset_btn)
+    btn_row.addStretch()
+    btn_row.addWidget(ok_btn)
+    layout.addLayout(btn_row)
+
+    return container, list_widget, reset_btn, ok_btn
+
+
+# ──────────────────────────────────────────────────────
+#  _FilterHeaderView
+#  — 컬럼 헤더 우측의 작은 깔때기 아이콘으로 고유값 필터 팝업을 연다
+# ──────────────────────────────────────────────────────
+class _FilterHeaderView(QHeaderView):
+    """EqualSpacingTable 전용 헤더 — 섹션 우측에 필터(funnel) 아이콘을 그리고,
+    그 아이콘 클릭만 filterIconClicked로 가로챈다. 아이콘 밖을 클릭하면 그대로
+    super()에 위임되어 기존 정렬/드래그 리사이즈 동작이 보존된다(정렬은 이미
+    EqualSpacingTable이 setSortingEnabled(True)로 헤더 텍스트 클릭에 연결해
+    두었으므로, 필터를 같은 클릭에 얹으면 충돌한다 — 그래서 아이콘을 분리)."""
+
+    ICON_SIZE = 12
+    ICON_MARGIN = 6  # 아이콘과 섹션 우측 경계 사이 여백(px)
+
+    filterIconClicked = pyqtSignal(int)
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._filtered_columns: set = set()
+        theme = THEME()
+        self._icon_inactive = _load_svg_icon("funnel", theme.TEXT_MUTED, "2", self.ICON_SIZE)
+        self._icon_active = _load_svg_icon("funnel", theme.ACCENT_LIGHT, "2", self.ICON_SIZE)
+
+    def set_column_filtered(self, logical: int, filtered: bool) -> None:
+        if filtered:
+            self._filtered_columns.add(logical)
+        else:
+            self._filtered_columns.discard(logical)
+        self.updateSection(logical)
+
+    def _icon_rect(self, section_rect: QRect) -> QRect:
+        y = section_rect.top() + (section_rect.height() - self.ICON_SIZE) // 2
+        x = section_rect.right() - self.ICON_MARGIN - self.ICON_SIZE
+        return QRect(x, y, self.ICON_SIZE, self.ICON_SIZE)
+
+    def paintSection(self, painter, rect, logical_index) -> None:
+        super().paintSection(painter, rect, logical_index)
+        icon = self._icon_active if logical_index in self._filtered_columns else self._icon_inactive
+        icon.paint(painter, self._icon_rect(rect))
+
+    def mousePressEvent(self, event) -> None:
+        logical = self.logicalIndexAt(event.pos())
+        if logical >= 0:
+            section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
+            if self._icon_rect(section_rect).contains(event.pos()):
+                self.filterIconClicked.emit(logical)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+
 # ──────────────────────────────────────────────────────
 #  EqualSpacingTable
 #  — Initial Equal distribution · Free resize + H-scroll · Double-click auto-fit
@@ -493,11 +634,22 @@ class EqualSpacingTable(QTableWidget):
 
     Public API
     ──────────
-    fit_column(logical)      지정 컬럼 Auto-fit (더블클릭과 동일)
+    fit_column(logical)          지정 컬럼 Auto-fit (더블클릭과 동일)
+    matches_column_filters(row)  해당 행이 현재 활성 컬럼 필터를 모두 만족하는지
+    clear_all_filters()          모든 컬럼 필터 초기화
+
+    컬럼 헤더 우측의 깔때기 아이콘을 클릭하면 해당 컬럼의 고유값 체크리스트로
+    행을 필터링하는 팝업이 열린다(엑셀 AutoFilter와 동일한 동작). 검색창이나
+    별도 필터를 가진 페이지(예: trigger/monitor.py)는 columnFiltersChanged
+    시그널을 구독해 자신의 필터와 AND로 결합하면 된다 — 구독자가 없어도 이
+    테이블 자체가 _apply_own_row_visibility()로 필터를 적용하므로 별도 연동
+    없이 모든 테이블에서 바로 동작한다.
     """
 
     MIN_COL_W = 30  # 컬럼 최소 너비의 절대 하한(px) — 헤더가 아주 짧아도 이 밑으로는 안 내려감
     H_PADDING = 20  # auto-fit/최소 폭 계산 시 텍스트 양쪽 여유 패딩 (px, 한쪽 10)
+
+    columnFiltersChanged = pyqtSignal()
 
     def __init__(
             self,
@@ -525,6 +677,10 @@ class EqualSpacingTable(QTableWidget):
         # 매번 전체 스캔하지 않도록.
         self._min_widths_dirty = True
 
+        # 컬럼 인덱스 → 허용된 값 집합(고유값 필터). 컬럼이 dict에 없으면
+        # 필터 없음(전체 허용).
+        self._column_filters: dict = {}
+
         self.theme = THEME()
 
         self._init_table()
@@ -532,6 +688,8 @@ class EqualSpacingTable(QTableWidget):
 
     # ── 초기 설정 ─────────────────────────────────────
     def _init_table(self):
+        self.setHorizontalHeader(_FilterHeaderView(Qt.Orientation.Horizontal, self))
+
         self.verticalHeader().setVisible(False)
         self.setWordWrap(False)
         self.setShowGrid(False)
@@ -555,6 +713,13 @@ class EqualSpacingTable(QTableWidget):
         # 헤더 구분선 더블클릭 → Auto-fit
         hdr.sectionHandleDoubleClicked.connect(self.fit_column)
 
+        # 필터 아이콘 클릭 → 고유값 필터 팝업
+        hdr.filterIconClicked.connect(self._show_column_filter_menu)
+
+        # 정렬 직후 행 내용이 섞이므로, 숨김 상태가 실제 셀 값과 어긋나지
+        # 않도록 필터를 다시 적용한다.
+        hdr.sortIndicatorChanged.connect(self._on_sort_changed)
+
     # ── viewport 총 너비 계산 ─────────────────────────
     def _viewport_total(self) -> int:
         vscroll = self.verticalScrollBar()
@@ -565,6 +730,9 @@ class EqualSpacingTable(QTableWidget):
     def setHorizontalHeaderLabels(self, labels) -> None:
         super().setHorizontalHeaderLabels(labels)
         self._min_widths_dirty = True
+        # 컬럼 구성 자체가 바뀌면(예: 블루프린트 전환) 기존 컬럼 인덱스 기준
+        # 필터가 무의미해지므로 초기화한다.
+        self.clear_all_filters()
 
     def setItem(self, row, column, item) -> None:
         super().setItem(row, column, item)
@@ -785,6 +953,83 @@ class EqualSpacingTable(QTableWidget):
         self._is_equal_state = False
         self._rebalance_columns(logical, target_w)
 
+    # ── 컬럼 고유값 필터 (엑셀 AutoFilter) ────────────
+    def matches_column_filters(self, row: int) -> bool:
+        """row가 현재 활성화된 모든 컬럼 필터를 만족하는지 여부. 검색창 등
+        자체 필터를 가진 페이지가 자신의 조건과 AND로 결합할 때 사용한다."""
+        for col, allowed in self._column_filters.items():
+            item = self.item(row, col)
+            if (item.text() if item else "") not in allowed:
+                return False
+        return True
+
+    def _apply_own_row_visibility(self) -> None:
+        """컬럼 필터만으로 행 표시 여부를 결정한다 — 검색창이 없는 테이블은
+        이 메서드만으로 완전히 동작한다."""
+        for r in range(self.rowCount()):
+            self.setRowHidden(r, not self.matches_column_filters(r))
+
+    def _unique_values_for_column(self, col: int) -> list:
+        values = {
+            (self.item(r, col).text() if self.item(r, col) else "")
+            for r in range(self.rowCount())
+        }
+        return sorted(values)
+
+    def _on_column_filters_changed(self, logical: int) -> None:
+        self._apply_own_row_visibility()
+        self.horizontalHeader().set_column_filtered(logical, logical in self._column_filters)
+        self.columnFiltersChanged.emit()
+
+    def _on_sort_changed(self, *_args) -> None:
+        self._apply_own_row_visibility()
+        self.columnFiltersChanged.emit()
+
+    def clear_all_filters(self) -> None:
+        """모든 컬럼 필터를 초기화한다(컬럼 구성이 바뀔 때 자동 호출됨)."""
+        self._column_filters.clear()
+        hdr = self.horizontalHeader()
+        for c in range(self.columnCount()):
+            hdr.set_column_filtered(c, False)
+        self._apply_own_row_visibility()
+
+    def _show_column_filter_menu(self, logical: int) -> None:
+        """헤더 필터 아이콘 클릭 시 고유값 체크리스트 팝업을 연다."""
+        values = self._unique_values_for_column(logical)
+        allowed = self._column_filters.get(logical, set(values))
+        container, list_widget, reset_btn, ok_btn = _build_column_filter_widget(values, allowed)
+
+        menu = QMenu(self)
+        menu.setStyleSheet(self.theme.COLUMN_FILTER_MENU_QSS)
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+
+        def apply_and_close():
+            checked = {
+                list_widget.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(list_widget.count())
+                if list_widget.item(i).checkState() == Qt.CheckState.Checked
+            }
+            if checked == set(values):
+                self._column_filters.pop(logical, None)
+            else:
+                self._column_filters[logical] = checked
+            self._on_column_filters_changed(logical)
+            menu.close()
+
+        def reset_and_close():
+            self._column_filters.pop(logical, None)
+            self._on_column_filters_changed(logical)
+            menu.close()
+
+        ok_btn.clicked.connect(apply_and_close)
+        reset_btn.clicked.connect(reset_and_close)
+
+        hdr = self.horizontalHeader()
+        pos = hdr.mapToGlobal(QPoint(hdr.sectionViewportPosition(logical), hdr.height()))
+        menu.exec(pos)
+
     # ── Qt 이벤트 오버라이드 ──────────────────────────
     def resizeEvent(self, event):
         """
@@ -980,14 +1225,7 @@ class Parts:
     def card_widget(self, title="", parent=None):
         """어두운 테두리 카드. (widget, inner_layout) 반환"""
         w = QWidget(parent)
-        w.setStyleSheet(f"""
-            QWidget {{
-                background:{self.theme.BG_SECONDARY};
-                border:1px solid {self.theme.BORDER};
-                border-radius:8px;
-            }}
-            {self.theme.SPINBOX_ARROW_QSS}
-        """)
+        w.setStyleSheet(self.theme.PROXY_CARD_ENABLED_QSS)
         outer = QVBoxLayout(w)
         outer.setContentsMargins(14, 12, 14, 12)
         outer.setSpacing(8)
@@ -1002,7 +1240,7 @@ class Parts:
             outer.addWidget(Divider())
         return w, outer
 
-    def action_btn(self, text, color=None, hover=None, text_color="white", parent=None):
+    def action_btn(self, text, color=None, hover=None, parent=None):
         """강조형 주요 액션 버튼 생성"""
         # 버그 수정: 기본 컬러를 인스턴스 변수에서 안전하게 바인딩
         if color is None:
@@ -1014,7 +1252,7 @@ class Parts:
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(f"""
             QPushButton {{
-                background: {color}; color: {text_color};
+                background: {color}; color: white;
                 border: none; border-radius: 6px;
                 padding: 6px 14px; font-size: 12px; font-weight: bold;
             }}

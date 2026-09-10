@@ -4,7 +4,7 @@
 # 서로를 직접 import하지 않는다(단, multi는 single을 상속 목적으로 import).
 
 from conf import DataStore
-from style import THEME, Parts, EqualSpacingTable
+from style import THEME, Parts, EqualSpacingTable, StatCard
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
@@ -73,16 +73,30 @@ def build_scroll_body(widget, spacing: int = 14) -> QVBoxLayout:
     return bl
 
 
-def make_header_table(parent, headers: list, row_height: int = 36,
-                       col_padding: int = 8, hscroll_handle: int = 50) -> EqualSpacingTable:
+def make_header_table(parent, headers: list) -> EqualSpacingTable:
     """헤더 컬럼이 고정된 EqualSpacingTable을 만든다. auth/session 페이지가 공유."""
-    t = EqualSpacingTable(
-        parent=parent, row_height=row_height,
-        col_padding=col_padding, hscroll_handle=hscroll_handle,
-    )
+    t = EqualSpacingTable(parent=parent, row_height=36, col_padding=8, hscroll_handle=50)
     t.setColumnCount(len(headers))
     t.setHorizontalHeaderLabels(headers)
     return t
+
+
+def build_stat_summary_card(parts, title: str, specs: list) -> tuple:
+    """(label, value[, color]) 튜플 리스트로 카드 안에 StatCard를 나란히 만든다.
+    (card_widget, [StatCard, ...])를 반환 — 호출부가 개별 StatCard를 self.attr에
+    대입한다. dashboard/monitor 페이지의 요약 카드 행(세션 통계, 수집 결과 요약,
+    정제 결과 요약 등)이 공유한다."""
+    card_w, card_l = parts.card_widget(title)
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    cards = []
+    for spec in specs:
+        label, value, *color = spec
+        card = StatCard(label, value, *color)
+        row.addWidget(card, 1)
+        cards.append(card)
+    card_l.addLayout(row)
+    return card_w, cards
 
 
 def row_of_seq(table, seq_no, seq_no_col: int) -> int:

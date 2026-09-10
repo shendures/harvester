@@ -12,24 +12,24 @@
 # 이 파일은 기존 `from trigger import X` 호출부(layout_single.py, layout_multi.py)가
 # 그대로 동작하도록 서브모듈의 공개 클래스만 재-export하는 facade입니다.
 
-from .log_viewer import SearchLineEdit, LogViewerDialog
+from .log_viewer import LogViewerDialog
 from .toolbar import GlobalToolbarTriggers
 from .dashboard import DashboardPageTriggers
 from .monitor import MonitorPageTriggers
 from .statistics import StatisticsPageTriggers
 from .scheduler import SchedulerPageTriggers
-from .session import ProxyHealthCheckThread, ProxyTestProgressDialog, SessionSettingsPageTriggers
+from .session import SessionSettingsPageTriggers
 from .auth import AuthManagerPageTriggers
 from .main_window import TrayManagerTriggers, MainWindowTriggersSingle, MainWindowTriggersMulti
 
 __all__ = [
-    "SearchLineEdit", "LogViewerDialog",
+    "LogViewerDialog",
     "GlobalToolbarTriggers",
     "DashboardPageTriggers",
     "MonitorPageTriggers",
     "StatisticsPageTriggers",
     "SchedulerPageTriggers",
-    "ProxyHealthCheckThread", "ProxyTestProgressDialog", "SessionSettingsPageTriggers",
+    "SessionSettingsPageTriggers",
     "AuthManagerPageTriggers",
     "TrayManagerTriggers", "MainWindowTriggersSingle", "MainWindowTriggersMulti",
 ]

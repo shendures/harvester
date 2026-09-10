@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt
 
 from style import Divider
 
-from .common import parts, BG_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, GREEN, AMBER, _get_log_manager
+from .common import parts, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER, _get_log_manager, _default_dialog_qss
 
 class AuthManagerPageTriggers:
     """AuthManagerPage의 자격증명·로그인·TLS 메서드"""
@@ -26,7 +26,7 @@ class AuthManagerPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("자격증명 추가")
         dlg.setFixedWidth(560)
-        dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
+        dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)

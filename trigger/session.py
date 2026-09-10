@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from style import Divider
 
-from .common import theme, parts, BG_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY, BORDER, _get_log_manager
+from .common import theme, parts, TEXT_PRIMARY, TEXT_SECONDARY, _get_log_manager, _default_dialog_qss
 
 # 이 파일의 소형 다이얼로그(연결 테스트 진행창 / 새 프록시 추가창)가 공유하는 폭 —
 # 둘 다 같은 "간단한 폼 다이얼로그" 형태라 서로 다른 값을 쓸 이유가 없다.
@@ -125,7 +125,7 @@ class ProxyTestProgressDialog(QDialog):
 
         self.setWindowTitle("프록시 연결 테스트")
         self.setFixedWidth(_SMALL_DIALOG_WIDTH)
-        self.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
+        self.setStyleSheet(_default_dialog_qss())
 
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 18, 22, 18)
@@ -296,7 +296,7 @@ class SessionSettingsPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("새 프록시 추가")
         dlg.setFixedWidth(_SMALL_DIALOG_WIDTH)
-        dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
+        dlg.setStyleSheet(_default_dialog_qss())
 
         root = QVBoxLayout(dlg)
         root.setContentsMargins(22, 18, 22, 18)
