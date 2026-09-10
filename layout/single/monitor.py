@@ -11,7 +11,7 @@ from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
 from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
-from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter
+from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter, Divider
 from ..common import (
     parts, build_scroll_body,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
@@ -122,7 +122,25 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl.addWidget(sum_card_w)
 
         # 실시간 수집 결과 테이블
-        tcw, tc = parts.card_widget("실시간 수집 결과 (RAW)")
+        # card_widget()은 제목 문자열만 받고 우측에 위젯을 얹는 기능이 없어(앱
+        # 전체 다수 카드가 공유하는 헬퍼라 여기서 확장하지 않음), 이 카드에서만
+        # 제목 줄을 직접 구성해 우측 최상단에 "새 창에서 보기" 버튼을 둔다.
+        tcw, tc = parts.card_widget("")
+        raw_hdr_row = QHBoxLayout()
+        raw_title_lbl = parts.make_label("실시간 수집 결과 (RAW)".upper(), TEXT_SECONDARY, 12)
+        raw_title_lbl.setStyleSheet(raw_title_lbl.styleSheet() + " letter-spacing:1px;")
+        raw_hdr_row.addWidget(raw_title_lbl)
+        raw_hdr_row.addStretch()
+        raw_popout_btn = parts.outline_btn("")
+        raw_popout_btn.setIcon(_load_svg_icon("external-link", TEXT_SECONDARY, "2", 14))
+        raw_popout_btn.setIconSize(QSize(14, 14))
+        raw_popout_btn.setFixedSize(30, 20)
+        raw_popout_btn.setToolTip("실시간 수집 결과를 새 창에서 보기")
+        raw_popout_btn.clicked.connect(self._open_raw_popup)
+        raw_hdr_row.addWidget(raw_popout_btn)
+        tc.addLayout(raw_hdr_row)
+        tc.addWidget(Divider())
+
         tbl_ctrl = QHBoxLayout()
 
         self.search_box = QLineEdit()
@@ -280,13 +298,22 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.refined_table.itemClicked.connect(self._show_refined_detail)
         self.refined_table.currentItemChanged.connect(self._on_refined_current_item_changed)
         rtc.addWidget(self.refined_table)
-        bl.addWidget(rtcw, 1)
 
         # 정제 결과 상세
         rdw, rdl = parts.card_widget("선택 항목 상세 (정제 후)")
         self.refined_detail_lbl = parts.make_label("테이블에서 행을 클릭하세요.", TEXT_MUTED, 12)
         rdl.addWidget(self.refined_detail_lbl)
-        bl.addWidget(rdw)
+
+        # 두 카드를 Splitter로 묶어 드래그로 비율 조절 가능하게 함(Raw 탭
+        # _build_raw_tab()과 동일한 패턴)
+        refined_split = CenteredHandleSplitter(Qt.Orientation.Vertical)
+        refined_split.setChildrenCollapsible(False)
+        refined_split.setHandleWidth(9)
+        refined_split.addWidget(rtcw)
+        refined_split.addWidget(rdw)
+        refined_split.setStretchFactor(0, 1)   # 정제 데이터 테이블이 기본적으로 더 넓게
+        refined_split.setStretchFactor(1, 0)
+        bl.addWidget(refined_split, 1)
 
         self.tab_widget.addTab(refined_widget, "③ 정제 결과")
 
@@ -310,9 +337,15 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl.addWidget(cmp_sum_w)
 
         # "Raw 데이터"/"정제 데이터" 카드 바로 위, 카드로 감싸지 않은 독립된
-        # 행에 "새 창에서 함께 보기" 버튼을 둔다 — 두 카드 중 어느 한쪽에
-        # 속하지 않으면서도 그 둘과 같은 영역에 있다는 인상을 주기 위함.
+        # 행에 검색창과 "새 창에서 함께 보기" 버튼을 둔다 — 두 카드 중 어느
+        # 한쪽에 속하지 않으면서도 그 둘과 같은 영역에 있다는 인상을 주기 위함.
         popout_row = QHBoxLayout()
+
+        self.cmp_search_box = QLineEdit()
+        self.cmp_search_box.setPlaceholderText("🔍 검색")
+        self.cmp_search_box.setFixedWidth(220)
+        self.cmp_search_box.textChanged.connect(self._apply_compare_filter)
+        popout_row.addWidget(self.cmp_search_box)
         popout_row.addStretch()
         cmp_popout_btn = parts.outline_btn("")
         cmp_popout_btn.setIcon(_load_svg_icon("external-link", TEXT_SECONDARY, "2", 14))
@@ -364,12 +397,17 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.tab_widget.addTab(cmp_widget, "④ Before / After 비교")
 
     @staticmethod
-    def _copy_table_contents(dest: EqualSpacingTable, source: EqualSpacingTable) -> None:
-        """source(Raw/정제 비교 테이블)의 헤더 라벨과 모든 셀 텍스트를 dest에
-        그대로 복사한다. 위젯 자체를 옮기는 게 아니라 내용만 복사하므로
-        source는 원래 자리에 그대로 남는다. NO 컬럼(0번)의 ROW_ORIGIN_ROLE도
-        함께 복사해, 팝업 테이블에서도 행 선택 동기화(_link_row_selection)가
-        같은 원본 행을 찾을 수 있게 한다."""
+    def _copy_table_contents(dest: EqualSpacingTable, source: EqualSpacingTable,
+                              copy_colors: bool = False) -> None:
+        """source(Raw/정제 비교 테이블, 실시간 RAW 테이블 등)의 헤더 라벨과
+        모든 셀 텍스트를 dest에 그대로 복사한다. 위젯 자체를 옮기는 게 아니라
+        내용만 복사하므로 source는 원래 자리에 그대로 남는다. NO 컬럼(0번)의
+        ROW_ORIGIN_ROLE도 함께 복사해, 팝업 테이블에서도 행 선택 동기화
+        (_link_row_selection)가 같은 원본 행을 찾을 수 있게 한다.
+        copy_colors=True면 셀별 전경/배경색도 그대로 복사한다 — RAW 테이블의
+        중복(빨강)/전체 null(주황) 행 배경을 팝업에서도 보존하기 위함
+        (_open_raw_popup에서 사용). 비교 탭 팝업은 색상을
+        _apply_refined_text_color가 별도로 다시 입히므로 기본값 False를 쓴다."""
         col_count = source.columnCount()
         dest.setColumnCount(col_count)
         dest.setHorizontalHeaderLabels([
@@ -383,6 +421,9 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
                 dest_item = QTableWidgetItem(src_item.text() if src_item else "")
                 if c == 0 and src_item is not None:
                     dest_item.setData(ROW_ORIGIN_ROLE, src_item.data(ROW_ORIGIN_ROLE))
+                if copy_colors and src_item is not None:
+                    dest_item.setForeground(src_item.foreground())
+                    dest_item.setBackground(src_item.background())
                 dest.setItem(r, c, dest_item)
 
     @staticmethod
@@ -463,6 +504,35 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         # 행 선택 동기화도 팝업 안의 두 테이블끼리만 묶는다(원본 탭과는 독립).
         self._link_row_selection(popup_raw_table, popup_ref_table)
+
+        dlg.show()
+
+    def _open_raw_popup(self) -> None:
+        """실시간 수집 결과(RAW) 테이블을 새 창에서 보여주는 모달리스 팝업을
+        연다. 내용은 self.result_table의 현재 스냅샷을 복사한 것이라
+        (_copy_table_contents) 원본 탭 테이블은 그대로 유지된다.
+        _open_compare_popup과 동일한 QDialog + setModal(False) 패턴을
+        재사용하되, 테이블이 하나뿐이라 QSplitter 없이 카드 하나만 담는다.
+        copy_colors=True로 복사해 중복(빨강)/전체 null(주황) 행 배경도
+        팝업에서 그대로 보이게 한다."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("실시간 수집 결과 (RAW)")
+        dlg.setModal(False)
+        dlg.resize(1000, 600)
+        dlg.setMinimumSize(500, 400)
+        dlg.setStyleSheet(_default_dialog_qss())
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(14, 14, 14, 14)
+
+        card_w, card_l = parts.card_widget("실시간 수집 결과 (RAW)")
+        popup_table = EqualSpacingTable(parent=dlg, row_height=28, col_padding=10, hscroll_handle=50)
+        popup_table.setSortingEnabled(False)
+        self._copy_table_contents(popup_table, self.result_table, copy_colors=True)
+        popup_table.setSortingEnabled(True)
+        card_l.addWidget(popup_table)
+        lay.addWidget(card_w)
 
         dlg.show()
 

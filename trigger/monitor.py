@@ -181,6 +181,30 @@ class MonitorPageTriggers:
                 visible += 1
         self.refined_count_lbl.setText(f"{visible} rows")
 
+    def _apply_compare_filter(self):
+        """Before/After 비교 탭 검색 필터"""
+        keyword = self.cmp_search_box.text().lower().strip()
+        for table, count_lbl in (
+            (self.cmp_raw_table, self.cmp_raw_count),
+            (self.cmp_ref_table, self.cmp_ref_count),
+        ):
+            if not keyword:
+                for r in range(table.rowCount()):
+                    table.setRowHidden(r, False)
+                count_lbl.setText(f"{table.rowCount()} rows")
+                continue
+            visible = 0
+            for r in range(table.rowCount()):
+                matched = any(
+                    table.item(r, c) and
+                    keyword in table.item(r, c).text().lower()
+                    for c in range(table.columnCount())
+                )
+                table.setRowHidden(r, not matched)
+                if matched:
+                    visible += 1
+            count_lbl.setText(f"{visible} rows")
+
     # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
     def _on_monitor_tab_changed(self, index: int):
         """
@@ -792,7 +816,11 @@ class MonitorPageTriggers:
             다이얼로그가 파괴될 때 함께 파괴되면 안 된다).
         """
         dlg = QDialog(self)
-        title = "수집 설정" if collect is not None else "추출 설정"
+        if collect is not None:
+            target_title = self._active_blueprint_info().get("title")
+            title = f"수집 설정 - {target_title}" if target_title else "수집 설정"
+        else:
+            title = "추출 설정"
         dlg.setWindowTitle(title)
         # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
         # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
@@ -807,14 +835,6 @@ class MonitorPageTriggers:
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
         vl.setSpacing(0)
-
-        title_row = QHBoxLayout()
-        title_row.addWidget(parts.make_label(title, TEXT_PRIMARY, 14, True))
-        title_row.addStretch()
-        vl.addLayout(title_row)
-        vl.addSpacing(10)
-        vl.addWidget(Divider())
-        vl.addSpacing(14)
 
         def _boxed(content: QWidget, margins: int = 14) -> QWidget:
             """"상세 설정" 박스(아래 QStackedWidget#extractStack)와 동일한 프레임
