@@ -10,10 +10,10 @@ from PyQt6.QtCore import Qt
 from conf import get_spider_mode, DEFAULT_COLLECT_SETTINGS
 from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
-from style import StatCard, EqualSpacingTable, apply_render_safety_limits
+from style import EqualSpacingTable, apply_render_safety_limits
 from ..common import (
-    parts, build_scroll_body,
-    BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    parts, build_scroll_body, build_stat_summary_card,
+    BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
 )
 from .common import ActiveBlueprintMixin, count_badge_qss
@@ -36,8 +36,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         super().__init__()
         self.step_circles = []
         self.step_labels = []
-        self._out_mode = None
-        self.output_info = customized_settings.get_output_settings()
         self._running = False
         self._session_error_count = 0
         self._session_latency_sum = 0.0
@@ -151,17 +149,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.progress_card_widget = progress_wrap
         self._place_progress_card(bl)
 
-        stw, stl = parts.card_widget("세션 통계")
-        sg = QHBoxLayout()
-        sg.setSpacing(10)
-        self.s_total = StatCard("요청 완료", "0")
-        self.s_err   = StatCard("오류", "0", RED)
-        self.s_pages = StatCard("총 수집 항목", "0", ACCENT_LIGHT)
-        self.s_speed = StatCard("평균 응답", "—", GREEN)
-        for card in [self.s_total, self.s_err, self.s_pages, self.s_speed]:
-            card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-            sg.addWidget(card, 1)
-        stl.addLayout(sg)
+        stw, (self.s_total, self.s_err, self.s_pages, self.s_speed) = build_stat_summary_card(
+            parts, "세션 통계",
+            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
+        )
         bl.addWidget(stw)
 
         # ── 수집 모니터링 테이블 (MonitorPageSingle에서 이동) ──────────

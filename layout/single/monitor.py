@@ -11,9 +11,9 @@ from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
 from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
-from style import StatCard, EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter, Divider
+from style import EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter, Divider
 from ..common import (
-    parts, build_scroll_body,
+    parts, build_scroll_body, build_stat_summary_card,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER, RED,
 )
@@ -108,17 +108,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl = build_scroll_body(raw_widget, spacing=12)
 
         # 수집 결과 요약 카드 (4칸)
-        sum_card_w, sum_card_l = parts.card_widget("수집 결과 요약")
-        sg = QHBoxLayout()
-        sg.setSpacing(10)
-        self.sum_total = StatCard("전체 항목",  "0")
-        self.sum_ok    = StatCard("정상 행",     "0", GREEN)
-        self.sum_err   = StatCard("전체 null",   "0", AMBER)
-        self.sum_warn  = StatCard("중복 행",     "0", RED)
-        for card in [self.sum_total, self.sum_ok, self.sum_err, self.sum_warn]:
-            card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-            sg.addWidget(card, 1)
-        sum_card_l.addLayout(sg)
+        sum_card_w, (self.sum_total, self.sum_ok, self.sum_err, self.sum_warn) = build_stat_summary_card(
+            parts, "수집 결과 요약",
+            [("전체 항목", "0"), ("정상 행", "0", GREEN), ("전체 null", "0", AMBER), ("중복 행", "0", RED)],
+        )
         bl.addWidget(sum_card_w)
 
         # 실시간 수집 결과 테이블
@@ -169,6 +162,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.result_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
         self.result_table.itemClicked.connect(self._show_detail)
         self.result_table.currentItemChanged.connect(self._on_current_item_changed)
+        self.result_table.columnFiltersChanged.connect(self._apply_filter)
         tc.addWidget(self.result_table)
 
         # 선택 항목 상세
@@ -261,17 +255,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl = build_scroll_body(refined_widget, spacing=12)
 
         # 정제 결과 요약 카드
-        ref_sum_w, ref_sum_l = parts.card_widget("정제 결과 요약")
-        rsg = QHBoxLayout()
-        rsg.setSpacing(10)
-        self.ref_total  = StatCard("정제 후 행 수", "—")
-        self.ref_removed = StatCard("제거된 행",    "—", RED)
-        self.ref_filled  = StatCard("치환된 값",    "—", AMBER)
-        self.ref_rate    = StatCard("정제율",        "—", GREEN)
-        for card in [self.ref_total, self.ref_removed, self.ref_filled, self.ref_rate]:
-            card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-            rsg.addWidget(card, 1)
-        ref_sum_l.addLayout(rsg)
+        ref_sum_w, (self.ref_total, self.ref_removed, self.ref_filled, self.ref_rate) = build_stat_summary_card(
+            parts, "정제 결과 요약",
+            [("정제 후 행 수", "—"), ("제거된 행", "—", RED), ("치환된 값", "—", AMBER), ("정제율", "—", GREEN)],
+        )
         bl.addWidget(ref_sum_w)
 
         # 정제 데이터 테이블
@@ -297,6 +284,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.refined_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
         self.refined_table.itemClicked.connect(self._show_refined_detail)
         self.refined_table.currentItemChanged.connect(self._on_refined_current_item_changed)
+        self.refined_table.columnFiltersChanged.connect(self._apply_refined_filter)
         rtc.addWidget(self.refined_table)
 
         # 정제 결과 상세
@@ -323,17 +311,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl = build_scroll_body(cmp_widget, spacing=12)
 
         # 정제 요약 카드
-        cmp_sum_w, cmp_sum_l = parts.card_widget("정제 요약")
-        csg = QHBoxLayout()
-        csg.setSpacing(10)
-        self.cmp_raw_total  = StatCard("Raw 행 수",    "—")
-        self.cmp_ref_total  = StatCard("정제 후 행 수", "—", GREEN)
-        self.cmp_removed    = StatCard("제거된 행",     "—", RED)
-        self.cmp_rate       = StatCard("정제율",        "—", ACCENT_LIGHT)
-        for card in [self.cmp_raw_total, self.cmp_ref_total, self.cmp_removed, self.cmp_rate]:
-            card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-            csg.addWidget(card, 1)
-        cmp_sum_l.addLayout(csg)
+        cmp_sum_w, (self.cmp_raw_total, self.cmp_ref_total, self.cmp_removed, self.cmp_rate) = build_stat_summary_card(
+            parts, "정제 요약",
+            [("Raw 행 수", "—"), ("정제 후 행 수", "—", GREEN), ("제거된 행", "—", RED), ("정제율", "—", ACCENT_LIGHT)],
+        )
         bl.addWidget(cmp_sum_w)
 
         # "Raw 데이터"/"정제 데이터" 카드 바로 위, 카드로 감싸지 않은 독립된
@@ -368,6 +349,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_raw_count.setStyleSheet(count_badge_qss(AMBER))
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
+        self.cmp_raw_table.columnFiltersChanged.connect(self._apply_compare_filter)
         raw_cmp_l.addWidget(self.cmp_raw_table)
         side_l.addWidget(raw_cmp_w, 1)
 
@@ -377,6 +359,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_ref_count.setStyleSheet(count_badge_qss(GREEN))
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
+        self.cmp_ref_table.columnFiltersChanged.connect(self._apply_compare_filter)
         ref_cmp_l.addWidget(self.cmp_ref_table)
         side_l.addWidget(ref_cmp_w, 1)
 
@@ -451,6 +434,22 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
                 if dest_item:
                     dest_item.setForeground(value_fg)
 
+    def _make_popup_dialog(self, title: str, size: tuple, min_size: tuple) -> tuple:
+        """모달리스 팝업 다이얼로그 기본 골격을 만든다(_open_raw_popup/
+        _open_compare_popup 공유). 반환된 (dlg, lay)에 컨텐츠를 채운 뒤
+        dlg.show()는 호출부 책임."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setModal(False)
+        dlg.resize(*size)
+        dlg.setMinimumSize(*min_size)
+        dlg.setStyleSheet(_default_dialog_qss())
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(14, 14, 14, 14)
+        return dlg, lay
+
     def _open_compare_popup(self) -> None:
         """Raw/정제 데이터를 한 창에서 나란히 보여주는 모달리스 팝업을 연다.
         내용은 두 원본 테이블(self.cmp_raw_table/self.cmp_ref_table)의 현재
@@ -460,18 +459,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         움직인다. 행 순서가 어긋나면 스크롤 위치 동기화가 무의미해지므로
         팝업 쪽 정렬은 막아둔다. 두 카드는 QSplitter로 묶어 드래그로 폭을
         조절할 수 있다(layout/multi/main_window.py의 monitor_split과 동일한
-        패턴). LogViewerDialog(trigger/log_viewer.py)와 동일한 QDialog +
-        setModal(False) 패턴을 재사용한다."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Raw / 정제 데이터 비교")
-        dlg.setModal(False)
-        dlg.resize(1400, 600)
-        dlg.setMinimumSize(700, 400)
-        dlg.setStyleSheet(_default_dialog_qss())
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-
-        lay = QVBoxLayout(dlg)
-        lay.setContentsMargins(14, 14, 14, 14)
+        패턴)."""
+        dlg, lay = self._make_popup_dialog("Raw / 정제 데이터 비교", (1400, 600), (700, 400))
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -511,20 +500,11 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         """실시간 수집 결과(RAW) 테이블을 새 창에서 보여주는 모달리스 팝업을
         연다. 내용은 self.result_table의 현재 스냅샷을 복사한 것이라
         (_copy_table_contents) 원본 탭 테이블은 그대로 유지된다.
-        _open_compare_popup과 동일한 QDialog + setModal(False) 패턴을
+        _open_compare_popup과 동일한 팝업 골격(_make_popup_dialog)을
         재사용하되, 테이블이 하나뿐이라 QSplitter 없이 카드 하나만 담는다.
         copy_colors=True로 복사해 중복(빨강)/전체 null(주황) 행 배경도
         팝업에서 그대로 보이게 한다."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("실시간 수집 결과 (RAW)")
-        dlg.setModal(False)
-        dlg.resize(1000, 600)
-        dlg.setMinimumSize(500, 400)
-        dlg.setStyleSheet(_default_dialog_qss())
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-
-        lay = QVBoxLayout(dlg)
-        lay.setContentsMargins(14, 14, 14, 14)
+        dlg, lay = self._make_popup_dialog("실시간 수집 결과 (RAW)", (1000, 600), (500, 400))
 
         card_w, card_l = parts.card_widget("실시간 수집 결과 (RAW)")
         popup_table = EqualSpacingTable(parent=dlg, row_height=28, col_padding=10, hscroll_handle=50)
