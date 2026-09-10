@@ -27,7 +27,7 @@ from style import (
 from .common import (
     store, theme, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT, GREEN, PURPLE,
-    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss,
+    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
 )
@@ -479,7 +479,7 @@ class SchedulerPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("새 스케줄 등록" if sched_task == "등록" else "스케줄 수정")
         dlg.setMinimumWidth(560)
-        dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
+        dlg.setStyleSheet(_default_dialog_qss())
 
         # 좌(기존 폼)/우(정제 규칙 패널, "정제" 선택 시에만 노출) 2열 구조 —
         # 정제 규칙 설정을 세로가 아닌 가로 방향으로 확장해 다이얼로그가

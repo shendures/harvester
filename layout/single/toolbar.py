@@ -27,7 +27,6 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         self.monitor_page = None
         self.session_page = None
         self.auth_page = None
-        self.log_manager = None  # MainWindowSingle 생성 후 set_log_manager()로 주입
         self._build()
         self.task = {}
 

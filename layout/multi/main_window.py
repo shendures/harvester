@@ -116,8 +116,6 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.stack.addWidget(self.session_page)         # 4 — NAV_SESSION
         self.stack.addWidget(self.blueprint_list_page)  # 5 — NAV_BLUEPRINT_LIST
 
-        self.global_toolbar.set_log_manager(self.log_manager)
-
         right_layout.addWidget(self.stack, 1)
 
         # ── 메인 창 최하단 상태바 (단일과 공용 build_status_bar 사용) ───
