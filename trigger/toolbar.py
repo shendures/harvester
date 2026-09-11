@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import QApplication, QMainWindow
 from conf import BlueprintStorage
 
 from .common import (
-    store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages,
-    _after_delay_unless_cancelled, _get_log_manager,
+    store, ACCENT, ACCENT_HOVER, _apply_task_settings, _reset_pages,
+    _after_delay_unless_cancelled, _get_log_manager, _stop_btn_qss,
 )
 
 
@@ -33,9 +33,7 @@ class GlobalToolbarTriggers:
         if not self._running:
             self._start_cancelled = False
 
-            mw = self._main_window()
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
 
             store.clear_rows()
             _reset_pages(self.dashboard, self.monitor_page)
@@ -48,9 +46,7 @@ class GlobalToolbarTriggers:
             self._start_cancelled = True
             self.stop_requested.emit()
             self.set_running(False)
-            mw = self._main_window()
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
             self._full_reset()
             self._log("warn", "수집이 중단되었습니다. 수집 대기 상태로 초기화합니다.")
 
@@ -59,17 +55,13 @@ class GlobalToolbarTriggers:
         if self._start_cancelled:
             return
 
-        mw = self._main_window()
-
         if self.dashboard is None or self.session_page is None or self.monitor_page is None:
             self._log("err", "페이지 초기화가 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.")
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
             self.set_running(False)
             return
 
-        if mw is not None:
-            mw.dashboard._update_step_ui(1)
+        self._set_step_ui(1)
 
         QApplication.processEvents()
 
@@ -80,8 +72,6 @@ class GlobalToolbarTriggers:
         """[단계 2: 데이터 수집] 실제 시작"""
         if self._start_cancelled:
             return
-
-        mw = self._main_window()
 
         try:
             dashboard_page = self.dashboard
@@ -119,8 +109,7 @@ class GlobalToolbarTriggers:
         except Exception as e:
             self._log("err", f"설정 로드 실패: {e}")
             self.set_running(False)
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
 
     def _full_reset(self):
         """중지 버튼 클릭 시 호출 — DataStore 및 모든 페이지 UI를 완전히 초기화합니다."""
@@ -141,10 +130,7 @@ class GlobalToolbarTriggers:
     def _style_run_btn(self, running: bool):
         if running:
             self.run_btn.setText("⬛  중지")
-            self.run_btn.setStyleSheet(f"""
-                QPushButton{{background:#7f1d1d;color:{RED};border:none;border-radius:6px;
-                padding:6px 14px;font-size:13px;font-weight:bold;}}
-                QPushButton:hover{{background:#991b1b;}}""")
+            self.run_btn.setStyleSheet(_stop_btn_qss())
         else:
             self.run_btn.setText("▶  시작")
             self.run_btn.setStyleSheet(f"""
@@ -167,6 +153,11 @@ class GlobalToolbarTriggers:
                 return w
             w = w.parent()
         return None
+
+    def _set_step_ui(self, step: int) -> None:
+        mw = self._main_window()
+        if mw is not None:
+            mw.dashboard._update_step_ui(step)
 
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:

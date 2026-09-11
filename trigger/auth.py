@@ -11,7 +11,10 @@ from PyQt6.QtCore import Qt
 
 from style import Divider
 
-from .common import parts, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER, _get_log_manager, _default_dialog_qss
+from .common import (
+    parts, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER,
+    _get_log_manager, _default_dialog_qss, _show_message_dialog,
+)
 
 class AuthManagerPageTriggers:
     """AuthManagerPage의 자격증명·로그인·TLS 메서드"""
@@ -84,9 +87,9 @@ class AuthManagerPageTriggers:
 
         ok_btn.clicked.connect(_do_add)
         btn_row.addStretch()
-        btn_row.addWidget(cancel_btn)
-        btn_row.addSpacing(8)
         btn_row.addWidget(ok_btn)
+        btn_row.addSpacing(8)
+        btn_row.addWidget(cancel_btn)
         vl.addLayout(btn_row)
         dlg.adjustSize()
         dlg.exec()
@@ -112,7 +115,7 @@ class AuthManagerPageTriggers:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
         self._log_auth("ok", f"자격증명 내보내기 완료: {path}")
-        QMessageBox.information(self, "완료", f"내보내기 완료:\n{path}")
+        _show_message_dialog(self, "완료", f"내보내기 완료:\n{path}", icon=QMessageBox.Icon.Information)
 
     def _on_tls_toggle(self, state):
         if state == Qt.CheckState.Checked.value:

@@ -28,6 +28,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._all_rows       = []
         self._collected_data = []   # raw 수집 데이터
         self._existing_keys  = set()   # _collected_data 중복판정용 캐시(증분 갱신)
+        self._dup_rows       = 0       # _collected_data 중 중복 판정된 행 수(증분 갱신)
+        self._empty_rows     = 0       # _collected_data 중 전체 컬럼 빈 값인 행 수(증분 갱신)
         self._refined_data   = []   # 정제 후 데이터
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._out_mode       = None
@@ -526,6 +528,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._all_rows       = []
         self._collected_data = []
         self._existing_keys  = set()
+        self._dup_rows       = 0
+        self._empty_rows     = 0
         self.count_lbl.setText("0 rows")
         self.sum_total.update_value(0)
         self.sum_ok.update_value(0)

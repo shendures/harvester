@@ -46,6 +46,12 @@ VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
 # 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
 LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
 
+# HTTP 상태코드별 색상 — 대시보드 실시간 테이블(DashboardPageTriggers.add_row)과
+# 통계 분석 "상태 코드 분포" 차트(StatisticsPageTriggers.reload)가 동일하게 사용.
+# 두 화면이 각자 지역변수로 따로 정의해 404/429 색이 서로 달랐던 것을(대시보드
+# 기준으로) 통일했다.
+STATUS_CODE_COLORS = {"200": GREEN, "301": BLUE, "404": RED, "429": AMBER, "500": RED, "000": TEXT_MUTED}
+
 # Before/After 비교 탭의 NO 컬럼 아이템에 원본 raw_data 인덱스를 저장해 두는
 # 커스텀 role. 같은 값을 가진 Raw/정제 행이 서로 대응하는 원본 레코드임을
 # 나타내며, 정렬 상태와 무관하게 두 테이블의 행 선택을 동기화하는 데 쓰인다.
@@ -191,6 +197,20 @@ def _default_msgbox_qss(label_font_size: int = 12) -> str:
     """
 
 
+def _stop_btn_qss(*, padding: str = "6px 14px", font_size: int = 13) -> str:
+    """실행 중지 버튼(빨강 배색) 공용 QSS — trigger/toolbar.py의 풀사이즈 "⬛ 중지"
+    버튼과 layout/multi/blueprint_list.py의 배치 실행 버튼·행별 아이콘 버튼이
+    동일한 배색을 각자 하드코딩하고 있던 것을 통합했다. padding/font_size는
+    버튼 크기가 다른 두 맥락(풀사이즈 vs 컴팩트 아이콘)에 맞춰 호출부가 지정한다."""
+    return f"""
+        QPushButton {{
+            background:#7f1d1d; color:{RED}; border:none; border-radius:6px;
+            padding:{padding}; font-size:{font_size}px; font-weight:bold;
+        }}
+        QPushButton:hover {{ background:#991b1b; }}
+    """
+
+
 def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon.Warning,
                           informative_text: str = None, font_size: int = 13) -> None:
     """앱 전역에서 반복되던 QMessageBox 빌드 패턴(제목/본문(+선택적 상세 설명)/
@@ -208,20 +228,21 @@ def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon
     msg.exec()
 
 
-def _validate_blueprint_before_run(parent, cfg: dict, log_manager, *,
-                                    is_unattended: bool, tray_manager) -> bool:
+def _validate_blueprint_before_run(parent, cfg: dict, *, is_unattended: bool) -> bool:
     """cfg(블루프린트+런타임 설정 dict)가 실행 가능한지 검사 — 문제가 있으면
     안내(대화형은 모달, 무인 실행은 트레이 알림)와 로그를 남기고 False, 정상이면
     True를 반환한다. 요청을 한 건도 보내기 전에 막아, URL마다 같은 설정 오류
     (KeyError)가 반복되는 것을 피한다. 무인(스케줄/전체 수집) 실행에서 모달을
     띄우면 아무도 닫아줄 사람이 없어 그 자리에서 멈추므로, 이 프로젝트의 기존
-    관례(_on_finished의 0건 완료 분기 등)와 동일하게 트레이 알림으로 대체한다."""
+    관례(_on_finished의 0건 완료 분기 등)와 동일하게 트레이 알림으로 대체한다.
+    log_manager/tray_manager는 호출부가 항상 parent의 것을 그대로 넘기므로
+    parent에서 직접 읽는다(호출부 2곳 모두 MainWindowTriggers* 인스턴스)."""
     error_msg = engine.validate_blueprint_conditions(cfg)
     if error_msg is None:
         return True
-    log_manager.append_log("err", error_msg)
+    parent.log_manager.append_log("err", error_msg)
     if is_unattended:
-        tray_manager.show_message(
+        parent.tray_manager.show_message(
             "⚠ 수집 설정 오류",
             f"'{cfg.get('title') or cfg.get('task_nm', '')}' 실행을 시작할 수 없습니다 — "
             f"블루프린트 설정을 확인해 주세요. (자세한 내용은 로그 참고)",
@@ -359,12 +380,12 @@ def _stop_worker_if_running(worker) -> None:
         worker.wait(1500)
 
 
-def _after_delay_unless_cancelled(is_cancelled, fn, delay_ms: int = 1000) -> None:
-    """delay_ms 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
+def _after_delay_unless_cancelled(is_cancelled, fn) -> None:
+    """1초 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
     취소된 경우 지연 중이던 콜백이 뒤늦게 실행되는 것을 막는다. 단일 '_toggle_run→
     _step_to_setting→_actual_start'와 다중 '_start_batch'의 시작 연출(수집 대기→수집
     세팅→데이터 수집 단계 표시)이 공유하는 타이머 유틸."""
-    QTimer.singleShot(delay_ms, lambda: None if is_cancelled() else fn())
+    QTimer.singleShot(1000, lambda: None if is_cancelled() else fn())
 
 
 def _get_log_manager(widget):
@@ -429,26 +450,20 @@ def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) 
     r1.addSpacing(6)
 
     if single_row:
-        r1.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
-        r1.addWidget(timeout_spin)
-        r1.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
-        r1.addWidget(retry_spin)
-        r1.addSpacing(6)
-        r1.addStretch()
-        c1.addLayout(r1)
+        row2 = r1
     else:
         r1.addStretch()
         c1.addLayout(r1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
 
-        r2 = QHBoxLayout()
-        r2.setSpacing(8)
-        r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
-        r2.addWidget(timeout_spin)
-        r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
-        r2.addWidget(retry_spin)
-        r2.addSpacing(6)
-        r2.addStretch()
-        c1.addLayout(r2)
+    row2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+    row2.addWidget(timeout_spin)
+    row2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+    row2.addWidget(retry_spin)
+    row2.addSpacing(6)
+    row2.addStretch()
+    c1.addLayout(row2)
 
     c1.addSpacing(6)
     c1.addWidget(Divider())
@@ -552,8 +567,8 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
     다이얼로그에는 없으므로(무인 실행은 항상 무시 — _extract_result_table의
     `not silent` 조건 참고) 이 함수에 포함하지 않는다 — 필요한 호출부가
     file_page.layout()에 직접 addWidget()한다.
-    fmt 변경 시 다이얼로그 리사이즈까지 하려면 호출부가 반환된 토글 콜백을
-    fmt_combo.currentTextChanged에 직접 연결한 뒤 자신의 리사이즈 로직을 이어 호출한다."""
+    fmt 변경 시 CSV 전용 필드 토글까지 배선하려면 반환된 콜백을 아래
+    _wire_output_mode_toggle()의 on_fmt_changed 인자로 넘긴다."""
     file_page = QWidget()
     fp = QVBoxLayout(file_page)
     fp.setContentsMargins(14, 14, 14, 14)
@@ -626,6 +641,69 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
         "enc_combo": enc_combo, "csv_delimeter": csv_delimeter,
     }
     return file_page, widgets, _toggle_csv_fields
+
+
+def _resize_dialog_to_fit(dlg) -> None:
+    """레이아웃 변경(스택 페이지 전환, 섹션 표시/숨김 등) 후 다이얼로그 크기를
+    콘텐츠에 맞게 재계산한다. 레이아웃 변경 직후에는 dlg.sizeHint()가 아직 새
+    크기를 반영하지 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측
+    확인 — 늘어났던 세로 길이가 줄어들 때 되돌아가지 않던 버그의 원인), 이벤트
+    루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint 기준으로
+    resize한다. adjustSize()는 이미 show()된 다이얼로그에서 창을 줄이는
+    방향으로는 갱신되지 않아 사용하지 않는다."""
+    dlg.layout().activate()
+    QApplication.processEvents()
+    dlg.layout().activate()
+    dlg.resize(dlg.sizeHint())
+
+
+def _wire_output_mode_toggle(*, dlg, stack, file_btn, db_btn, mode_lbl,
+                              fmt_combo, set_mode, on_fmt_changed=None):
+    """FILE/DB 출력설정 QStackedWidget의 토글 버튼 전환 + 포맷 콤보 변경 시
+    다이얼로그 리사이즈 배선을 공용화한다(출력 설정 / 스케줄 등록·수정
+    다이얼로그에 통째로 복제돼 있던 토글+스택+리사이즈 glue를 통합).
+    stack은 FILE(0)/DB(1) 두 페이지가 이미 addWidget되고 초기
+    setCurrentIndex()까지 끝난 상태로 전달되어야 한다. set_mode는 모드
+    문자열("FILE"/"DB")을 호출자의 상태(self._out_mode 등 — 저장 위치가
+    호출자마다 달라 콜백으로 받는다)에 반영하는 콜백. on_fmt_changed는 포맷
+    콤보 변경 시 추가로 실행할 동작(예: CSV 구분자 필드 토글). 반환값은
+    리사이즈 함수 자체 — 호출부가 이후 다른 시점(다이얼로그 표시 직전 등)에
+    한 번 더 호출할 수 있다."""
+    def _resize():
+        current_page = stack.currentWidget()
+        if current_page:
+            current_page.layout().activate()
+            stack.setFixedHeight(current_page.layout().sizeHint().height())
+        _resize_dialog_to_fit(dlg)
+
+    def _on_file_clicked():
+        set_mode("FILE")
+        mode_lbl.setText("로컬 파일 저장 모드")
+        db_btn.setChecked(False)
+        stack.setCurrentIndex(0)
+        stack.setMinimumHeight(0)
+        stack.setMaximumHeight(16777215)
+        _resize()
+
+    def _on_db_clicked():
+        set_mode("DB")
+        mode_lbl.setText("DB 서버 전송 모드")
+        file_btn.setChecked(False)
+        stack.setCurrentIndex(1)
+        stack.setMinimumHeight(0)
+        stack.setMaximumHeight(16777215)
+        _resize()
+
+    def _on_fmt_changed(fmt_text: str):
+        if on_fmt_changed:
+            on_fmt_changed(fmt_text)
+        _resize()
+
+    file_btn.clicked.connect(_on_file_clicked)
+    db_btn.clicked.connect(_on_db_clicked)
+    fmt_combo.currentTextChanged.connect(_on_fmt_changed)
+    _on_fmt_changed(fmt_combo.currentText())
+    return _resize
 
 
 def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:

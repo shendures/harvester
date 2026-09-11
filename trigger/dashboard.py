@@ -8,8 +8,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from .common import (
-    ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, GREEN, AMBER, RED, BLUE,
-    _show_extract_error_dialog,
+    ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, STATUS_CODE_COLORS,
+    _show_extract_error_dialog, _show_message_dialog,
 )
 
 
@@ -27,7 +27,6 @@ class DashboardPageTriggers:
         current_row = self.monitor_table.rowCount()
         self.monitor_table.insertRow(current_row)
 
-        STATUS_COLOR = {"200": GREEN, "404": RED, "429": AMBER, "500": RED, "301": BLUE, "000": TEXT_MUTED}
         status_val = resp_info.get("status", "")
         # 200 응답이지만 주의가 필요한 행 — 추출 자체가 예외로 실패(engine.build_failure_item이
         # 남긴 extract_error) 또는 예외 없이 매칭 데이터가 0건(worker._handle_line이 남긴
@@ -53,7 +52,7 @@ class DashboardPageTriggers:
         ]
         colors = [
             TEXT_MUTED, TEXT_MUTED,
-            STATUS_COLOR.get(str(status_val), TEXT_SECONDARY),
+            STATUS_CODE_COLORS.get(str(status_val), TEXT_SECONDARY),
             TEXT_PRIMARY, TEXT_PRIMARY, TEXT_PRIMARY,
             TEXT_PRIMARY, ACCENT_LIGHT, TEXT_MUTED,
         ]
@@ -117,4 +116,4 @@ class DashboardPageTriggers:
                     if self.monitor_table.item(r, c) else ""
                     for c in range(9)
                 ])
-        QMessageBox.information(self, "완료", f"저장 완료:\n{path}")
+        _show_message_dialog(self, "완료", f"저장 완료:\n{path}", icon=QMessageBox.Icon.Information)

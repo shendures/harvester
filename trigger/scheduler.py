@@ -8,7 +8,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
-    QApplication, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
     QComboBox, QCheckBox, QWidget, QTableWidgetItem, QGridLayout, QStackedWidget,
     QSizePolicy, QSpinBox, QDateEdit,
 )
@@ -30,6 +30,7 @@ from .common import (
     SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
+    _resize_dialog_to_fit, _wire_output_mode_toggle,
 )
 
 class SchedulerPageTriggers:
@@ -798,14 +799,7 @@ class SchedulerPageTriggers:
             sched_auto_ref_btn.setChecked(is_refined)
             sched_refine_divider.setVisible(is_refined)
             sched_refine_panel.setVisible(is_refined)
-            dlg.layout().activate()
-            # setVisible() 직후에는 dlg.sizeHint()가 아직 새 크기를 반영하지
-            # 못한 경우가 있어(_update_sched_dialog_size()와 동일 원인), 이벤트
-            # 루프를 한 번 처리시켜 레이아웃을 정착시킨 뒤 resize. adjustSize()는
-            # 이미 show()된 다이얼로그에서는 줄어드는 방향으로 갱신되지 않아 미사용.
-            QApplication.processEvents()
-            dlg.layout().activate()
-            dlg.resize(dlg.sizeHint())
+            _resize_dialog_to_fit(dlg)
 
         sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
         sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
@@ -854,12 +848,6 @@ class SchedulerPageTriggers:
         sched_enc_combo = _sched_file_widgets["enc_combo"]
         sched_csv_delim = _sched_file_widgets["csv_delimeter"]
 
-        def _sched_on_fmt_changed(fmt_text: str):
-            _sched_toggle_csv_fields(fmt_text)
-
-        sched_fmt_combo.currentTextChanged.connect(_sched_on_fmt_changed)
-        _sched_on_fmt_changed(sched_fmt_combo.currentText())
-
         sched_extract_stack.addWidget(sched_file_page)  # index 0
 
         # ── PAGE 1 : DB 설정 ──────────────────────────────
@@ -897,48 +885,12 @@ class SchedulerPageTriggers:
         sched_extract_stack.addWidget(sched_db_page)  # index 1
         sched_extract_stack.setCurrentIndex(0 if self._sched_out_mode == "FILE" else 1)
 
-        def _update_sched_dialog_size():
-            current_page = sched_extract_stack.currentWidget()
-            if current_page:
-                current_page.layout().activate()
-                sched_extract_stack.setFixedHeight(current_page.layout().sizeHint().height())
-            dlg.layout().activate()
-            # setFixedHeight() 직후에는 dlg.sizeHint()가 아직 새 높이를 반영하지
-            # 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측 확인 —
-            # DB→FILE 전환 시 늘어난 세로 길이가 되돌아가지 않던 버그의 원인),
-            # 이벤트 루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint
-            # 기준으로 resize. adjustSize()는 이미 show()된 다이얼로그에서 창을
-            # 줄이는 방향으로는 갱신되지 않아 사용하지 않음.
-            QApplication.processEvents()
-            dlg.layout().activate()
-            dlg.resize(dlg.sizeHint())
-
-        def _sched_on_file_clicked():
-            self._sched_out_mode = "FILE"
-            sched_out_mode_lbl.setText("로컬 파일 저장 모드")
-            sched_out_db_btn.setChecked(False)
-            sched_extract_stack.setCurrentIndex(0)
-            sched_extract_stack.setMinimumHeight(0)
-            sched_extract_stack.setMaximumHeight(16777215)
-            _update_sched_dialog_size()
-
-        def _sched_on_db_clicked():
-            self._sched_out_mode = "DB"
-            sched_out_mode_lbl.setText("DB 서버 전송 모드")
-            sched_out_file_btn.setChecked(False)
-            sched_extract_stack.setCurrentIndex(1)
-            sched_extract_stack.setMinimumHeight(0)
-            sched_extract_stack.setMaximumHeight(16777215)
-            _update_sched_dialog_size()
-
-        sched_out_file_btn.clicked.connect(_sched_on_file_clicked)
-        sched_out_db_btn.clicked.connect(_sched_on_db_clicked)
-
-        sched_fmt_combo.currentTextChanged.disconnect(_sched_on_fmt_changed)
-        def _sched_on_fmt_changed_with_resize(fmt_text: str):
-            _sched_on_fmt_changed(fmt_text)
-            _update_sched_dialog_size()
-        sched_fmt_combo.currentTextChanged.connect(_sched_on_fmt_changed_with_resize)
+        _update_sched_dialog_size = _wire_output_mode_toggle(
+            dlg=dlg, stack=sched_extract_stack, file_btn=sched_out_file_btn,
+            db_btn=sched_out_db_btn, mode_lbl=sched_out_mode_lbl, fmt_combo=sched_fmt_combo,
+            set_mode=lambda m: setattr(self, "_sched_out_mode", m),
+            on_fmt_changed=_sched_toggle_csv_fields,
+        )
 
         root.addWidget(sched_extract_stack)
         root.addSpacing(10)
