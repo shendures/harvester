@@ -51,17 +51,17 @@ class THEME:
             font-size: 13px;
         }}
         QScrollBar:vertical {{
-            background: {self.BG_SECONDARY}; width: 6px; border-radius: 3px;
+            background: {self.BG_SECONDARY}; width: 8px; border-radius: 4px;
         }}
         QScrollBar::handle:vertical {{
-            background: {self.BORDER_LIGHT}; border-radius: 3px; min-height: 20px;
+            background: {self.BORDER_LIGHT}; border-radius: 4px; min-height: 20px;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
         QScrollBar:horizontal {{
-            background: {self.BG_SECONDARY}; height: 6px; border-radius: 3px;
+            background: {self.BG_SECONDARY}; height: 8px; border-radius: 4px;
         }}
         QScrollBar::handle:horizontal {{
-            background: {self.BORDER_LIGHT}; border-radius: 3px;
+            background: {self.BORDER_LIGHT}; border-radius: 4px;
         }}
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
         QToolTip {{
@@ -1074,18 +1074,18 @@ class EqualSpacingTable(QTableWidget):
                 border-right: none;
             }}
             QScrollBar:vertical {{
-                background: {self.theme.BG_SECONDARY}; width: 4px; border-radius: 2px;
+                background: {self.theme.BG_SECONDARY}; width: 6px; border-radius: 3px;
             }}
             QScrollBar::handle:vertical {{
-                background: {self.theme.BORDER_LIGHT}; border-radius: 2px; min-height: 20px;
+                background: {self.theme.BORDER_LIGHT}; border-radius: 3px; min-height: 20px;
             }}
             QScrollBar::add-line:vertical,
             QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar:horizontal {{
-                background: {self.theme.BG_SECONDARY}; height: 6px; border-radius: 3px;
+                background: {self.theme.BG_SECONDARY}; height: 8px; border-radius: 4px;
             }}
             QScrollBar::handle:horizontal {{
-                background: {self.theme.BORDER_LIGHT}; border-radius: 3px;
+                background: {self.theme.BORDER_LIGHT}; border-radius: 4px;
                 min-width: {self._hscroll_handle}px;
                 max-width: {self._hscroll_handle}px;
             }}
