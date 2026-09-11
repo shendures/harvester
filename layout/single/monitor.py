@@ -30,7 +30,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._existing_keys  = set()   # _collected_data 중복판정용 캐시(증분 갱신)
         self._refined_data   = []   # 정제 후 데이터
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
-        self._refine_tab_entered = False   # "② 정제 규칙 설정" 탭에 최초 진입했는지(그 뒤로는 True 고정)
         self._out_mode       = None
         self.output_info     = self._active_blueprint_info().get("output_settings") or customized_settings.get_output_settings()
 
