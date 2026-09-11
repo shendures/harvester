@@ -252,17 +252,29 @@ DEFAULT_EXTRACT_ERROR_GUIDE = (
     "알 수 없는 이유로 데이터 추출에 실패했습니다.",
     "로그를 확인하거나 블루프린트 설정을 다시 점검하세요.",
 )
+# 예외는 없었지만(= extract_error 없음) 200 응답에서 매칭된 데이터가 0건인 경우
+# (worker.py의 empty_extract) 안내 — 대부분 그 시점에 실제로 데이터가 없는 정상
+# 페이지일 수 있어 "해결 방법" 없이 사실 설명만 제공한다.
+EMPTY_EXTRACT_DESC = "HTTP 응답은 정상(200)이었으나 매칭되는 데이터가 없어 0건이 추출되었습니다."
 
 
 def _show_extract_error_dialog(parent, resp_info: dict) -> None:
-    """수집 모니터링 테이블에서 추출 실패(200 응답 + extract_error) 행을 클릭했을 때,
-    예외 타입별 설명 + 해결 방법 + 이번 건의 구체적인 사유(reason)를 보여준다."""
+    """수집 모니터링 테이블에서 주의가 필요한 200(⚠️) 행을 클릭했을 때 원인을 안내한다.
+    추출 예외(extract_error)는 원인 설명 + 해결 방법 + 예외 메시지(reason)를 보여주고,
+    예외 없이 추출 0건(empty_extract)은 "해결 방법"이 아니라 사실 설명만 보여준다 —
+    대부분 그 시점에 실제로 데이터가 없는 정상 페이지일 수 있기 때문이다."""
     error_type = resp_info.get("extract_error", "")
-    desc, fix = EXTRACT_ERROR_GUIDE.get(error_type, DEFAULT_EXTRACT_ERROR_GUIDE)
-    reason = resp_info.get("reason", "")
-    detail = f"해결 방법: {fix}" + (f"\n\n누락/오류 세부 정보: {reason}" if reason else "")
+    if error_type:
+        desc, fix = EXTRACT_ERROR_GUIDE.get(error_type, DEFAULT_EXTRACT_ERROR_GUIDE)
+        title = error_type
+        reason = resp_info.get("reason", "")
+        detail = f"해결 방법: {fix}" + (f"\n\n누락/오류 세부 정보: {reason}" if reason else "")
+    else:
+        title = "추출 데이터 없음"
+        desc = EMPTY_EXTRACT_DESC
+        detail = None
     _show_message_dialog(
-        parent, "추출 오류 안내", f"<b>{error_type or '추출 오류'}</b> — {desc}",
+        parent, "추출 오류 안내", f"<b>{title}</b> — {desc}",
         icon=QMessageBox.Icon.Warning, informative_text=detail,
     )
 

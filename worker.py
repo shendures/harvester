@@ -269,14 +269,25 @@ class MultiprocessWorker(QThread):
         self._done += 1
 
         # 200이면 성공, 그 외(비정상 상태코드 + engine.handle_request_failure()가 보고하는
-        # 커넥션 실패 유형 문자열 포함)는 전부 실패로 집계
-        if status_code == 200:
+        # 커넥션 실패 유형 문자열 포함)는 전부 실패로 집계.
+        # 200인데 예외 없이 추출 데이터가 0건인 경우("warn")는 응답 자체는 정상이므로
+        # errors에는 포함하지 않되, resp_info에 empty_extract를 남겨 대시보드/Raw 탭이
+        # 동일한 기준으로 표시할 수 있게 한다(각 화면이 서로 다른 조건을 재구현하지 않도록).
+        extracted     = resp_info.get("data") or []
+        extract_error = resp_info.get("extract_error")
+        if status_code == 200 and not extracted and not extract_error:
+            resp_info["empty_extract"] = True
+            level = "warn"
+            log_text = f"200 응답이지만 추출 데이터 0건: {res_url}"
+        elif status_code == 200:
             level = "ok"
+            log_text = str(reason)
         else:
             self._errors += 1
             level = "err"
+            log_text = str(reason)
 
-        self.log_message.emit(level, str(reason))
+        self.log_message.emit(level, log_text)
 
         self.store.add_row(result_info)
         self.new_row.emit(result_info)
