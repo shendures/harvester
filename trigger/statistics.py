@@ -99,6 +99,28 @@ class StatisticsPageTriggers:
                 self.session_table.setItem(r, col, item)
         self.session_table.setSortingEnabled(True)
 
+    # ── hourly popup data ──────────────────────
+    def _aggregate_hourly_all_time(self):
+        """store 전체 URL 응답 기록을 날짜 구분 없이 시(0~23) 단위로 합산한다.
+        reload()의 '최근 12시간' 집계와 달리 diff_h 필터 없이 ts.hour 자체를
+        버킷 키로 쓴다."""
+        rows = store.get_url_maps()
+        hour_ok = defaultdict(int)
+        hour_err = defaultdict(int)
+        for r in rows:
+            try:
+                ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+                if str(r["status_code"]) == "200":
+                    hour_ok[ts.hour] += 1
+                else:
+                    hour_err[ts.hour] += 1
+            except (ValueError, KeyError, TypeError):
+                pass
+        labels = [f"{h:02d}h" for h in range(24)]
+        ok_vals = [hour_ok.get(h, 0) for h in range(24)]
+        err_vals = [hour_err.get(h, 0) for h in range(24)]
+        return labels, ok_vals, err_vals
+
     # ── actions ────────────────────────────────
     def _on_reset_clicked(self):
         store.clear_url_maps()
