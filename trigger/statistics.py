@@ -9,7 +9,7 @@ from PyQt6.QtGui import QColor
 
 from .common import (
     store, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED,
-    GREEN, AMBER, RED, BLUE, PURPLE,
+    GREEN, RED, BLUE, STATUS_CODE_COLORS,
 )
 
 class StatisticsPageTriggers:
@@ -41,9 +41,9 @@ class StatisticsPageTriggers:
         status_cnt = defaultdict(int)
         for r in rows:
             status_cnt[str(r["status_code"])] += 1
-        # ── 수정: COLOR_MAP 키를 str 로 통일하여 단일 응답 시 Gray 오류 해소 ──
-        COLOR_MAP = {"200": GREEN, "301": BLUE, "404": AMBER, "429": PURPLE, "500": RED, "000": TEXT_MUTED}
-        segments = [(k, v, COLOR_MAP.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
+        # ── 수정: STATUS_CODE_COLORS 키가 str이므로 조회 키도 str로 통일해
+        # 단일 응답 시 Gray 오류 해소 ──
+        segments = [(k, v, STATUS_CODE_COLORS.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
         self.status_chart.set_data(segments)
 
         # 응답 시간 분포 (bucket 0.2 intervals) ( 통계 분석 - 응답 시간 분포  )

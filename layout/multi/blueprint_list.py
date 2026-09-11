@@ -9,9 +9,9 @@ from PyQt6.QtGui import QCursor
 
 from conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from style import EqualSpacingTable
-from trigger.common import _default_msgbox_qss
+from trigger.common import _default_msgbox_qss, _stop_btn_qss
 from ..common import (
-    parts, theme, RED, BG_HOVER, ACCENT, ACCENT_LIGHT, GREEN,
+    parts, theme, BG_HOVER, ACCENT, ACCENT_LIGHT, GREEN,
     _blueprint_auth_method, _blueprint_requires_auth, row_of_seq,
 )
 from ..auth import AuthManagerPage
@@ -73,14 +73,9 @@ class BlueprintListPage(QWidget):
     _SEQ_NO_COL = 0   # seq_no를 Qt.ItemDataRole.UserRole로 보관하는 컬럼 (정렬돼도 유효)
     _CHECK_COL = 9
 
-    # 실행 중 버튼 스타일 — trigger/toolbar.py::_style_run_btn의 "중지" 배색과 동일.
-    _STOP_QSS = f"""
-        QPushButton {{
-            background:#7f1d1d; color:{RED}; border:none; border-radius:6px;
-            padding:6px 14px; font-size:12px; font-weight:bold;
-        }}
-        QPushButton:hover {{ background:#991b1b; }}
-    """
+    # 실행 중 버튼 스타일 — trigger/toolbar.py::_style_run_btn의 "중지" 배색과
+    # 공용 헬퍼(trigger.common._stop_btn_qss)를 공유, font-size만 이 컬럼 크기에 맞춤.
+    _STOP_QSS = _stop_btn_qss(font_size=12)
 
     # "설정"(⚙) 버튼 강조 스타일 — 무채색 outline_btn보다 눈에 띄도록 액센트
     # 테두리/글자색을 상시 적용하되, 반복되는 컬럼이라 꽉 찬 색상 블록은 피한다.
@@ -105,13 +100,7 @@ class BlueprintListPage(QWidget):
     # 행의 "▶"가 실행 중일 때 바뀌는 "■" 배색 — _STOP_QSS와 같은 배색이지만
     # 30x20 고정 아이콘 버튼에 맞춰 padding을 0으로 둔다(_STOP_QSS는 풀사이즈
     # 배치 버튼용이라 그대로 쓰면 패딩이 버튼 크기를 넘친다).
-    _ROW_STOP_BTN_QSS = f"""
-        QPushButton {{
-            background:#7f1d1d; color:{RED}; border:none;
-            border-radius:6px; padding:0; font-size:12px; font-weight:bold;
-        }}
-        QPushButton:hover {{ background:#991b1b; }}
-    """
+    _ROW_STOP_BTN_QSS = _stop_btn_qss(padding="0", font_size=12)
 
     def __init__(self):
         super().__init__()

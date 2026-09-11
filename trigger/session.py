@@ -384,11 +384,7 @@ class SessionSettingsPageTriggers:
         if row >= len(self._proxy_rows):
             return
         current_enabled = self._proxy_rows[row]["enabled"]
-        self._proxy_table.blockSignals(True)
-        try:
-            self._toggle_proxy_enabled(row, not current_enabled)
-        finally:
-            self._proxy_table.blockSignals(False)
+        self._toggle_proxy_enabled(row, not current_enabled)
 
     def _proxy_table_context_menu(self, pos):
         """
@@ -418,31 +414,30 @@ class SessionSettingsPageTriggers:
         if action == del_act:
             self._delete_row(row)
         elif action == toggle_act:
-            # blockSignals: _toggle_proxy_enabled 내 col 4 setCheckState 시
-            # itemChanged 재발생 → _on_proxy_item_changed 중복 호출 방지
-            self._proxy_table.blockSignals(True)
-            try:
-                self._toggle_proxy_enabled(row, not is_enabled)
-            finally:
-                self._proxy_table.blockSignals(False)
+            self._toggle_proxy_enabled(row, not is_enabled)
 
     def _toggle_proxy_enabled(self, row: int, enable: bool):
         """
-        상태(col 4) 체크박스·_proxy_rows 동기화.
-        호출 전 반드시 blockSignals(True)로 감싸야 itemChanged 재귀를 방지합니다.
+        상태(col 4) 체크박스·_proxy_rows 동기화. setCheckState()가 itemChanged를
+        재발화시켜 _on_proxy_item_changed가 중복 호출되는 것을 막기 위해 이
+        메서드 자신이 blockSignals로 감싼다 — 호출부가 따로 감쌀 필요는 없다.
         """
         t = self._proxy_table
         if row >= t.rowCount():
             return
-        # col 4 — 사용 여부 체크박스
-        status_item = t.item(row, 4)
-        if status_item:
-            status_item.setCheckState(
-                Qt.CheckState.Checked if enable else Qt.CheckState.Unchecked
-            )
-        # _proxy_rows 동기화
-        if row < len(self._proxy_rows):
-            self._proxy_rows[row]["enabled"] = enable
+        t.blockSignals(True)
+        try:
+            # col 4 — 사용 여부 체크박스
+            status_item = t.item(row, 4)
+            if status_item:
+                status_item.setCheckState(
+                    Qt.CheckState.Checked if enable else Qt.CheckState.Unchecked
+                )
+            # _proxy_rows 동기화
+            if row < len(self._proxy_rows):
+                self._proxy_rows[row]["enabled"] = enable
+        finally:
+            t.blockSignals(False)
 
     def _apply_health_check_result(self, row: int, is_alive: bool) -> None:
         """
@@ -453,11 +448,7 @@ class SessionSettingsPageTriggers:
         if row >= t.rowCount():
             return
         if not is_alive:
-            t.blockSignals(True)
-            try:
-                self._toggle_proxy_enabled(row, False)
-            finally:
-                t.blockSignals(False)
+            self._toggle_proxy_enabled(row, False)
 
     def _on_proxy_item_changed(self, item):
         """
@@ -465,8 +456,8 @@ class SessionSettingsPageTriggers:
 
         [재귀 방지]
         col 4(상태 체크박스)가 아닌 변경(NO 컬럼 등)은 즉시 return합니다.
-        _toggle_proxy_enabled() 호출 전 blockSignals(True)로 감싸
-        col 4 setCheckState 시 itemChanged 재발생을 차단합니다.
+        _toggle_proxy_enabled()가 자체적으로 blockSignals로 감싸므로 col 4
+        setCheckState 시 itemChanged 재발생은 그쪽에서 차단됩니다.
 
         [_seed / 대량 import 중 호출 방지]
         blockSignals(True)로 삽입 루프를 감싸면 이 슬롯이 호출되지 않습니다.
@@ -478,12 +469,7 @@ class SessionSettingsPageTriggers:
         if row >= len(self._proxy_rows):
             return   # _proxy_rows 미등록 행 방어 (seed/import 중 누수 방지)
         enable = item.checkState() == Qt.CheckState.Checked
-        # blockSignals: _toggle_proxy_enabled 내 setCheckState → itemChanged 재귀 차단
-        self._proxy_table.blockSignals(True)
-        try:
-            self._toggle_proxy_enabled(row, enable)
-        finally:
-            self._proxy_table.blockSignals(False)
+        self._toggle_proxy_enabled(row, enable)
 
     def _log(self, level: str, message: str) -> None:
         lm = _get_log_manager(self)

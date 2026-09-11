@@ -37,16 +37,26 @@ class TrayManagerTriggers:
 class MainWindowTriggersSingle:
     """MainWindowSingle의 페이지 전환·워커·종료 메서드"""
 
+    def _reload_stats_if_needed(self, stack_idx: int) -> None:
+        if stack_idx == NAV_STATS:
+            self.stats_page.reload()
+
     def _switch_page(self, idx):
         self.stack.setCurrentIndex(idx)
-        if idx == NAV_STATS:
-            self.stats_page.reload()
+        self._reload_stats_if_needed(idx)
 
     def _activate_nav_page(self, stack_idx: int) -> None:
         """표시 순서가 아닌 실제 스택 인덱스 기준으로 페이지를 전환하고 사이드바 체크를 동기화한다."""
         self.stack.setCurrentIndex(stack_idx)
         for btn, idx in self.sidebar._nav_idx_by_btn.items():
             btn.setChecked(idx == stack_idx)
+        self._reload_stats_if_needed(stack_idx)
+
+    def _mark_schedule_done(self, task: dict, *, total: int) -> None:
+        """task가 스케줄 실행(task_nm 보유)이면 schedule_page에 완료 표시한다."""
+        job_name = task.get("task_nm")
+        if job_name:
+            self.schedule_page.mark_done(job_name, total=total)
 
     def _reset_all_pages(self):
         _reset_pages(self.dashboard, self.monitor_page)
@@ -88,8 +98,7 @@ class MainWindowTriggersSingle:
 
     def _launch_worker(self, cfg: dict, job_name="실행"):
         is_unattended = cfg.get("job") == "스케줄 실행"
-        if not _validate_blueprint_before_run(self, cfg, self.log_manager,
-                                               is_unattended=is_unattended, tray_manager=self.tray_manager):
+        if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
             self._abort_launch(cfg)
             return
         # 수동 실행 경로는 기존과 동일하게 기존 워커를 중단하고 교체
@@ -116,9 +125,7 @@ class MainWindowTriggersSingle:
         self.reset_progress()
         self.dashboard.set_running(False)
         self.dashboard._update_step_ui(0)
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=0)
+        self._mark_schedule_done(task, total=0)
         self._consume_pending_queue()
 
     def _consume_pending_queue(self):
@@ -209,9 +216,7 @@ class MainWindowTriggersSingle:
                     self.monitor_page.tab_widget.setCurrentIndex(0)
             # 0건이어도 스케줄은 재무장해야 함 — 그렇지 않으면 다음 회차가
             # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
-            job_name = task.get("task_nm")
-            if job_name:
-                self.schedule_page.mark_done(job_name, total=0)
+            self._mark_schedule_done(task, total=0)
             # 결과 없어도 대기 큐 소비는 계속 진행
             self._consume_pending_queue()
             return
@@ -256,9 +261,7 @@ class MainWindowTriggersSingle:
 
         self.dashboard._update_step_ui(0)
 
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
+        self._mark_schedule_done(task, total=summary.get("total", 0))
 
         if task.get("job") == "수동 실행":
             self._activate_nav_page(NAV_REFINE)
@@ -434,8 +437,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):
         is_unattended = cfg.get("job") in ("스케줄 실행", BATCH_JOB)
-        if not _validate_blueprint_before_run(self, cfg, self.log_manager,
-                                               is_unattended=is_unattended, tray_manager=self.tray_manager):
+        if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
             self._abort_launch(cfg)
             return
         _stop_worker_if_running(self._worker)
@@ -479,9 +481,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         dash._update_step_ui(0)
         self._broadcast_blueprint_status(seq_no, "done")
         self._broadcast_blueprint_status(seq_no, "idle")
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=0)
+        self._mark_schedule_done(task, total=0)
         self._consume_pending_queue()
 
     # ── 진행률 (번들별) ────────────────────────────────
@@ -578,9 +578,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 if task.get("job") in IMMEDIATE_MONITOR_JOBS:
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
-            job_name = task.get("task_nm")
-            if job_name:
-                self.schedule_page.mark_done(job_name, total=0)
+            self._mark_schedule_done(task, total=0)
             self._consume_pending_queue()
             return
 
@@ -620,9 +618,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         dash._update_step_ui(0)
 
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
+        self._mark_schedule_done(task, total=summary.get("total", 0))
 
         # 수동 실행·선택 수집: 완료되는 즉시 모니터링 화면으로. 전체 수집: 마지막
         # 순번이 끝난 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링

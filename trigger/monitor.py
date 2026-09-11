@@ -27,7 +27,7 @@ from .common import (
     TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, ROW_ORIGIN_ROLE,
     _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
-    _build_collect_settings_fields, _default_dialog_qss,
+    _build_collect_settings_fields, _default_dialog_qss, _wire_output_mode_toggle,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
     _handle_custom_rule_toggle,
 )
@@ -105,6 +105,10 @@ class MonitorPageTriggers:
             )
             self._collected_data.append(entry)
             self._existing_keys.add(entry_key)
+            if is_dup:
+                self._dup_rows += 1
+            if is_empty_row:
+                self._empty_rows += 1
 
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
@@ -137,28 +141,17 @@ class MonitorPageTriggers:
         self._update_summary_cards()
 
     def _update_summary_cards(self):
-        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계"""
-        columns = self._get_result_columns()
+        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계.
+
+        중복·빈행 여부는 _add_realtime_row가 행 추가 시점에 이미 판정해
+        self._dup_rows/self._empty_rows에 증분 반영해 두므로, 여기서는
+        self._collected_data를 다시 훑지 않고 그 값을 그대로 반영한다."""
         total = len(self._collected_data)
-        empty_rows = 0
-        dup_rows  = 0
-        seen_keys: set = set()
-        for entry in self._collected_data:
-            is_empty_row = all(
-                entry.get(c) in (None, "", "null", "None") for c in columns
-            )
-            key = tuple(str(entry.get(c, "")) for c in columns)
-            is_dup = key in seen_keys
-            seen_keys.add(key)
-            if is_empty_row:
-                empty_rows += 1
-            if is_dup:
-                dup_rows += 1
-        normal = total - empty_rows - dup_rows
+        normal = total - self._empty_rows - self._dup_rows
         self.sum_total.update_value(total)
         self.sum_ok.update_value(max(normal, 0))
-        self.sum_err.update_value(empty_rows)
-        self.sum_warn.update_value(dup_rows)
+        self.sum_err.update_value(self._empty_rows)
+        self.sum_warn.update_value(self._dup_rows)
 
     def _apply_filter(self):
         """수집 결과 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
@@ -559,8 +552,7 @@ class MonitorPageTriggers:
 
             for col_idx, col_name in enumerate(columns, start=1):
                 val  = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 if is_deleted:
                     item.setForeground(CLR_DEL_FG)
                 else:
@@ -911,40 +903,12 @@ class MonitorPageTriggers:
 
         stack.setCurrentIndex(0 if is_file_mode else 1)
 
-        def update_dialog_size():
-            current_page = stack.currentWidget()
-            if current_page:
-                current_page.layout().activate()
-                stack.setFixedHeight(current_page.layout().sizeHint().height())
-            dlg.layout().activate()
-            dlg.adjustSize()
-
-        def _on_fmt_changed(fmt_text: str):
-            _toggle_csv_fields(fmt_text)
-            update_dialog_size()
-
-        def _on_file_clicked():
-            self._out_mode = "FILE"
-            out_mode_lbl.setText("로컬 파일 저장 모드")
-            out_db_btn.setChecked(False)
-            stack.setCurrentIndex(0)
-            stack.setMinimumHeight(0)
-            stack.setMaximumHeight(16777215)
-            update_dialog_size()
-
-        def _on_db_clicked():
-            self._out_mode = "DB"
-            out_mode_lbl.setText("DB 서버 전송 모드")
-            out_file_btn.setChecked(False)
-            stack.setCurrentIndex(1)
-            stack.setMinimumHeight(0)
-            stack.setMaximumHeight(16777215)
-            update_dialog_size()
-
-        out_file_btn.clicked.connect(_on_file_clicked)
-        out_db_btn.clicked.connect(_on_db_clicked)
-        fmt_combo.currentTextChanged.connect(_on_fmt_changed)
-        _on_fmt_changed(fmt_combo.currentText())
+        update_dialog_size = _wire_output_mode_toggle(
+            dlg=dlg, stack=stack, file_btn=out_file_btn, db_btn=out_db_btn,
+            mode_lbl=out_mode_lbl, fmt_combo=fmt_combo,
+            set_mode=lambda m: setattr(self, "_out_mode", m),
+            on_fmt_changed=_toggle_csv_fields,
+        )
 
         vl.addWidget(stack)
 
