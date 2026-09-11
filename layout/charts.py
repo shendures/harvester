@@ -3,7 +3,7 @@
 
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 
 from .common import BORDER, TEXT_MUTED, TEXT_SECONDARY, TEXT_PRIMARY, BG_PRIMARY
 
@@ -138,7 +138,13 @@ class GroupedBarChart(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
-        pad_l, pad_r, pad_t, pad_b = 8, 8, 22, 20
+
+        value_font = QFont("Consolas", 7)
+        value_fm = QFontMetrics(value_font)
+        value_gap = 4  # 막대 상단-값 라벨 사이 고정 간격(px)
+
+        pad_l, pad_r, pad_b = 8, 8, 20
+        pad_t = 22 + value_gap + value_fm.height()  # 기존 범례 여백 + 값 라벨 공간
         chart_w = W - pad_l - pad_r
         chart_h = H - pad_t - pad_b
 
@@ -181,6 +187,16 @@ class GroupedBarChart(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(color))
                 p.drawRoundedRect(int(x), int(y), int(bar_w), int(max(bh, 1.5)), 2, 2)
+
+                # 값 라벨 — 막대 상단에서 value_gap만큼 띄운 자리에 계열 색상으로 표시
+                text = str(v)
+                text_w = value_fm.horizontalAdvance(text)
+                label_x = x + bar_w / 2 - text_w / 2
+                label_y = y - value_gap - value_fm.height()
+                p.setPen(QColor(color))
+                p.setFont(value_font)
+                p.drawText(int(label_x), int(label_y), text_w, value_fm.height(),
+                           Qt.AlignmentFlag.AlignCenter, text)
 
             # 시간대 라벨 — 12개가 좁은 폭에 들어가도록 눈에 보일 정도로만 작게(7pt)
             p.setPen(QColor(TEXT_MUTED))
