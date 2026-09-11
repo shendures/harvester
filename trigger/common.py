@@ -194,10 +194,10 @@ def _default_msgbox_qss(label_font_size: int = 12) -> str:
 def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon.Warning,
                           informative_text: str = None, font_size: int = 13) -> None:
     """앱 전역에서 반복되던 QMessageBox 빌드 패턴(제목/본문(+선택적 상세 설명)/
-    아이콘 설정 후 공용 QSS 적용, exec) 하나로 통합한 공용 헬퍼 — 아래 4개
+    아이콘 설정 후 공용 QSS 적용, exec) 하나로 통합한 공용 헬퍼 — 아래 3개
     안내 다이얼로그(_show_db_conn_fail_dialog, _warn_custom_rule_missing,
-    _warn_needs_cleaning_false, _show_no_data_dialog)가 제목/문구/아이콘/폰트
-    크기만 다르게 이 함수를 호출한다."""
+    _show_no_data_dialog)가 제목/문구/아이콘/폰트 크기만 다르게 이 함수를
+    호출한다."""
     msg = QMessageBox(parent)
     msg.setWindowTitle(title)
     msg.setText(text)
@@ -327,17 +327,6 @@ def _warn_custom_rule_missing(parent, title) -> None:
         f"'{title}'에 등록된 사용자 정의 정제 규칙이 존재하지 않습니다.\n"
         f"'커스텀 정제 규칙 적용'을 사용하려면 정제 스크립트 파일을 "
         f"먼저 등록해야 합니다."
-    )
-
-
-def _warn_needs_cleaning_false(parent, title) -> None:
-    """"커스텀 정제 규칙 적용"을 쓰려는 수집 대상이 애초에 "정제 필요"로
-    설정되어 있지 않을 때 띄우는 경고 — trigger/monitor.py의
-    _on_monitor_tab_changed가 탭 진입마다 사용한다."""
-    _show_message_dialog(
-        parent, "정제 대상 아님",
-        f"'{title}'은(는) 정제가 필요한 수집 대상으로 설정되어 있지 않습니다.\n"
-        f"'커스텀 정제 규칙 적용'은 정제가 필요한 수집 대상에서만 사용할 수 있습니다."
     )
 
 

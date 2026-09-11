@@ -29,7 +29,6 @@ from .common import (
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
-    _warn_needs_cleaning_false as _common_warn_needs_cleaning_false,
     _handle_custom_rule_toggle,
 )
 
@@ -179,13 +178,13 @@ class MonitorPageTriggers:
         ):
             _apply_table_search_filter(table, self.cmp_search_box, count_lbl)
 
-    # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
+    # ── 탭 전환 감지 — 커스텀 정제 규칙 체크박스 상태 재동기화 ────────────
     def _on_monitor_tab_changed(self, index: int):
         """
         "② 정제 규칙 설정" 탭(index=1)에 들어올 때마다 needs_cleaning(블루프린트가
         DB에서 내려주는 "정제 필요" 플래그)과 refine/{seq_no}.py 존재 여부를
-        함께 확인해 "커스텀 정제 규칙 적용" 체크박스를 무조건 재설정합니다.
-        활성화 판정 로직 자체는 최초 진입이든 재진입이든 동일합니다:
+        함께 확인해 "커스텀 정제 규칙 적용" 체크박스를 무조건 재설정합니다
+        (경고창은 띄우지 않고 조용히 맞춥니다):
 
         - needs_cleaning=True AND 스크립트 있음 → 체크(활성화).
         - needs_cleaning=False → 체크 해제(비활성화)
@@ -193,14 +192,9 @@ class MonitorPageTriggers:
         - needs_cleaning=True인데 스크립트 없음 → 체크 해제(비활성화)
           (STEP 01 통과 후 STEP 02에서 탈락).
 
-        다만 "경고 안내창을 띄우는지"는 최초 진입 여부에 따라 다릅니다:
-
-        - 최초 진입(이 페이지 인스턴스에서 이 탭에 처음 들어왔을 때, 1회뿐):
-          비활성화로 판정되어도 경고를 띄우지 않습니다.
-        - 재진입(2회차부터): 비활성화로 판정될 때마다 원인에 맞는 경고를
-          띄웁니다(needs_cleaning=False → "정제 대상 아님",
-          needs_cleaning=True인데 스크립트 없음 → "정제 규칙 없음"). 같은
-          수집 결과 내 반복 방문이라도 게이팅하지 않고 매번 띄웁니다.
+        경고창("정제 규칙 없음")은 오직 사용자가 체크박스를 직접 켜려고
+        시도할 때만(_on_custom_rule_toggled → _handle_custom_rule_toggle) 뜬다
+        — 탭 진입/재진입은 그 조건과 무관하다.
 
         체크박스는 blockSignals로 감싸 setChecked한다 — 그냥 setChecked를
         부르면 stateChanged가 _on_custom_rule_toggled → _handle_custom_rule_toggle로
@@ -229,35 +223,16 @@ class MonitorPageTriggers:
             cb.setChecked(should_enable)
             cb.blockSignals(False)
 
-        is_first_entry = not self._refine_tab_entered
-        self._refine_tab_entered = True
-
-        if should_enable or is_first_entry:
-            return
-        if not needs_cleaning:
-            self._warn_needs_cleaning_false(seq_no)
-        else:
-            self._warn_custom_rule_missing(seq_no)
-
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _warn_custom_rule_missing(self, seq_no) -> None:
         """"커스텀 정제 규칙 적용"에 필요한 refine/{seq_no}.py 정제 스크립트가
-        없을 때 공통으로 띄우는 경고 — 체크박스를 직접 켤 때
-        (_on_custom_rule_toggled)와 "② 정제 규칙 설정" 탭에 들어올 때마다
-        (_on_monitor_tab_changed) 양쪽에서 동일한 문구를 쓰기 위해 하나로
-        묶는다. 문구 자체는 trigger/common.py에 있다 — 스케줄 등록 다이얼로그
-        (trigger/scheduler.py)도 그 함수를 그대로 재사용한다(이 메서드는
-        self._active_blueprint_info()로 title을 얻어 전달만 함)."""
+        없는 상태에서 사용자가 체크박스를 직접 켜려고 시도할 때
+        (_on_custom_rule_toggled) 띄우는 경고. 문구 자체는 trigger/common.py에
+        있다 — 스케줄 등록 다이얼로그(trigger/scheduler.py)도 그 함수를 그대로
+        재사용한다(이 메서드는 self._active_blueprint_info()로 title을 얻어
+        전달만 함)."""
         title = self._active_blueprint_info().get("title") or seq_no
         _common_warn_custom_rule_missing(self, title)
-
-    def _warn_needs_cleaning_false(self, seq_no) -> None:
-        """"커스텀 정제 규칙 적용"을 쓰려는 수집 대상이 애초에 "정제 필요"로
-        설정되어 있지 않을 때 띄우는 경고 — "② 정제 규칙 설정" 탭에 들어올
-        때마다(_on_monitor_tab_changed) 사용한다. 문구 자체는
-        trigger/common.py에 있다(정제 스크립트 없음 경고와 동일한 패턴)."""
-        title = self._active_blueprint_info().get("title") or seq_no
-        _common_warn_needs_cleaning_false(self, title)
 
     def _on_custom_rule_toggled(self, state):
         """"커스텀 정제 규칙 적용"(②) 체크박스의 stateChanged 핸들러 — 실제
