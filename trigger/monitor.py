@@ -24,7 +24,7 @@ from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_e
 
 from .common import (
     parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, ROW_ORIGIN_ROLE,
+    TEXT_MUTED, BORDER, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
     _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss, _wire_output_mode_toggle,
@@ -721,7 +721,7 @@ class MonitorPageTriggers:
             val = cell.text() if cell else "—"
             detail_parts.append(
                 f"<b style='color:{ACCENT_LIGHT};'>{col_name}:</b> "
-                f"<span style='color:{VALUE_COLORS.get(col_idx, TEXT_MUTED)};'>{val}</span>"
+                f"<span style='color:{TEXT_PRIMARY};'>{val}</span>"
             )
         label.setText("<br>".join(detail_parts))
         label.setTextFormat(Qt.TextFormat.RichText)

@@ -39,9 +39,6 @@ RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
 
-# 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
-VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
-
 # 로그 레벨("ok"/"err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
 # 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
 LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
