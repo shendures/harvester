@@ -60,18 +60,20 @@ def _next_available_name(base_name: str, suffix_fmt: str, exists) -> str:
 
 
 def _apply_table_search_filter(table, search_box, count_lbl) -> None:
-    """search_box의 키워드와 table.matches_column_filters(컬럼 고유값 필터)를 AND로
-    결합해 각 행의 표시 여부를 정하고, 보이는 행 수를 count_lbl에 반영한다.
-    수집 결과/정제 결과/비교 탭 검색 필터가 동일한 패턴을 공유한다."""
+    """search_box의 키워드로 각 행의 표시 여부를 정하고, 보이는 행 수를
+    count_lbl에 반영한다. 수집 결과/정제 결과/비교 탭 검색 필터가 동일한
+    패턴을 공유한다. 이 테이블들은 자체 검색창이 있어 컬럼별 필터(깔때기
+    아이콘)를 꺼 뒀으므로(EqualSpacingTable.disable_column_filters) 키워드
+    매칭만으로 표시 여부가 정해진다. table.columnFiltersChanged에 연결해
+    두면(호출부 참고) 정렬 직후에도 이 함수가 다시 실행되어, 정렬로 인해
+    검색 결과가 풀리지 않는다."""
     keyword = search_box.text().lower().strip()
     visible = 0
     for r in range(table.rowCount()):
-        col_ok = table.matches_column_filters(r)
-        kw_ok = not keyword or any(
+        show = not keyword or any(
             table.item(r, c) and keyword in table.item(r, c).text().lower()
             for c in range(table.columnCount())
         )
-        show = col_ok and kw_ok
         table.setRowHidden(r, not show)
         if show:
             visible += 1
@@ -154,17 +156,20 @@ class MonitorPageTriggers:
         self.sum_warn.update_value(self._dup_rows)
 
     def _apply_filter(self):
-        """수집 결과 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
+        """수집 결과 탭 검색 필터. result_table.columnFiltersChanged에도 연결돼
+        있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
         _apply_table_search_filter(self.result_table, self.search_box, self.count_lbl)
 
     def _apply_refined_filter(self):
-        """정제 결과 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
+        """정제 결과 탭 검색 필터. refined_table.columnFiltersChanged에도
+        연결돼 있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
         _apply_table_search_filter(
             self.refined_table, self.refined_search_box, self.refined_count_lbl
         )
 
     def _apply_compare_filter(self):
-        """Before/After 비교 탭 검색 필터 — 컬럼 고유값 필터(헤더 필터 아이콘)와 AND로 결합"""
+        """Before/After 비교 탭 검색 필터. 두 테이블 모두 columnFiltersChanged에
+        연결돼 있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
         for table, count_lbl in (
             (self.cmp_raw_table, self.cmp_raw_count),
             (self.cmp_ref_table, self.cmp_ref_count),
@@ -637,7 +642,8 @@ class MonitorPageTriggers:
             )
 
     def _sync_cmp_sort(self, source, target, logical_index, order):
-        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향으로 동기화합니다.
+        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향(정렬 해제 포함)으로
+        동기화합니다.
 
         Raw/Refined는 행 수·컬럼 구성이 다를 수 있어(중복/null 행 제거,
         drop_columns) "같은 줄에 같은 원본 행"까지는 보장하지 않고, 같은
@@ -649,21 +655,17 @@ class MonitorPageTriggers:
             return
         col_name = header_item.text()
 
-        # sortIndicatorSection()은 사용자가 아직 정렬한 적 없는 테이블에서도
-        # columnCount()와 같은 범위 밖 값을 반환할 수 있어(Qt 특성, 컬럼 수 변경 후
-        # 미갱신 상태) 반드시 상한까지 확인해야 함 (헤더 아이템 None 접근 방지)
-        target_header  = target.horizontalHeader()
-        target_sec     = target_header.sortIndicatorSection()
-        if 0 <= target_sec < target.columnCount():
-            target_item = target.horizontalHeaderItem(target_sec)
+        target_sort_column, target_sort_order = target.current_sort()
+        if target_sort_column is not None:
+            target_item = target.horizontalHeaderItem(target_sort_column)
             if (target_item is not None and target_item.text() == col_name
-                    and target_header.sortIndicatorOrder() == order):
+                    and target_sort_order == order):
                 return  # 이미 동일 상태 — 상호 연결로 인한 재귀 호출 종료
 
         for i in range(target.columnCount()):
             item = target.horizontalHeaderItem(i)
             if item is not None and item.text() == col_name:
-                target.sortByColumn(i, order)
+                target.apply_sort(i, order)
                 return
 
     def _sync_cmp_row_selection(self, source, target) -> None:

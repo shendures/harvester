@@ -161,6 +161,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         tc.addWidget(info_lbl)
 
         self.result_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
+        self.result_table.disable_column_filters()  # 이미 자체 검색창(search_box)이 있어 컬럼별 필터는 불필요
         self.result_table.itemClicked.connect(self._show_detail)
         self.result_table.currentItemChanged.connect(self._on_current_item_changed)
         self.result_table.columnFiltersChanged.connect(self._apply_filter)
@@ -283,6 +284,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         rtc.addLayout(ref_ctrl)
 
         self.refined_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
+        self.refined_table.disable_column_filters()  # 이미 자체 검색창(refined_search_box)이 있어 컬럼별 필터는 불필요
         self.refined_table.itemClicked.connect(self._show_refined_detail)
         self.refined_table.currentItemChanged.connect(self._on_refined_current_item_changed)
         self.refined_table.columnFiltersChanged.connect(self._apply_refined_filter)
@@ -350,6 +352,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_raw_count.setStyleSheet(count_badge_qss(AMBER))
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
+        self.cmp_raw_table.disable_column_filters()  # 이미 자체 검색창(cmp_search_box)이 있어 컬럼별 필터는 불필요
         self.cmp_raw_table.columnFiltersChanged.connect(self._apply_compare_filter)
         raw_cmp_l.addWidget(self.cmp_raw_table)
         side_l.addWidget(raw_cmp_w, 1)
@@ -360,6 +363,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_ref_count.setStyleSheet(count_badge_qss(GREEN))
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
+        self.cmp_ref_table.disable_column_filters()  # 이미 자체 검색창(cmp_search_box)이 있어 컬럼별 필터는 불필요
         self.cmp_ref_table.columnFiltersChanged.connect(self._apply_compare_filter)
         ref_cmp_l.addWidget(self.cmp_ref_table)
         side_l.addWidget(ref_cmp_w, 1)
@@ -369,10 +373,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # 좌우 테이블 세로 스크롤 동기화
         self._link_vscroll_group([self.cmp_raw_table, self.cmp_ref_table])
 
-        # 좌우 테이블 정렬 동기화 (같은 컬럼명·방향)
-        self.cmp_raw_table.horizontalHeader().sortIndicatorChanged.connect(
+        # 좌우 테이블 정렬 동기화 (같은 컬럼명·방향, 정렬 해제 포함)
+        self.cmp_raw_table.sortStateChanged.connect(
             lambda idx, order: self._sync_cmp_sort(self.cmp_raw_table, self.cmp_ref_table, idx, order))
-        self.cmp_ref_table.horizontalHeader().sortIndicatorChanged.connect(
+        self.cmp_ref_table.sortStateChanged.connect(
             lambda idx, order: self._sync_cmp_sort(self.cmp_ref_table, self.cmp_raw_table, idx, order))
 
         # 좌우 테이블 행 선택 동기화 (같은 원본 raw_data 행끼리)

@@ -11,7 +11,9 @@ from PyQt6.QtWidgets import (
     QMenu, QListWidget, QListWidgetItem, QWidgetAction,
 )
 
-from PyQt6.QtCore import ( Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal )
+from PyQt6.QtCore import (
+    Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal, QCoreApplication, QEvent,
+)
 from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -553,23 +555,29 @@ def _build_column_filter_widget(values: list, allowed: set):
 #  — 컬럼 헤더 우측의 작은 깔때기 아이콘으로 고유값 필터 팝업을 연다
 # ──────────────────────────────────────────────────────
 class _FilterHeaderView(QHeaderView):
-    """EqualSpacingTable 전용 헤더 — 섹션 우측에 필터(funnel) 아이콘을 그리고,
-    그 아이콘 클릭만 filterIconClicked로 가로챈다. 아이콘 밖을 클릭하면 그대로
-    super()에 위임되어 기존 정렬/드래그 리사이즈 동작이 보존된다(정렬은 이미
-    EqualSpacingTable이 setSortingEnabled(True)로 헤더 텍스트 클릭에 연결해
-    두었으므로, 필터를 같은 클릭에 얹으면 충돌한다 — 그래서 아이콘을 분리)."""
+    """EqualSpacingTable 전용 헤더 — 섹션 좌측에 필터(funnel) 아이콘을, 우측에
+    정렬 방향 화살표(오름차순/내림차순 중이 컬럼만)를 그린다. 필터 아이콘 클릭만
+    filterIconClicked로 가로채고, 아이콘 밖을 클릭하면 그대로 super()에 위임되어
+    기존 드래그 리사이즈 동작과 EqualSpacingTable._on_header_clicked로 연결된
+    sectionClicked 기반 정렬이 그대로 동작한다."""
 
     ICON_SIZE = 12
-    ICON_MARGIN = 6  # 아이콘과 섹션 우측 경계 사이 여백(px)
+    ICON_MARGIN = 6  # 필터 아이콘과 섹션 좌측 경계 사이 여백(px)
+
+    SORT_ARROW_SIZE = 8
+    SORT_ARROW_MARGIN = 8  # 정렬 화살표와 섹션 우측 경계 사이 여백(px)
 
     filterIconClicked = pyqtSignal(int)
 
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
         self._filtered_columns: set = set()
-        theme = THEME()
-        self._icon_inactive = _load_svg_icon("funnel", theme.TEXT_MUTED, "2", self.ICON_SIZE)
-        self._icon_active = _load_svg_icon("funnel", theme.ACCENT_LIGHT, "2", self.ICON_SIZE)
+        self.theme = THEME()
+        self._icon_inactive = _load_svg_icon("funnel", self.theme.TEXT_MUTED, "2", self.ICON_SIZE)
+        self._icon_active = _load_svg_icon("funnel", self.theme.ACCENT_LIGHT, "2", self.ICON_SIZE)
+        self._sort_column = None
+        self._sort_order = None  # Qt.SortOrder.AscendingOrder / DescendingOrder / None(정렬 해제)
+        self._filter_enabled = True  # False면 깔때기 아이콘 자체를 그리지도, 클릭을 가로채지도 않음
 
     def set_column_filtered(self, logical: int, filtered: bool) -> None:
         if filtered:
@@ -578,24 +586,76 @@ class _FilterHeaderView(QHeaderView):
             self._filtered_columns.discard(logical)
         self.updateSection(logical)
 
+    def set_filter_enabled(self, enabled: bool) -> None:
+        """검색창을 자체적으로 가진 카드(EqualSpacingTable.disable_column_filters
+        참고)에서 호출해 컬럼별 필터 아이콘을 완전히 끈다."""
+        self._filter_enabled = enabled
+        self.update()
+
+    def set_sort_indicator(self, column, order) -> None:
+        """현재 정렬 중인 컬럼·방향을 기억해 두고 우측 화살표를 다시 그린다
+        (EqualSpacingTable.apply_sort가 정렬을 바꿀 때마다 호출)."""
+        previous = self._sort_column
+        self._sort_column = column
+        self._sort_order = order
+        if previous is not None and previous != column:
+            self.updateSection(previous)
+        if column is not None:
+            self.updateSection(column)
+
     def _icon_rect(self, section_rect: QRect) -> QRect:
         y = section_rect.top() + (section_rect.height() - self.ICON_SIZE) // 2
-        x = section_rect.right() - self.ICON_MARGIN - self.ICON_SIZE
+        x = section_rect.left() + self.ICON_MARGIN
         return QRect(x, y, self.ICON_SIZE, self.ICON_SIZE)
+
+    def _sort_arrow_rect(self, section_rect: QRect) -> QRect:
+        size = self.SORT_ARROW_SIZE
+        y = section_rect.top() + (section_rect.height() - size) // 2
+        x = section_rect.right() - self.SORT_ARROW_MARGIN - size
+        return QRect(x, y, size, size)
 
     def paintSection(self, painter, rect, logical_index) -> None:
         super().paintSection(painter, rect, logical_index)
-        icon = self._icon_active if logical_index in self._filtered_columns else self._icon_inactive
-        icon.paint(painter, self._icon_rect(rect))
+        if self._filter_enabled:
+            icon = self._icon_active if logical_index in self._filtered_columns else self._icon_inactive
+            icon.paint(painter, self._icon_rect(rect))
+        if logical_index == self._sort_column and self._sort_order is not None:
+            self._paint_sort_arrow(painter, self._sort_arrow_rect(rect))
+
+    def _paint_sort_arrow(self, painter, rect: QRect) -> None:
+        """오름차순(▲)/내림차순(▼) 화살표를 직접 그린다 — SpinArrowProxyStyle
+        ._draw_spin_arrow와 동일한 QPainter+QPolygon 기법(이 Qt 버전에서 QSS의
+        border 삼각형 트릭이 깨지는 문제를 피하기 위해 이미 쓰이던 방식)."""
+        cx = rect.center().x()
+        half_base = rect.width() // 2
+        if self._sort_order == Qt.SortOrder.AscendingOrder:
+            points = [
+                QPoint(cx - half_base, rect.bottom()),
+                QPoint(cx + half_base, rect.bottom()),
+                QPoint(cx, rect.top()),
+            ]
+        else:
+            points = [
+                QPoint(cx - half_base, rect.top()),
+                QPoint(cx + half_base, rect.top()),
+                QPoint(cx, rect.bottom()),
+            ]
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(self.theme.ACCENT_LIGHT))
+        painter.drawPolygon(QPolygon(points))
+        painter.restore()
 
     def mousePressEvent(self, event) -> None:
-        logical = self.logicalIndexAt(event.pos())
-        if logical >= 0:
-            section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
-            if self._icon_rect(section_rect).contains(event.pos()):
-                self.filterIconClicked.emit(logical)
-                event.accept()
-                return
+        if self._filter_enabled:
+            logical = self.logicalIndexAt(event.pos())
+            if logical >= 0:
+                section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
+                if self._icon_rect(section_rect).contains(event.pos()):
+                    self.filterIconClicked.emit(logical)
+                    event.accept()
+                    return
         super().mousePressEvent(event)
 
 
@@ -637,19 +697,43 @@ class EqualSpacingTable(QTableWidget):
     fit_column(logical)          지정 컬럼 Auto-fit (더블클릭과 동일)
     matches_column_filters(row)  해당 행이 현재 활성 컬럼 필터를 모두 만족하는지
     clear_all_filters()          모든 컬럼 필터 초기화
+    disable_column_filters()     컬럼별 필터(깔때기 아이콘) 자체를 끔 — 자체 검색창이 있는 테이블용
+    apply_sort(column, order)    지정 컬럼을 order(Qt.SortOrder 또는 정렬 해제 시 None)로 정렬
+    current_sort()               (정렬 중인 컬럼, Qt.SortOrder) — 정렬 없으면 (None, None)
 
-    컬럼 헤더 우측의 깔때기 아이콘을 클릭하면 해당 컬럼의 고유값 체크리스트로
+    컬럼 헤더 좌측의 깔때기 아이콘을 클릭하면 해당 컬럼의 고유값 체크리스트로
     행을 필터링하는 팝업이 열린다(엑셀 AutoFilter와 동일한 동작). 검색창이나
     별도 필터를 가진 페이지(예: trigger/monitor.py)는 columnFiltersChanged
     시그널을 구독해 자신의 필터와 AND로 결합하면 된다 — 구독자가 없어도 이
     테이블 자체가 _apply_own_row_visibility()로 필터를 적용하므로 별도 연동
-    없이 모든 테이블에서 바로 동작한다.
+    없이 모든 테이블에서 바로 동작한다. 이미 자체 키워드 검색창을 갖고 있어
+    컬럼별 필터가 중복되는 테이블은 생성 직후 disable_column_filters()를
+    호출하면 깔때기 아이콘 자체가 사라진다(예: 모니터링 RAW/정제/비교 탭).
+
+    컬럼 헤더(깔때기 아이콘 제외 영역)를 클릭하면 오름차순 → 내림차순 → 정렬
+    해제 순으로 순환하며, 정렬 방향은 헤더 우측의 삼각형 화살표로 표시된다
+    (_FilterHeaderView 참고). 정렬은 Qt의 sortItems()가 아니라 직접 구현한 행
+    재배치(_reorder_rows)로 처리하는데, setCellWidget으로 채운 컬럼(체크박스·
+    버튼 등)은 Qt의 기본 정렬이 위젯을 행과 함께 옮겨주지 않기 때문이다.
+    "정렬 해제"는 각 행에 자동으로 찍힌 삽입 순번(_NATURAL_ORDER_ROLE)을 기준
+    으로 원래 순서를 복원하며, 이는 테이블이 setRowCount/setHorizontalHeaderLabels
+    로 새로 채워질 때마다 초기화된다(대시보드처럼 insertRow로 한 행씩 실시간
+    추가되는 테이블은 초기화되지 않으므로, 정렬을 걸어둔 채 새 행이 들어오면
+    맨 아래에 추가되고 헤더를 다시 클릭해야 반영된다 — "클릭 시점 스냅샷" 정렬).
+    apply_sort()는 재배치 후 columnFiltersChanged도 함께 emit한다 — 검색창의
+    키워드 필터를 컬럼 필터와 AND로 구독 중인 페이지가 정렬 직후에도 자신의
+    필터를 다시 적용해, 검색으로 숨겨둔 행이 정렬 때문에 되살아나지 않는다.
     """
 
     MIN_COL_W = 30  # 컬럼 최소 너비의 절대 하한(px) — 헤더가 아주 짧아도 이 밑으로는 안 내려감
     H_PADDING = 20  # auto-fit/최소 폭 계산 시 텍스트 양쪽 여유 패딩 (px, 한쪽 10)
 
+    # 행의 원래 삽입 순서를 기록하는 커스텀 role. trigger/common.py의
+    # ROW_ORIGIN_ROLE(UserRole+1)과 겹치지 않도록 오프셋을 충분히 띄운다.
+    _NATURAL_ORDER_ROLE = Qt.ItemDataRole.UserRole.value + 100
+
     columnFiltersChanged = pyqtSignal()
+    sortStateChanged = pyqtSignal(int, object)  # (logical_column, Qt.SortOrder 또는 None)
 
     def __init__(
             self,
@@ -681,6 +765,16 @@ class EqualSpacingTable(QTableWidget):
         # 필터 없음(전체 허용).
         self._column_filters: dict = {}
 
+        # 0번 컬럼 아이템에 자동으로 찍는 삽입 순번(단조 증가) — "정렬 해제"
+        # 시 원래 순서를 복원하는 데 쓴다(_NATURAL_ORDER_ROLE 참고).
+        self._next_natural_seq = 0
+        # 현재 정렬 상태. 둘 다 None이면 정렬 해제 상태.
+        self._sort_column: int | None = None
+        self._sort_order = None  # Qt.SortOrder.AscendingOrder / DescendingOrder / None
+        # True인 동안은 _reorder_rows가 자체적으로 옮기는 setItem 호출이며,
+        # 새 데이터 유입이 아니므로 삽입 순번 재스탬프를 건너뛴다.
+        self._reordering = False
+
         self.theme = THEME()
 
         self._init_table()
@@ -695,7 +789,6 @@ class EqualSpacingTable(QTableWidget):
         self.setShowGrid(False)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.setSortingEnabled(True)
         self.verticalHeader().setDefaultSectionSize(self._row_height)
 
         # 가로 스크롤바: 컬럼 합산이 viewport 초과 시 자동 표시
@@ -706,6 +799,12 @@ class EqualSpacingTable(QTableWidget):
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         hdr.setStretchLastSection(False)
         hdr.setMinimumSectionSize(self.MIN_COL_W)
+        # QTableWidget이 자체 생성하는 기본 헤더는 sectionsClickable이 True로
+        # 시작하지만, 여기서 새로 만들어 갈아 끼우는 _FilterHeaderView는 그
+        # 기본값을 물려받지 못해 False로 남는다 — 이 상태에서는 마우스로
+        # 헤더를 클릭해도 sectionClicked가 전혀 발생하지 않아 _on_header_clicked
+        # 기반 정렬이 트리거되지 않는다(실측으로 확인한 버그). 명시적으로 켠다.
+        hdr.setSectionsClickable(True)
 
         # 드래그 리사이즈 — 해당 컬럼만 변경 (다른 컬럼 고정)
         hdr.sectionResized.connect(self._on_section_resized)
@@ -716,9 +815,16 @@ class EqualSpacingTable(QTableWidget):
         # 필터 아이콘 클릭 → 고유값 필터 팝업
         hdr.filterIconClicked.connect(self._show_column_filter_menu)
 
-        # 정렬 직후 행 내용이 섞이므로, 숨김 상태가 실제 셀 값과 어긋나지
-        # 않도록 필터를 다시 적용한다.
-        hdr.sortIndicatorChanged.connect(self._on_sort_changed)
+        # 컬럼 헤더(필터 아이콘 영역 제외) 클릭 → 오름차순-내림차순-정렬 해제 순환
+        hdr.sectionClicked.connect(self._on_header_clicked)
+
+    def setSortingEnabled(self, enable: bool) -> None:
+        """Qt 기본 정렬(sortItems 기반)은 쓰지 않는다 — setCellWidget 컬럼(체크박스·
+        버튼 등)이 행과 함께 옮겨지지 않는 Qt 자체 한계 때문에, 정렬은 항상
+        apply_sort()/_reorder_rows()로 직접 처리한다(_on_header_clicked 참고).
+        대량 삽입 전후 setSortingEnabled(True)로 토글하는 기존 코드가 있어도
+        (trigger/monitor.py 등) 항상 비활성 상태를 유지하도록 강제한다."""
+        super().setSortingEnabled(False)
 
     # ── viewport 총 너비 계산 ─────────────────────────
     def _viewport_total(self) -> int:
@@ -731,12 +837,19 @@ class EqualSpacingTable(QTableWidget):
         super().setHorizontalHeaderLabels(labels)
         self._min_widths_dirty = True
         # 컬럼 구성 자체가 바뀌면(예: 블루프린트 전환) 기존 컬럼 인덱스 기준
-        # 필터가 무의미해지므로 초기화한다.
+        # 필터·정렬이 무의미해지므로 초기화한다.
         self.clear_all_filters()
+        self._reset_sort_state()
 
     def setItem(self, row, column, item) -> None:
         super().setItem(row, column, item)
         self._min_widths_dirty = True
+        # 0번 컬럼에 새 아이템이 들어올 때마다 삽입 순번을 자동으로 찍어 둔다
+        # ("정렬 해제" 복원용, _NATURAL_ORDER_ROLE 참고). _reorder_rows가 기존
+        # 아이템을 그대로 옮길 때는 재스탬프하면 안 되므로 건너뛴다.
+        if column == 0 and item is not None and not self._reordering:
+            item.setData(self._NATURAL_ORDER_ROLE, self._next_natural_seq)
+            self._next_natural_seq += 1
 
     def setCellWidget(self, row, column, widget) -> None:
         super().setCellWidget(row, column, widget)
@@ -745,6 +858,10 @@ class EqualSpacingTable(QTableWidget):
     def setRowCount(self, rows: int) -> None:
         super().setRowCount(rows)
         self._min_widths_dirty = True
+        # 테이블이 새 데이터로 통째로 재구성되는 지점이므로 정렬 상태를 초기화한다
+        # (insertRow로 한 행씩 실시간 추가되는 테이블은 이 경로를 타지 않아
+        # 정렬이 유지된다 — 클래스 docstring의 "스냅샷 정렬" 설명 참고).
+        self._reset_sort_state()
 
     # ── 컬럼별 폭 계산/조회 ───────────────────────────
     def _measure_column_width(self, col: int) -> int:
@@ -981,10 +1098,6 @@ class EqualSpacingTable(QTableWidget):
         self.horizontalHeader().set_column_filtered(logical, logical in self._column_filters)
         self.columnFiltersChanged.emit()
 
-    def _on_sort_changed(self, *_args) -> None:
-        self._apply_own_row_visibility()
-        self.columnFiltersChanged.emit()
-
     def clear_all_filters(self) -> None:
         """모든 컬럼 필터를 초기화한다(컬럼 구성이 바뀔 때 자동 호출됨)."""
         self._column_filters.clear()
@@ -992,6 +1105,146 @@ class EqualSpacingTable(QTableWidget):
         for c in range(self.columnCount()):
             hdr.set_column_filtered(c, False)
         self._apply_own_row_visibility()
+
+    def disable_column_filters(self) -> None:
+        """컬럼별 필터(깔때기 아이콘) 자체를 끈다. 이미 자체 키워드 검색창을
+        가진 카드(예: 모니터링 RAW/정제/비교 탭)에서 테이블 생성 직후 호출한다
+        — 검색창과 컬럼 필터가 동시에 있으면 중복이기 때문이다."""
+        self.clear_all_filters()
+        self.horizontalHeader().set_filter_enabled(False)
+
+    # ── 컬럼 헤더 클릭 정렬 (오름차순 → 내림차순 → 정렬 해제) ────
+    def current_sort(self):
+        """(정렬 중인 컬럼, Qt.SortOrder) — 정렬 중이 아니면 (None, None).
+        trigger/monitor.py의 비교 탭 동기화에서 재귀 가드로 사용한다."""
+        return self._sort_column, self._sort_order
+
+    def _reset_sort_state(self) -> None:
+        self._sort_column = None
+        self._sort_order = None
+        self.horizontalHeader().set_sort_indicator(None, None)
+
+    def _on_header_clicked(self, logical: int) -> None:
+        if self._sort_column != logical:
+            new_order = Qt.SortOrder.AscendingOrder
+        elif self._sort_order == Qt.SortOrder.AscendingOrder:
+            new_order = Qt.SortOrder.DescendingOrder
+        elif self._sort_order == Qt.SortOrder.DescendingOrder:
+            new_order = None
+        else:
+            new_order = Qt.SortOrder.AscendingOrder
+        self.apply_sort(logical, new_order)
+
+    def apply_sort(self, column: int, order) -> None:
+        """column 기준으로 order(Qt.SortOrder.AscendingOrder/DescendingOrder)로
+        정렬하거나, order=None이면 정렬을 해제하고 원래 삽입 순서로 되돌린다.
+        헤더 클릭(_on_header_clicked)과 trigger/monitor.py의 비교 탭 동기화
+        (_sync_cmp_sort) 양쪽에서 호출되는 공개 API다."""
+        self._sort_column = column
+        self._sort_order = order
+        self._reorder_rows(self._compute_row_order(column, order))
+        self.horizontalHeader().set_sort_indicator(column, order)
+        self.sortStateChanged.emit(column, order)
+        # _reorder_rows가 재적용하는 _apply_own_row_visibility()는 컬럼 필터만
+        # 고려한다 — 검색창의 키워드 필터를 columnFiltersChanged 구독으로
+        # AND 결합해 둔 페이지(trigger/monitor.py 등)가 정렬 직후에도 자신의
+        # 필터를 다시 적용하도록 함께 emit한다(구독자가 없는 테이블은 무해).
+        self.columnFiltersChanged.emit()
+
+    def _compute_row_order(self, column: int, order) -> list:
+        row_indices = list(range(self.rowCount()))
+        if order is None:
+            row_indices.sort(key=self._natural_order_of)
+            return row_indices
+        key_fn = self._make_sort_key_fn(column)
+        row_indices.sort(key=key_fn, reverse=(order == Qt.SortOrder.DescendingOrder))
+        return row_indices
+
+    def _natural_order_of(self, row: int) -> int:
+        item = self.item(row, 0)
+        value = item.data(self._NATURAL_ORDER_ROLE) if item else None
+        return value if value is not None else row
+
+    def _make_sort_key_fn(self, column: int):
+        """숫자로만 이루어진 컬럼은 숫자 비교, 그 외는 대소문자 구분 없는
+        문자열 비교로 정렬 키를 만든다."""
+        raw_values = [self._sort_value(row, column) for row in range(self.rowCount())]
+        if self._is_numeric_column(raw_values):
+            return lambda row: self._to_sort_float(raw_values[row])
+        return lambda row: raw_values[row].casefold()
+
+    def _sort_value(self, row: int, column: int) -> str:
+        """정렬 키의 원본 문자열. 체크박스 셀 위젯(블루프린트 목록의 선택
+        컬럼 등)은 체크 상태를 값으로 쓰고, 그 외 위젯만 있고 텍스트가 없는
+        컬럼(실행/삭제 버튼 등)은 정렬할 값이 없어 빈 문자열(=순서 불변)을
+        반환한다."""
+        widget = self.cellWidget(row, column)
+        if widget is not None:
+            checkbox = widget if isinstance(widget, QCheckBox) else widget.findChild(QCheckBox)
+            if checkbox is None:
+                return ""
+            return "1" if checkbox.isChecked() else "0"
+        item = self.item(row, column)
+        return item.text() if item else ""
+
+    @staticmethod
+    def _parse_sort_float(value: str):
+        try:
+            return float(value.replace(",", ""))
+        except ValueError:
+            return None
+
+    def _is_numeric_column(self, values: list) -> bool:
+        non_empty = [v for v in values if v != ""]
+        if not non_empty:
+            return False
+        return all(self._parse_sort_float(v) is not None for v in non_empty)
+
+    def _to_sort_float(self, value: str) -> float:
+        if value == "":
+            return float("-inf")
+        parsed = self._parse_sort_float(value)
+        return parsed if parsed is not None else float("-inf")
+
+    def _reorder_rows(self, new_order: list) -> None:
+        """new_order[i] = 새 i번째 행이 될 기존 행 인덱스. QTableWidgetItem과
+        setCellWidget 위젯을 함께 옮긴다 — Qt의 sortItems()는 cellWidget을
+        행과 함께 옮겨주지 않는 한계가 있어(예: 스케줄러 실행 버튼, 블루프린트
+        체크박스가 정렬 후 엉뚱한 행에 남는 문제) 직접 재배치한다."""
+        if new_order == list(range(self.rowCount())):
+            return
+        col_count = self.columnCount()
+        self._reordering = True
+        try:
+            moved = [
+                (
+                    [self.takeItem(old_row, col) for col in range(col_count)],
+                    [self._take_cell_widget(old_row, col) for col in range(col_count)],
+                )
+                for old_row in new_order
+            ]
+            for new_row, (items, widgets) in enumerate(moved):
+                for col, item in enumerate(items):
+                    if item is not None:
+                        self.setItem(new_row, col, item)
+                for col, widget in enumerate(widgets):
+                    if widget is not None:
+                        self.setCellWidget(new_row, col, widget)
+        finally:
+            self._reordering = False
+        self._apply_own_row_visibility()
+
+    def _take_cell_widget(self, row: int, col: int):
+        """cellWidget을 삭제 없이 셀에서 분리한다. QTableWidget.removeCellWidget()은
+        내부적으로 위젯을 deleteLater()로 예약해버려(Qt 자체 동작 — 실측 확인함)
+        같은 위젯 인스턴스를 다른 행에 재배치해도 잠시 후 사라지는 버그가
+        생긴다. 아직 처리되지 않은 삭제 이벤트를 즉시 취소해 재사용을 안전하게
+        한다."""
+        widget = self.cellWidget(row, col)
+        if widget is not None:
+            self.removeCellWidget(row, col)
+            QCoreApplication.removePostedEvents(widget, QEvent.Type.DeferredDelete)
+        return widget
 
     def _show_column_filter_menu(self, logical: int) -> None:
         """헤더 필터 아이콘 클릭 시 고유값 체크리스트 팝업을 연다."""
