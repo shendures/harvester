@@ -57,7 +57,6 @@ class MonitorTargetListPage(QWidget):
         """BlueprintStorage에서 읽어 테이블을 재구성한다."""
         blueprints = BlueprintStorage().list_blueprints()
 
-        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
 
         for bp in blueprints:
@@ -74,7 +73,6 @@ class MonitorTargetListPage(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, seq_no)
                 self.table.setItem(row, col, item)
 
-        self.table.setSortingEnabled(True)
         if self._active_seq_no is not None:
             self._apply_active_shade()
 

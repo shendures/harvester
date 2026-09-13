@@ -81,7 +81,6 @@ class StatisticsPageTriggers:
         )
 
         # Session table ( 통계 분석 - 세션 이력 )
-        self.session_table.setSortingEnabled(False)
         self.session_table.setRowCount(0)
         for idx, s in enumerate(reversed(sessions), start=1):
             r = self.session_table.rowCount()
@@ -97,7 +96,6 @@ class StatisticsPageTriggers:
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))
                 self.session_table.setItem(r, col, item)
-        self.session_table.setSortingEnabled(True)
 
     # ── hourly popup data ──────────────────────
     def _aggregate_hourly_all_time(self):

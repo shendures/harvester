@@ -23,7 +23,6 @@ class DashboardPageTriggers:
         resp_info = row["resp_info"]
 
         target_url = resp_info.get("url", "")
-        self.monitor_table.setSortingEnabled(False)
         current_row = self.monitor_table.rowCount()
         self.monitor_table.insertRow(current_row)
 
@@ -68,7 +67,6 @@ class DashboardPageTriggers:
                 item.setData(Qt.ItemDataRole.UserRole, resp_info)
             self.monitor_table.setItem(current_row, col, item)
 
-        self.monitor_table.setSortingEnabled(True)
         self.mon_row_count_lbl.setText(f"{self.monitor_table.rowCount()} rows")
 
         if str(resp_info.get("status", "")).strip() != "200":

@@ -149,8 +149,7 @@ class GroupedBarChart(QWidget):
         chart_h = H - pad_t - pad_b
 
         all_vals = [v for _, vals, _ in self.datasets for v in vals]
-        max_v = max(all_vals) if all_vals else 1
-        max_v = max_v or 1
+        max_v = max(all_vals, default=0) or 1
 
         # 범례
         lx = pad_l

@@ -93,7 +93,6 @@ class MonitorPageTriggers:
         if self.result_table.columnCount() == 0:
             self.result_table.setColumnCount(len(columns) + 1)
             self.result_table.setHorizontalHeaderLabels(["NO"] + columns)
-        self.result_table.setSortingEnabled(False)
 
         # 중복 감지용 키 집합은 self._existing_keys에 증분 유지(매 호출마다 재구축하지 않음)
         for entry in data:
@@ -138,7 +137,6 @@ class MonitorPageTriggers:
                     item.setBackground(row_bg)
                 self.result_table.setItem(current_row, col_idx, item)
 
-        self.result_table.setSortingEnabled(True)
         self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
         self._update_summary_cards()
 
@@ -496,7 +494,6 @@ class MonitorPageTriggers:
         columns = self._get_result_columns()
         if self._refine_rules.get("drop_columns") and self._drop_column_names:
             columns = [c for c in columns if c not in self._drop_column_names]
-        self.refined_table.setSortingEnabled(False)
         self.refined_table.setRowCount(0)
         self.refined_table.setColumnCount(len(columns) + 1)
         self.refined_table.setHorizontalHeaderLabels(["NO"] + columns)
@@ -511,7 +508,6 @@ class MonitorPageTriggers:
                 item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 self.refined_table.setItem(row_idx, col_idx, item)
-        self.refined_table.setSortingEnabled(True)
         self.refined_count_lbl.setText(f"{len(data)} rows")
 
     def _update_refined_summary(self, stats: RefineStats):
@@ -541,7 +537,6 @@ class MonitorPageTriggers:
         )
 
         # ── 좌: Raw 테이블 — 삭제 행 빨간 음영, 생존 행 기본색 ────────
-        self.cmp_raw_table.setSortingEnabled(False)
         self.cmp_raw_table.setRowCount(0)
         self.cmp_raw_table.setColumnCount(len(columns) + 1)
         self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + columns)
@@ -563,11 +558,9 @@ class MonitorPageTriggers:
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_raw_table.setItem(row_idx, col_idx, item)
-        self.cmp_raw_table.setSortingEnabled(True)
         self.cmp_raw_count.setText(f"{len(raw_data)} rows")
 
         # ── 우: Refined 테이블 — 변경된 행만 초록 음영 ─────────────────
-        self.cmp_ref_table.setSortingEnabled(False)
         self.cmp_ref_table.setRowCount(0)
         self.cmp_ref_table.setColumnCount(len(ref_columns) + 1)
         self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + ref_columns)
@@ -602,7 +595,6 @@ class MonitorPageTriggers:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 item.setData(Qt.ItemDataRole.UserRole, is_modified)
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
-        self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_ref_count.setText(f"{len(refined_data)} rows")
 
         # ── 요약 카드 ────────────────────────────────────────────────────

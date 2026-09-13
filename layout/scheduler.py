@@ -17,6 +17,8 @@ from .common import (
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_LIGHT, AMBER, GREEN, BLUE, PURPLE, RED,
 )
 
+STATUS_COLOR = {"대기": AMBER, "실행 중": GREEN, "완료": BLUE, "비활성": TEXT_MUTED}
+
 
 class SchedulerPage(QWidget, SchedulerPageTriggers):
 
@@ -104,7 +106,6 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
     def _refresh_table(self):
         schedules = store.get_schedules()
         self.sched_table.setRowCount(0)
-        STATUS_COLOR = {"대기": AMBER, "실행 중": GREEN, "완료": BLUE, "비활성": TEXT_MUTED}
 
         for idx, s in enumerate(schedules):
             r = self.sched_table.rowCount()
