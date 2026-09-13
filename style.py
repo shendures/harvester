@@ -52,20 +52,7 @@ class THEME:
             font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace;
             font-size: 13px;
         }}
-        QScrollBar:vertical {{
-            background: {self.BG_SECONDARY}; width: 8px; border-radius: 4px;
-        }}
-        QScrollBar::handle:vertical {{
-            background: {self.BORDER_LIGHT}; border-radius: 4px; min-height: 20px;
-        }}
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-        QScrollBar:horizontal {{
-            background: {self.BG_SECONDARY}; height: 8px; border-radius: 4px;
-        }}
-        QScrollBar::handle:horizontal {{
-            background: {self.BORDER_LIGHT}; border-radius: 4px;
-        }}
-        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+        {self._scrollbar_qss(8, 4)}
         QToolTip {{
             background-color: {self.BG_SECONDARY}; color: {self.TEXT_PRIMARY};
             border: 1px solid {self.BORDER}; padding: 4px 8px;
@@ -157,20 +144,39 @@ class THEME:
         }}
         """
 
-    @property
-    def CB_STYLE(self):
+    def _scrollbar_qss(
+        self, v_thickness: int, v_radius: int,
+        h_thickness: int = None, h_radius: int = None, h_handle: int = None,
+    ) -> str:
+        """세로/가로 스크롤바 QSS 조각 공유 헬퍼. GLOBAL_QSS와
+        EqualSpacingTable._apply_style()이 각자 사본을 유지하다 커밋
+        906a360("전역 스크롤바 굵기 소폭 증가")에서 두 곳을 함께 손으로
+        고친 이력이 있어(_indicator_qss와 동일한 이유로) 공유한다.
+        h_thickness/h_radius를 생략하면 v_thickness/v_radius와 같은 값을
+        쓰고, h_handle을 주면 가로 핸들 폭을 고정한다(EqualSpacingTable
+        전용 — 스크롤 가능한 콘텐츠 폭에 맞춘 고정 핸들)."""
+        h_thickness = v_thickness if h_thickness is None else h_thickness
+        h_radius = v_radius if h_radius is None else h_radius
+        handle_size_qss = (
+            f"min-width: {h_handle}px; max-width: {h_handle}px;" if h_handle is not None else ""
+        )
         return f"""
-                QComboBox {{
-                    background:{self.BG_PRIMARY}; color:{self.TEXT_PRIMARY};
-                    border:1px solid {self.BORDER_LIGHT}; border-radius:4px;
-                    padding:4px 8px; font-size:12px;
-                }}
-                QComboBox::drop-down {{ border:none; width:18px; }}
-                QComboBox QAbstractItemView {{
-                    background:{self.BG_SECONDARY}; color:{self.TEXT_PRIMARY};
-                    border:1px solid {self.BORDER}; selection-background-color:{self.BG_HOVER};
-                }}
-            """
+        QScrollBar:vertical {{
+            background: {self.BG_SECONDARY}; width: {v_thickness}px; border-radius: {v_radius}px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {self.BORDER_LIGHT}; border-radius: {v_radius}px; min-height: 20px;
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar:horizontal {{
+            background: {self.BG_SECONDARY}; height: {h_thickness}px; border-radius: {h_radius}px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {self.BORDER_LIGHT}; border-radius: {h_radius}px;
+            {handle_size_qss}
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+        """
 
     # ── SessionSettingsPage 전용 QSS 프로퍼티 ────────────
     @property
@@ -327,6 +333,19 @@ class THEME:
         app.setPalette(palette)
 
 
+def _draw_filled_triangle(painter, points: list, color) -> None:
+    """3점 폴리곤을 단색으로 채워 그리는 공용 헬퍼 — QSS의 border 기반
+    삼각형 트릭이 이 Qt 버전에서 깨지는 문제를 피해 스핀박스 화살표/정렬
+    화살표를 QPainter로 직접 그릴 때 공유한다(SpinArrowProxyStyle
+    ._draw_spin_arrow, _FilterHeaderView._paint_sort_arrow)."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color))
+    painter.drawPolygon(QPolygon(points))
+    painter.restore()
+
+
 class SpinArrowProxyStyle(QProxyStyle):
     """QSpinBox/QDoubleSpinBox 위·아래 화살표를 실제 삼각형으로 그린다.
     QSS의 border 기반 삼각형 기법(border-left/right:transparent + border-top/bottom
@@ -369,12 +388,7 @@ class SpinArrowProxyStyle(QProxyStyle):
                 QPoint(cx + self._HALF_BASE, cy - self._HALF_HEIGHT),
                 QPoint(cx, cy + self._HALF_HEIGHT),
             ]
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(color)
-        painter.drawPolygon(QPolygon(points))
-        painter.restore()
+        _draw_filled_triangle(painter, points, color)
 
 
 def _load_svg_icon(name: str, color: str, stroke_width: str, size: int) -> QIcon:
@@ -625,7 +639,8 @@ class _FilterHeaderView(QHeaderView):
     def _paint_sort_arrow(self, painter, rect: QRect) -> None:
         """오름차순(▲)/내림차순(▼) 화살표를 직접 그린다 — SpinArrowProxyStyle
         ._draw_spin_arrow와 동일한 QPainter+QPolygon 기법(이 Qt 버전에서 QSS의
-        border 삼각형 트릭이 깨지는 문제를 피하기 위해 이미 쓰이던 방식)."""
+        border 삼각형 트릭이 깨지는 문제를 피하기 위해 이미 쓰이던 방식)을
+        _draw_filled_triangle 헬퍼로 공유한다."""
         cx = rect.center().x()
         half_base = rect.width() // 2
         if self._sort_order == Qt.SortOrder.AscendingOrder:
@@ -640,12 +655,7 @@ class _FilterHeaderView(QHeaderView):
                 QPoint(cx + half_base, rect.top()),
                 QPoint(cx, rect.bottom()),
             ]
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(self.theme.ACCENT_LIGHT))
-        painter.drawPolygon(QPolygon(points))
-        painter.restore()
+        _draw_filled_triangle(painter, points, self.theme.ACCENT_LIGHT)
 
     def mousePressEvent(self, event) -> None:
         if self._filter_enabled:
@@ -867,22 +877,19 @@ class EqualSpacingTable(QTableWidget):
     def _measure_column_width(self, col: int) -> int:
         """col에 있는 헤더 텍스트·모든 행의 셀 텍스트·cellWidget 크기 중
         가장 넓은 것에 맞춘 너비를 계산한다(fit_column의 Auto-fit 전용 —
-        드래그 최소 폭 계산에는 _measure_min_column_width를 쓴다)."""
-        hdr_fm = QFontMetrics(self.horizontalHeader().font())
+        드래그 최소 폭 계산에는 _measure_min_column_width를 쓴다). 헤더·
+        cellWidget 스캔은 _measure_min_column_width와 공유하고, 텍스트
+        셀 스캔만 이 메서드에서 추가한다."""
         cell_fm = QFontMetrics(self.font())
-
-        header_item = self.horizontalHeaderItem(col)
-        max_w = hdr_fm.horizontalAdvance(header_item.text() if header_item else "") + self.H_PADDING
+        max_w = self._measure_min_column_width(col)
 
         for row in range(self.rowCount()):
-            widget = self.cellWidget(row, col)
-            if widget:
-                max_w = max(max_w, widget.sizeHint().width() + self.H_PADDING)
-            else:
-                item = self.item(row, col)
-                if item and item.text():
-                    tw = cell_fm.horizontalAdvance(item.text()) + self._col_padding * 2 + self.H_PADDING
-                    max_w = max(max_w, tw)
+            if self.cellWidget(row, col):
+                continue
+            item = self.item(row, col)
+            if item and item.text():
+                tw = cell_fm.horizontalAdvance(item.text()) + self._col_padding * 2 + self.H_PADDING
+                max_w = max(max_w, tw)
         return max_w
 
     def _measure_min_column_width(self, col: int) -> int:
@@ -1326,24 +1333,7 @@ class EqualSpacingTable(QTableWidget):
             QHeaderView::section:last {{
                 border-right: none;
             }}
-            QScrollBar:vertical {{
-                background: {self.theme.BG_SECONDARY}; width: 6px; border-radius: 3px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {self.theme.BORDER_LIGHT}; border-radius: 3px; min-height: 20px;
-            }}
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {{ height: 0; }}
-            QScrollBar:horizontal {{
-                background: {self.theme.BG_SECONDARY}; height: 8px; border-radius: 4px;
-            }}
-            QScrollBar::handle:horizontal {{
-                background: {self.theme.BORDER_LIGHT}; border-radius: 4px;
-                min-width: {self._hscroll_handle}px;
-                max-width: {self._hscroll_handle}px;
-            }}
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal {{ width: 0; }}
+            {self.theme._scrollbar_qss(6, 3, 8, 4, h_handle=self._hscroll_handle)}
         """)
 
 class Divider(QFrame):

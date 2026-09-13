@@ -187,7 +187,6 @@ class BlueprintListPage(QWidget):
         """BlueprintStorage에서 다시 읽어 테이블을 재구성한다."""
         blueprints = BlueprintStorage().list_blueprints()
 
-        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         # setRowCount(0)이 기존 셀 위젯을 모두 파괴하므로, 그 안의 ▶/■ 버튼을
         # 가리키던 참조도 함께 무효화된다 — 새로 만들며 채운다.
@@ -268,7 +267,6 @@ class BlueprintListPage(QWidget):
             wrap_layout.addStretch()
             self.table.setCellWidget(row, self._CHECK_COL, check_wrap)
 
-        self.table.setSortingEnabled(True)
         has_rows = self.table.rowCount() > 0
         self._collect_btn.setEnabled(has_rows)
         self._batch_btn.setEnabled(has_rows)

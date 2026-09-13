@@ -25,7 +25,7 @@ from style import (
 )
 
 from .common import (
-    store, theme, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    store, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT, GREEN, PURPLE,
     SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
@@ -903,7 +903,6 @@ class SchedulerPageTriggers:
             if existing_save_type in ["새로 만들기", "덮어쓰기", "추가하기"]:
                 sched_save_type.setCurrentText(existing_save_type)
         sched_save_type.setFixedWidth(130)
-        sched_save_type.setStyleSheet(theme.CB_STYLE)
 
         sv_row = QHBoxLayout()
         sv_row.setSpacing(8)
@@ -924,7 +923,6 @@ class SchedulerPageTriggers:
         sched_interval = QComboBox()
         sched_interval.addItems(["선택하세요", "매일", "매주", "매월", "특정 날짜"])
         sched_interval.setFixedWidth(120)
-        sched_interval.setStyleSheet(theme.CB_STYLE)
 
         container_daily   = QWidget()
         container_weekly  = QWidget()
@@ -949,7 +947,6 @@ class SchedulerPageTriggers:
         self.w_day = QComboBox()
         self.w_day.addItems(["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"])
         self.w_day.setFixedWidth(76)
-        self.w_day.setStyleSheet(theme.CB_STYLE)
         self.w_h, self.w_m, self.w_s = hms_combos()
         wl = QHBoxLayout(container_weekly)
         wl.setContentsMargins(0, 0, 0, 0)
@@ -970,7 +967,6 @@ class SchedulerPageTriggers:
         self.m_day = QComboBox()
         self.m_day.addItems([str(d) for d in range(1, 32)])
         self.m_day.setFixedWidth(50)
-        self.m_day.setStyleSheet(theme.CB_STYLE)
         self.m_h, self.m_m, self.m_s = hms_combos()
         ml = QHBoxLayout(container_monthly)
         ml.setContentsMargins(0, 0, 0, 0)

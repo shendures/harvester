@@ -283,9 +283,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self._session_latency_count = 0
 
         # 수집 모니터링 테이블 초기화
-        self.monitor_table.setSortingEnabled(False)
         self.monitor_table.setRowCount(0)
-        self.monitor_table.setSortingEnabled(True)
         self.mon_row_count_lbl.setText("0 rows")
 
         # 프로그레스 바 초기화

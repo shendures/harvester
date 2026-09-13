@@ -244,10 +244,9 @@ class SessionSettingsPageTriggers:
 
         added = len(new_rows)
         if added:
-            # 대량 삽입 전 repaint·정렬·시그널 중단 — 전체 삽입 후 한 번만 그림
+            # 대량 삽입 전 repaint·시그널 중단 — 전체 삽입 후 한 번만 그림
             # blockSignals: 행마다 itemChanged → _on_proxy_item_changed 디스패치 차단
             t = self._proxy_table
-            t.setSortingEnabled(False)
             t.setUpdatesEnabled(False)
             t.blockSignals(True)
             try:
@@ -258,7 +257,6 @@ class SessionSettingsPageTriggers:
                 # 예외 발생 시에도 반드시 복원
                 t.blockSignals(False)
                 t.setUpdatesEnabled(True)
-                t.setSortingEnabled(True)
 
         self._log("ok", f"Import 완료: {added}개 추가 / {skipped}개 중복 제외 ← {path}")
 

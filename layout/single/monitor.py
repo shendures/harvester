@@ -473,14 +473,12 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         raw_w, raw_l = parts.card_widget("Raw 데이터")
         popup_raw_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
-        popup_raw_table.setSortingEnabled(False)
         self._copy_table_contents(popup_raw_table, self.cmp_raw_table)
         raw_l.addWidget(popup_raw_table)
         splitter.addWidget(raw_w)
 
         ref_w, ref_l = parts.card_widget("정제 데이터")
         popup_ref_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
-        popup_ref_table.setSortingEnabled(False)
         self._copy_table_contents(popup_ref_table, self.cmp_ref_table)
         self._apply_refined_text_color(popup_ref_table, self.cmp_ref_table)
         ref_l.addWidget(popup_ref_table)
@@ -513,9 +511,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         card_w, card_l = parts.card_widget("실시간 수집 결과 (RAW)")
         popup_table = EqualSpacingTable(parent=dlg, row_height=28, col_padding=10, hscroll_handle=50)
-        popup_table.setSortingEnabled(False)
         self._copy_table_contents(popup_table, self.result_table, copy_colors=True)
-        popup_table.setSortingEnabled(True)
         card_l.addWidget(popup_table)
         lay.addWidget(card_w)
 
@@ -525,10 +521,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     def _reset_monitor_page(self):
         """중지 또는 수집 시작 시 — 모든 탭의 데이터 및 위젯 초기화"""
         # ① Raw 탭
-        self.result_table.setSortingEnabled(False)
         self.result_table.setRowCount(0)
         self.result_table.setColumnCount(0)
-        self.result_table.setSortingEnabled(True)
         self._all_rows       = []
         self._collected_data = []
         self._existing_keys  = set()
@@ -543,10 +537,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         # ② 정제 결과 탭
         self._refined_data = []
-        self.refined_table.setSortingEnabled(False)
         self.refined_table.setRowCount(0)
         self.refined_table.setColumnCount(0)
-        self.refined_table.setSortingEnabled(True)
         self.refined_count_lbl.setText("— rows")
         self.ref_total.update_value("—")
         self.ref_removed.update_value("—")
@@ -555,14 +547,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.refined_detail_lbl.setText("테이블에서 행을 클릭하세요.")
 
         # ③ 비교 탭
-        self.cmp_raw_table.setSortingEnabled(False)
         self.cmp_raw_table.setRowCount(0)
         self.cmp_raw_table.setColumnCount(0)
-        self.cmp_raw_table.setSortingEnabled(True)
-        self.cmp_ref_table.setSortingEnabled(False)
         self.cmp_ref_table.setRowCount(0)
         self.cmp_ref_table.setColumnCount(0)
-        self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_raw_count.setText("— rows")
         self.cmp_ref_count.setText("— rows")
         self.cmp_raw_total.update_value("—")
