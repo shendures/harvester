@@ -1,12 +1,12 @@
 # layout/multi/main_window.py
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QSplitter
+from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
 from PyQt6.QtCore import Qt
 
 from conf import BlueprintStorage
 from trigger import LogViewerDialog, MainWindowTriggersMulti
 from trigger.common import NAV_BLUEPRINT_LIST
-from ..common import build_status_bar, center_window_on_screen
+from ..common import build_status_bar, build_master_detail_splitter, center_window_on_screen
 from ..scheduler import SchedulerPage
 from ..statistics import StatisticsPage
 from ..session import SessionSettingsPage
@@ -72,17 +72,14 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 데이터 정제(4탭)
         self.monitor_nav_list = MonitorTargetListPage()  # 1 좌측 — 정제 대상 선택용 경량 목록
         self.monitor_nav_list.blueprint_selected.connect(self._activate_blueprint)
-        self.monitor_split = QSplitter(Qt.Orientation.Horizontal)
-        self.monitor_split.addWidget(self.monitor_nav_list)
-        self.monitor_split.addWidget(self.monitor_slot)
         # "수집 대상"(좌) : 정제 레이아웃(우) = 2.5 : 7.5 비율 — 창 크기가 바뀌어도
         # 두 창 폭이 늘고 줄 때 이 비율로 함께 움직이도록 스트레치 팩터도 25:75(=2.5:7.5)로
         # 맞춘다(setSizes는 초기 폭만 정하고, 이후 리사이즈 배분은 stretchFactor를 따른다).
-        self.monitor_split.setStretchFactor(0, 25)
-        self.monitor_split.setStretchFactor(1, 75)
+        self.monitor_split = build_master_detail_splitter(
+            self.monitor_nav_list, self.monitor_slot, Qt.Orientation.Horizontal,
+            stretch=(25, 75),
+        )
         self.monitor_split.setSizes([250, 750])
-        self.monitor_split.setChildrenCollapsible(False)
-        self.monitor_split.setHandleWidth(9)
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPage()       # 3 — 전역 단일

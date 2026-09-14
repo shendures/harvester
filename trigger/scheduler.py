@@ -30,7 +30,7 @@ from .common import (
     SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
-    _resize_dialog_to_fit, _wire_output_mode_toggle,
+    _resize_dialog_to_fit, _wire_output_mode_toggle, _boxed_panel_qss,
 )
 
 class SchedulerPageTriggers:
@@ -807,17 +807,9 @@ class SchedulerPageTriggers:
         # ── 추출 설정 스택 (FILE / DB) ────────────────────
         sched_extract_stack = QStackedWidget()
         sched_extract_stack.setObjectName("schedExtractStack")
-        sched_extract_stack.setStyleSheet(f"""
-            QStackedWidget#schedExtractStack {{
-                background:{BG_PRIMARY};
-                border:1px solid {BORDER};
-                border-radius:6px;
-            }}
-            QStackedWidget#schedExtractStack > QWidget {{
-                background:{BG_PRIMARY};
-                border:none;
-            }}
-        """)
+        sched_extract_stack.setStyleSheet(
+            _boxed_panel_qss("schedExtractStack", selector="QStackedWidget", stack_children=True)
+        )
         sched_extract_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
         # ── PAGE 0 : FILE 설정 ────────────────────────────

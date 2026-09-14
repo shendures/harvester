@@ -16,7 +16,7 @@ from ..common import (
     BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
 )
-from .common import ActiveBlueprintMixin, count_badge_qss
+from .common import ActiveBlueprintMixin
 
 
 class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
@@ -160,8 +160,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         mon_tcw.setMinimumHeight(300)  # 최소 높이를 300으로 제한
         mon_tbl_ctrl = QHBoxLayout()
         mon_tbl_ctrl.addStretch()
-        self.mon_row_count_lbl = QLabel("0 rows")
-        self.mon_row_count_lbl.setStyleSheet(count_badge_qss(ACCENT_LIGHT))
+        self.mon_row_count_lbl = parts.count_badge("0 rows", ACCENT_LIGHT)
         mon_tbl_ctrl.addWidget(self.mon_row_count_lbl)
         mon_tbl_ctrl.addSpacing(10)
         mon_exp_csv = parts.outline_btn("내보내기")

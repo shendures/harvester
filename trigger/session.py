@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from style import Divider
 
-from .common import theme, parts, TEXT_PRIMARY, TEXT_SECONDARY, _get_log_manager, _default_dialog_qss
+from .common import theme, parts, TEXT_PRIMARY, TEXT_SECONDARY, _log as _log_common, _default_dialog_qss
 
 # 이 파일의 소형 다이얼로그(연결 테스트 진행창 / 새 프록시 추가창)가 공유하는 폭 —
 # 둘 다 같은 "간단한 폼 다이얼로그" 형태라 서로 다른 값을 쓸 이유가 없다.
@@ -470,6 +470,4 @@ class SessionSettingsPageTriggers:
         self._toggle_proxy_enabled(row, enable)
 
     def _log(self, level: str, message: str) -> None:
-        lm = _get_log_manager(self)
-        if lm is not None:
-            lm.append_log(level, message)
+        _log_common(self, level, message)

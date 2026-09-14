@@ -23,9 +23,9 @@ from style import TagButton, Divider, apply_render_safety_limits
 from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_exists
 
 from .common import (
-    parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_MUTED, BORDER, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
-    _normalize_save_type,
+    parts, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
+    TEXT_MUTED, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
+    _normalize_save_type, _get_log_manager, _boxed_panel_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
     _build_collect_settings_fields, _default_dialog_qss, _wire_output_mode_toggle,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
@@ -265,7 +265,7 @@ class MonitorPageTriggers:
             None이면(rules_override 경로에서) 빈 값을 사용합니다. rules_override가
             None일 때는(수동 실행) 무시되고 화면 입력값(fill_null_input)이 사용됩니다.
         """
-        lm = getattr(self.window(), 'log_manager', None)
+        lm = _get_log_manager(self)
 
         if not self._collected_data:
             if skip_ui_update:
@@ -459,9 +459,7 @@ class MonitorPageTriggers:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(200)
-        scroll.setStyleSheet(
-            f"QScrollArea{{background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;}}"
-        )
+        scroll.setStyleSheet(_boxed_panel_qss(selector="QScrollArea"))
         scroll.setWidget(container)
         vl.addWidget(scroll)
         vl.addSpacing(16)
@@ -781,11 +779,7 @@ class MonitorPageTriggers:
             box = QWidget()
             box.setObjectName("settingsBox")
             box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-            box.setStyleSheet(f"""
-                QWidget#settingsBox {{
-                    background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;
-                }}
-            """)
+            box.setStyleSheet(_boxed_panel_qss("settingsBox"))
             box_layout = QVBoxLayout(box)
             box_layout.setContentsMargins(margins, margins, margins, margins)
             box_layout.addWidget(content)
@@ -847,12 +841,7 @@ class MonitorPageTriggers:
 
         stack = QStackedWidget()
         stack.setObjectName("extractStack")
-        stack.setStyleSheet(f"""
-            QStackedWidget#extractStack {{
-                background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px;
-            }}
-            QStackedWidget#extractStack > QWidget {{ background:{BG_PRIMARY}; border:none; }}
-        """)
+        stack.setStyleSheet(_boxed_panel_qss("extractStack", selector="QStackedWidget", stack_children=True))
         stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
         # ── PAGE 0: FILE 설정 ─────────────────────────────
@@ -1036,7 +1025,7 @@ class MonitorPageTriggers:
             덮어쓰기/추가하기)에 따라 모달 없이 결정론적으로 저장합니다. None이면
             (수동 추출 버튼 등) 기존과 동일하게 self.output_info와 확인 모달을 사용합니다.
         """
-        lm = getattr(self.window(), 'log_manager', None)
+        lm = _get_log_manager(self)
 
         if source == "refined":
             if not self._refined_data and not silent:

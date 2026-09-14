@@ -1465,6 +1465,18 @@ class Parts:
         return lbl
 
 
+    def count_badge(self, text: str, color: str) -> QLabel:
+        """행 수 배지(카운트 라벨) — MonitorPageSingle의 raw/정제/비교 카운트
+        라벨, DashboardPageSingle의 수집 모니터링 카운트 라벨이 공유하는
+        스타일."""
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color:{color}; background:{self.theme.BG_HOVER}; "
+            f"padding:2px 8px; border-radius:10px; font-size:11px;"
+        )
+        return lbl
+
+
     def card_widget(self, title="", parent=None):
         """어두운 테두리 카드. (widget, inner_layout) 반환"""
         w = QWidget(parent)

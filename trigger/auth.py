@@ -13,7 +13,7 @@ from style import Divider
 
 from .common import (
     parts, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER,
-    _get_log_manager, _default_dialog_qss, _show_message_dialog,
+    _log, _default_dialog_qss, _show_message_dialog,
 )
 
 class AuthManagerPageTriggers:
@@ -21,9 +21,7 @@ class AuthManagerPageTriggers:
 
     def _log_auth(self, level: str, message: str) -> None:
         """log_manager에 인증 관련 로그를 기록합니다."""
-        lm = _get_log_manager(self)
-        if lm is not None:
-            lm.append_log(level, message)
+        _log(self, level, message)
 
     def _add_cred_dialog(self):
         dlg = QDialog(self)

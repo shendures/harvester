@@ -4,11 +4,12 @@
 # 서로를 직접 import하지 않는다(단, multi는 single을 상속 목적으로 import).
 
 from conf import DataStore
-from style import THEME, Parts, EqualSpacingTable, StatCard
-from trigger.common import _confirm_destructive_action
+from style import THEME, Parts, EqualSpacingTable, StatCard, CenteredHandleSplitter
+from trigger.common import _confirm_destructive_action, _default_dialog_qss
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
+    QDialog, QSplitter,
 )
 
 store = DataStore()
@@ -179,6 +180,43 @@ def build_reset_button(parts, parent, *, title: str, text: str, on_confirmed,
 
     btn.clicked.connect(_on_click)
     return btn
+
+
+def build_popup_dialog(parent, title: str, size: tuple, min_size: tuple) -> tuple:
+    """모달리스 팝업 다이얼로그 기본 골격을 만든다(MonitorPageSingle의 Raw/비교
+    팝업, StatisticsPage의 시간대별 추이 팝업이 공유). 반환된 (dlg, lay)에
+    컨텐츠를 채운 뒤 dlg.show()는 호출부 책임."""
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setModal(False)
+    dlg.resize(*size)
+    dlg.setMinimumSize(*min_size)
+    dlg.setStyleSheet(_default_dialog_qss())
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+    lay = QVBoxLayout(dlg)
+    lay.setContentsMargins(14, 14, 14, 14)
+    return dlg, lay
+
+
+def build_master_detail_splitter(main_widget, detail_widget, orientation, *,
+                                  handle_width: int = 9, centered: bool = False,
+                                  stretch: tuple = (1, 0)):
+    """main_widget/detail_widget를 담은 QSplitter(centered=True면 세로 핸들
+    중앙선을 직접 그리는 CenteredHandleSplitter)를 조립한다. Raw/정제 탭의
+    테이블+상세 카드, Raw/정제 비교 팝업의 좌우 카드, MainWindowMulti의 정제
+    대상 목록+정제 레이아웃이 모두 이 골격(자식 접기 금지 + 핸들 폭)을
+    공유하고 orientation/센터 여부/스트레치 비율만 다르다. 초기 폭(setSizes)이
+    필요한 호출부는 반환된 splitter에 이어서 직접 호출한다."""
+    splitter_cls = CenteredHandleSplitter if centered else QSplitter
+    split = splitter_cls(orientation)
+    split.setChildrenCollapsible(False)
+    split.setHandleWidth(handle_width)
+    split.addWidget(main_widget)
+    split.addWidget(detail_widget)
+    split.setStretchFactor(0, stretch[0])
+    split.setStretchFactor(1, stretch[1])
+    return split
 
 
 def center_window_on_screen(window) -> None:

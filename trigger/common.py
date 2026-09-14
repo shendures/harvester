@@ -208,6 +208,23 @@ def _stop_btn_qss(*, padding: str = "6px 14px", font_size: int = 13) -> str:
     """
 
 
+def _boxed_panel_qss(object_name: str = None, *, selector: str = "QWidget",
+                      stack_children: bool = False) -> str:
+    """박스형 패널(설정 섹션/스택형 컨테이너/스크롤 영역)이 공유하는 배경·테두리
+    QSS — trigger/monitor.py의 _boxed()/#extractStack, trigger/scheduler.py의
+    #schedExtractStack이 각자 하드코딩하던 동일한 블록을 통합했다. object_name을
+    주면 `{selector}#{object_name}` 선택자를, 생략하면(이미 위젯 로컬
+    스타일시트로 범위가 좁혀진 경우 — 예: monitor.py의 필드 제외 QScrollArea)
+    `{selector}` 그대로를 쓴다. stack_children=True면 QStackedWidget처럼 자식
+    페이지에도 같은 배경을 입히고 테두리는 없애는 `> QWidget` 보조 규칙을
+    덧붙인다."""
+    sel = f"{selector}#{object_name}" if object_name else selector
+    qss = f"{sel} {{ background:{BG_PRIMARY}; border:1px solid {BORDER}; border-radius:6px; }}"
+    if stack_children:
+        qss += f" {sel} > QWidget {{ background:{BG_PRIMARY}; border:none; }}"
+    return qss
+
+
 def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon.Warning,
                           informative_text: str = None, font_size: int = 13) -> None:
     """앱 전역에서 반복되던 QMessageBox 빌드 패턴(제목/본문(+선택적 상세 설명)/
@@ -411,6 +428,17 @@ def _get_log_manager(widget):
     (SessionSettingsPageTriggers/AuthManagerPageTriggers에 동일하게 복제돼 있던 메서드를 통합)
     """
     return getattr(widget.window(), 'log_manager', None)
+
+
+def _log(widget, level: str, message: str) -> None:
+    """widget이 속한 최상위 창의 log_manager에 로그 한 줄을 남긴다 — log_manager가
+    아직 준비되지 않았으면 조용히 무시한다. AuthManagerPageTriggers._log_auth/
+    GlobalToolbarTriggers._log/SessionSettingsPageTriggers._log가 각자 복제하던
+    "lm = _get_log_manager(...); if lm is not None: lm.append_log(...)" 3줄
+    바디를 통합했다."""
+    lm = _get_log_manager(widget)
+    if lm is not None:
+        lm.append_log(level, message)
 
 
 def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) -> tuple:

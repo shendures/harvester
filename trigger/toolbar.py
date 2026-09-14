@@ -9,7 +9,7 @@ from conf import BlueprintStorage
 
 from .common import (
     store, ACCENT, ACCENT_HOVER, _apply_task_settings, _reset_pages,
-    _after_delay_unless_cancelled, _get_log_manager, _stop_btn_qss,
+    _after_delay_unless_cancelled, _log as _log_common, _stop_btn_qss,
 )
 
 
@@ -140,9 +140,7 @@ class GlobalToolbarTriggers:
 
     def _log(self, level: str, message: str) -> None:
         """log_manager가 준비된 경우에만 로그를 출력합니다."""
-        lm = _get_log_manager(self)
-        if lm is not None:
-            lm.append_log(level, message)
+        _log_common(self, level, message)
 
     def _main_window(self):
         """부모 위젯을 순회하여 MainWindowSingle 인스턴스를 반환합니다. 없으면 None."""
