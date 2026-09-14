@@ -123,4 +123,5 @@ class StatisticsPageTriggers:
     def _on_reset_clicked(self):
         store.clear_url_maps()
         store.clear_sessions()
+        store.save_stats_history()
         self.reload()

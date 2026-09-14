@@ -10,7 +10,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QStyleFactory
 from PyQt6.QtGui import QIcon
 from layout import MainWindowSingle, theme
-from conf import BlueprintStorage, DataStore
+from conf import BlueprintStorage
 from style import SpinArrowProxyStyle
 import utility
 
@@ -22,10 +22,6 @@ if sys.platform == 'win32':
 def main():
 
     app = QApplication(sys.argv)
-    # 앱이 실제로 완전히 종료되는 모든 경로(트레이 메뉴 "종료", 또는 트레이 데몬이
-    # 없는 환경(WSL 등)에서 창 닫기가 곧 완전 종료로 처리되는 경우)에서 정확히
-    # 한 번 발동 — 통계 이력 저장을 여기 한 곳에 묶어 플랫폼별 분기 없이 커버한다.
-    app.aboutToQuit.connect(DataStore().save_stats_history)
     # Windows 네이티브 스타일(windowsvista/windows11)은 border+padding:0 조합의
     # 초소형 QPushButton 등에서 QSS의 background-color를 온전히 반영하지 않는
     # 경우가 있다 — 이 앱은 GLOBAL_QSS로 위젯을 전면 다크 테마 재스타일링하므로

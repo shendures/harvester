@@ -397,6 +397,7 @@ class MultiprocessWorker(QThread):
         }
 
         self.store.add_session(summary)
+        self.store.save_stats_history()
         self.finished.emit(self.task, summary)
 
 
