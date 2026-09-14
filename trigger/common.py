@@ -225,6 +225,23 @@ def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon
     msg.exec()
 
 
+def _confirm_destructive_action(parent, title: str, text: str,
+                                 informative_text: str = None, font_size: int = 13) -> bool:
+    """되돌릴 수 없는 작업(초기화/삭제 등) 실행 전 Yes/No로 재확인받는 공용 헬퍼 —
+    _show_message_dialog()의 확인판. 기본 선택 버튼을 "아니오"로 두어 실수로
+    Enter를 눌러도 실행되지 않게 한다. "예"를 선택했을 때만 True를 반환한다."""
+    confirm = QMessageBox(parent)
+    confirm.setWindowTitle(title)
+    confirm.setIcon(QMessageBox.Icon.Warning)
+    confirm.setText(text)
+    if informative_text is not None:
+        confirm.setInformativeText(informative_text)
+    confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    confirm.setDefaultButton(QMessageBox.StandardButton.No)
+    confirm.setStyleSheet(_default_msgbox_qss(font_size))
+    return confirm.exec() == QMessageBox.StandardButton.Yes
+
+
 def _validate_blueprint_before_run(parent, cfg: dict, *, is_unattended: bool) -> bool:
     """cfg(블루프린트+런타임 설정 dict)가 실행 가능한지 검사 — 문제가 있으면
     안내(대화형은 모달, 무인 실행은 트레이 알림)와 로그를 남기고 False, 정상이면
