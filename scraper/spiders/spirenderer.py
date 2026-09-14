@@ -5,7 +5,7 @@ import conf
 
 from selenium.webdriver.common.by import By
 from scrapy.selector import Selector
-from spiders.base import BaseExtractorSpider
+from .base import BaseExtractorSpider
 
 # Chrome WebDriver로 렌더링한 페이지를 두 경로로 처리합니다:
 # render/{seq_no}.py에 render()가 있으면 Selenium 엘리먼트(By.XPATH)를

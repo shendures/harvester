@@ -120,7 +120,7 @@ def set_downloader_middlewares(request_info):
 
         if request_info["proxy"]["enabled"]:
             # 프록시 IP
-            downloader_middlewares["middlewares.RateLimitedProxyMiddleware"] = 100
+            downloader_middlewares["scraper.middlewares.RateLimitedProxyMiddleware"] = 100
 
         elif not request_info["proxy"]["enabled"]:
             downloader_middlewares["scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware"] = 110
@@ -130,18 +130,18 @@ def set_downloader_middlewares(request_info):
 
     if request_info["user_agent"]:
         # USER-Agent 설정
-        downloader_middlewares["middlewares.RandomUserAgentMiddleware"] = 400
+        downloader_middlewares["scraper.middlewares.RandomUserAgentMiddleware"] = 400
     else:
-        downloader_middlewares["middlewares.RandomUserAgentMiddleware"] = None
+        downloader_middlewares["scraper.middlewares.RandomUserAgentMiddleware"] = None
 
     if request_info["cookie"]:
         # 쿠키 랜덤 설정
-        downloader_middlewares["middlewares.RandomCookieMiddleware"] = 650
+        downloader_middlewares["scraper.middlewares.RandomCookieMiddleware"] = 650
     else:
-        downloader_middlewares["middlewares.RandomCookieMiddleware"] = None
+        downloader_middlewares["scraper.middlewares.RandomCookieMiddleware"] = None
 
     # Latency 설정
-    downloader_middlewares["middlewares.LatencyTrackingMiddleware"] = 743
+    downloader_middlewares["scraper.middlewares.LatencyTrackingMiddleware"] = 743
 
     return downloader_middlewares
 

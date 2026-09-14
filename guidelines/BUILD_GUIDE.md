@@ -6,7 +6,7 @@
 > - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
 > - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
 
-- **최신 갱신**: 2026-09-04 00:12
+- **최신 갱신**: 2026-09-14
 
 ---
 
@@ -120,8 +120,9 @@
    자산(`combine-harvester.ico`, `icon/`)도 함께 포함 목록(매니페스트)에 기록
 2. PowerShell이 그 매니페스트를 읽어 PyInstaller `--add-data` 인자로 변환
 3. PyInstaller `--onefile --windowed`로 `main.py`를 빌드하면서, 매니페스트의 목록에 더해
-   동적 import라 자동 탐지되지 않는 `scrapy.cfg`/`settings.py`/`pipelines.py`/
-   `middlewares.py`/`spiders/`(고객 콘텐츠와 무관한 고정 항목이라 PowerShell이 직접 추가),
+   동적 import라 자동 탐지되지 않는 `scrapy.cfg`와 `scraper/` 패키지(고객 콘텐츠와 무관한
+   고정 항목이라 PowerShell이 직접 추가 — `scraper.settings`/`scraper.middlewares`/
+   `scraper.pipelines`는 `--hidden-import`로도 함께 지정),
    그리고 Scrapy/Twisted 계열이 필요로 하는 패키지 메타데이터(`--copy-metadata`)를 함께 번들
 4. 스테이징 폴더 정리
 
@@ -182,7 +183,7 @@ Inno Setup의 커맨드라인 컴파일러 `ISCC.exe`를 PATH → `Program Files
 |---|---|
 | `pyinstaller`가 첫 로그 줄에서 바로 멈추고 `NativeCommandError` | PowerShell 5.1이 pyinstaller의 정상 진행 로그(stderr에 쓰는 INFO 로그)를 오류로 오인하는 실측 버그. `build-exe.ps1`이 pyinstaller 호출 구간에서만 `$ErrorActionPreference`를 `Continue`로 낮추고 `$LASTEXITCODE`로 직접 판정하도록 이미 조치되어 있습니다(이슈㉗) — 만약 이 동작이 안 보이면 스크립트가 최신 버전인지 확인하세요. |
 | 빌드는 성공했는데 실행한 exe에서 `ModuleNotFoundError` | `--copy-metadata` 목록(`cryptography`, `lxml`, `twisted` 등) 밖의 의존성(Selenium/SQLAlchemy 등)일 수 있습니다. 오류 메시지의 모듈명을 `build-exe.ps1`의 pyinstaller 호출에 `--hidden-import <모듈명>` 또는 `--collect-all <모듈명>`으로 추가한 뒤 재시도하세요. |
-| exe 실행 시 Scrapy가 정상 동작하지 않음(엔진/스파이더 설정 관련 오류) | `scrapy.cfg`/`settings.py`/`pipelines.py`/`middlewares.py`가 문자열 경로로 동적 import되어 PyInstaller 자동 분석에 안 잡히는 케이스(PR #66에서 해결) — `build-exe.ps1`이 최신 버전인지 확인하세요. |
+| exe 실행 시 Scrapy가 정상 동작하지 않음(엔진/스파이더 설정 관련 오류) | `scrapy.cfg`와 `scraper/` 패키지(`scraper.settings`/`scraper.pipelines`/`scraper.middlewares`)가 문자열 경로로 동적 import되어 PyInstaller 자동 분석에 안 잡히는 케이스(PR #66에서 해결) — `build-exe.ps1`이 최신 버전인지 확인하세요. 특히 Scrapy 기동 로그의 `Enabled downloader middlewares:`/`Enabled item pipelines:` 목록에 `scraper.` 항목이 보이는지 확인하세요 — 경로가 틀리면 예외 없이 기본값으로 조용히 동작합니다. |
 | `build-installer.ps1`에서 "Inno Setup(ISCC.exe)을 찾을 수 없습니다" | Inno Setup 미설치이거나, winget으로 사용자별 권한 없이 설치해 `%LOCALAPPDATA%\Programs\Inno Setup 6\`에 들어간 경우입니다(이슈㉘, 최신 스크립트는 이 경로도 탐색합니다). 여전히 안 잡히면 실제 설치 경로를 확인해 스크립트의 탐색 후보에 추가하세요. |
 | `build-exe.ps1` 실행 후 "DB에서 active 블루프린트를 조회하는 중입니다..." 문구에서 오래 멈춰 있음(로그 추가 없이) | `db_conn.read_db_data()`의 PostgreSQL 연결에는 `connect_timeout`이 설정돼 있지 않아, 호스트가 방화벽 등으로 조용히 응답을 안 주면 OS 기본 TCP 타임아웃까지 멈춘 것처럼 보일 수 있습니다. `env/database.ini`의 host/포트/방화벽을 확인하세요. |
 | `build_manifest.py`가 "DB 접속 정보를 읽지 못했습니다" 또는 "DB에서 active=True인 블루프린트를 하나도 가져오지 못했습니다"로 중단 | 전자는 `env/database.ini`에 `[PostgreSQL]` 섹션(대소문자 정확히 일치)이 없거나 파일 자체가 없는 경우(1단계의 섹션명 대소문자 주의 참고). 후자는 DB 연결 실패와 "실제로 active인 데이터가 0건"을 `db_conn.read_db_data()`가 구분하지 않고 똑같이 빈 결과로 반환하기 때문 — `tb_blueprint`를 직접 조회해 원인을 확인하세요. |

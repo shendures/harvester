@@ -1,5 +1,5 @@
 import engine
-from spiders.base import BaseExtractorSpider
+from .base import BaseExtractorSpider
 
 class HtmlExtractorSpider(BaseExtractorSpider):
 

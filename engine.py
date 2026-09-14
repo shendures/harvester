@@ -8,7 +8,7 @@ import utility
 import conf
 from http import HTTPStatus
 
-from items import DonasItem, DonasItemLoader
+from scraper.items import DonasItem, DonasItemLoader
 from scrapy.selector import Selector
 
 from selenium import webdriver
@@ -18,11 +18,11 @@ from selenium.webdriver.remote.remote_connection import RemoteConnection
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
-from spiders.spihtml import HtmlExtractorSpider
-from spiders.spirenderer import HtmlSeleniumSpider
-from spiders.spijson import JsonExtractorSpider
-from spiders.spixml import XmlExtractorSpider
-from spiders.spidetail import DetailExtractorSpider
+from scraper.spiders.spihtml import HtmlExtractorSpider
+from scraper.spiders.spirenderer import HtmlSeleniumSpider
+from scraper.spiders.spijson import JsonExtractorSpider
+from scraper.spiders.spixml import XmlExtractorSpider
+from scraper.spiders.spidetail import DetailExtractorSpider
 
 logger = logging.getLogger(__name__)
 
