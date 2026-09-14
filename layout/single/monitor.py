@@ -3,21 +3,22 @@
 import customized_settings
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QTabWidget, QCheckBox, QMessageBox, QDialog, QTableWidgetItem, QSplitter,
+    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QTabWidget, QCheckBox, QMessageBox, QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor
 
 from trigger import MonitorPageTriggers
-from trigger.common import _default_dialog_qss, _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
-from style import EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, CenteredHandleSplitter, Divider
+from trigger.common import _sync_custom_rule_checkbox, ROW_ORIGIN_ROLE
+from style import EqualSpacingTable, build_refine_rule_rows, _load_svg_icon, Divider
 from ..common import (
     parts, build_scroll_body, build_stat_summary_card,
+    build_popup_dialog, build_master_detail_splitter,
     BG_PRIMARY, BG_SECONDARY, BG_HOVER, BORDER, ACCENT, ACCENT_LIGHT,
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER, RED,
 )
-from .common import ActiveBlueprintMixin, count_badge_qss
+from .common import ActiveBlueprintMixin
 
 
 class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
@@ -143,8 +144,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.search_box.textChanged.connect(self._apply_filter)
         tbl_ctrl.addWidget(self.search_box)
 
-        self.count_lbl = QLabel("0 rows")
-        self.count_lbl.setStyleSheet(count_badge_qss(ACCENT_LIGHT))
+        self.count_lbl = parts.count_badge("0 rows", ACCENT_LIGHT)
         tbl_ctrl.addWidget(self.count_lbl)
         tbl_ctrl.addStretch()
 
@@ -176,13 +176,9 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         # main_window.py의 monitor_split, _open_compare_popup()과 동일한 패턴).
         # CenteredHandleSplitter: 세로 핸들은 QSS margin/height가 안 먹는 Qt 함정이
         # 있어(style.py 참고) 핸들 중앙에 선을 직접 그려 위아래 여백을 항상 같게 한다.
-        raw_split = CenteredHandleSplitter(Qt.Orientation.Vertical)
-        raw_split.setChildrenCollapsible(False)
-        raw_split.setHandleWidth(9)
-        raw_split.addWidget(tcw)
-        raw_split.addWidget(dw)
-        raw_split.setStretchFactor(0, 1)   # RAW 테이블이 기본적으로 더 넓게
-        raw_split.setStretchFactor(1, 0)
+        raw_split = build_master_detail_splitter(
+            tcw, dw, Qt.Orientation.Vertical, centered=True,
+        )  # RAW 테이블이 기본적으로 더 넓게(stretch 기본값 (1, 0))
         bl.addWidget(raw_split, 1)
 
         self.tab_widget.addTab(raw_widget, "① Raw 수집 결과")
@@ -273,8 +269,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.refined_search_box.textChanged.connect(self._apply_refined_filter)
         ref_ctrl.addWidget(self.refined_search_box)
 
-        self.refined_count_lbl = QLabel("— rows")
-        self.refined_count_lbl.setStyleSheet(count_badge_qss(GREEN))
+        self.refined_count_lbl = parts.count_badge("— rows", GREEN)
         ref_ctrl.addWidget(self.refined_count_lbl)
         ref_ctrl.addStretch()
 
@@ -297,13 +292,9 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         # 두 카드를 Splitter로 묶어 드래그로 비율 조절 가능하게 함(Raw 탭
         # _build_raw_tab()과 동일한 패턴)
-        refined_split = CenteredHandleSplitter(Qt.Orientation.Vertical)
-        refined_split.setChildrenCollapsible(False)
-        refined_split.setHandleWidth(9)
-        refined_split.addWidget(rtcw)
-        refined_split.addWidget(rdw)
-        refined_split.setStretchFactor(0, 1)   # 정제 데이터 테이블이 기본적으로 더 넓게
-        refined_split.setStretchFactor(1, 0)
+        refined_split = build_master_detail_splitter(
+            rtcw, rdw, Qt.Orientation.Vertical, centered=True,
+        )  # 정제 데이터 테이블이 기본적으로 더 넓게(stretch 기본값 (1, 0))
         bl.addWidget(refined_split, 1)
 
         self.tab_widget.addTab(refined_widget, "③ 정제 결과")
@@ -348,8 +339,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         # 좌: Raw
         raw_cmp_w, raw_cmp_l = parts.card_widget("Raw 데이터")
-        self.cmp_raw_count = QLabel("— rows")
-        self.cmp_raw_count.setStyleSheet(count_badge_qss(AMBER))
+        self.cmp_raw_count = parts.count_badge("— rows", AMBER)
         raw_cmp_l.addWidget(self.cmp_raw_count)
         self.cmp_raw_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
         self.cmp_raw_table.disable_column_filters()  # 이미 자체 검색창(cmp_search_box)이 있어 컬럼별 필터는 불필요
@@ -359,8 +349,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         # 우: Refined
         ref_cmp_w, ref_cmp_l = parts.card_widget("정제 데이터")
-        self.cmp_ref_count = QLabel("— rows")
-        self.cmp_ref_count.setStyleSheet(count_badge_qss(GREEN))
+        self.cmp_ref_count = parts.count_badge("— rows", GREEN)
         ref_cmp_l.addWidget(self.cmp_ref_count)
         self.cmp_ref_table = EqualSpacingTable(parent=self, row_height=26, col_padding=8, hscroll_handle=50)
         self.cmp_ref_table.disable_column_filters()  # 이미 자체 검색창(cmp_search_box)이 있어 컬럼별 필터는 불필요
@@ -439,22 +428,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
                 if dest_item:
                     dest_item.setForeground(value_fg)
 
-    def _make_popup_dialog(self, title: str, size: tuple, min_size: tuple) -> tuple:
-        """모달리스 팝업 다이얼로그 기본 골격을 만든다(_open_raw_popup/
-        _open_compare_popup 공유). 반환된 (dlg, lay)에 컨텐츠를 채운 뒤
-        dlg.show()는 호출부 책임."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle(title)
-        dlg.setModal(False)
-        dlg.resize(*size)
-        dlg.setMinimumSize(*min_size)
-        dlg.setStyleSheet(_default_dialog_qss())
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-
-        lay = QVBoxLayout(dlg)
-        lay.setContentsMargins(14, 14, 14, 14)
-        return dlg, lay
-
     def _open_compare_popup(self) -> None:
         """Raw/정제 데이터를 한 창에서 나란히 보여주는 모달리스 팝업을 연다.
         내용은 두 원본 테이블(self.cmp_raw_table/self.cmp_ref_table)의 현재
@@ -465,27 +438,20 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         팝업 쪽 정렬은 막아둔다. 두 카드는 QSplitter로 묶어 드래그로 폭을
         조절할 수 있다(layout/multi/main_window.py의 monitor_split과 동일한
         패턴)."""
-        dlg, lay = self._make_popup_dialog("Raw / 정제 데이터 비교", (1400, 600), (700, 400))
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(9)
+        dlg, lay = build_popup_dialog(self, "Raw / 정제 데이터 비교", (1400, 600), (700, 400))
 
         raw_w, raw_l = parts.card_widget("Raw 데이터")
         popup_raw_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
         self._copy_table_contents(popup_raw_table, self.cmp_raw_table)
         raw_l.addWidget(popup_raw_table)
-        splitter.addWidget(raw_w)
 
         ref_w, ref_l = parts.card_widget("정제 데이터")
         popup_ref_table = EqualSpacingTable(parent=dlg, row_height=26, col_padding=8, hscroll_handle=50)
         self._copy_table_contents(popup_ref_table, self.cmp_ref_table)
         self._apply_refined_text_color(popup_ref_table, self.cmp_ref_table)
         ref_l.addWidget(popup_ref_table)
-        splitter.addWidget(ref_w)
 
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        splitter = build_master_detail_splitter(raw_w, ref_w, Qt.Orientation.Horizontal, stretch=(1, 1))
         splitter.setSizes([700, 700])
         lay.addWidget(splitter)
 
@@ -503,11 +469,11 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         """실시간 수집 결과(RAW) 테이블을 새 창에서 보여주는 모달리스 팝업을
         연다. 내용은 self.result_table의 현재 스냅샷을 복사한 것이라
         (_copy_table_contents) 원본 탭 테이블은 그대로 유지된다.
-        _open_compare_popup과 동일한 팝업 골격(_make_popup_dialog)을
-        재사용하되, 테이블이 하나뿐이라 QSplitter 없이 카드 하나만 담는다.
-        copy_colors=True로 복사해 중복(빨강)/전체 null(주황) 행 배경도
-        팝업에서 그대로 보이게 한다."""
-        dlg, lay = self._make_popup_dialog("실시간 수집 결과 (RAW)", (1000, 600), (500, 400))
+        _open_compare_popup과 동일한 팝업 골격(layout/common.py의
+        build_popup_dialog)을 재사용하되, 테이블이 하나뿐이라 QSplitter 없이
+        카드 하나만 담는다. copy_colors=True로 복사해 중복(빨강)/전체
+        null(주황) 행 배경도 팝업에서 그대로 보이게 한다."""
+        dlg, lay = build_popup_dialog(self, "실시간 수집 결과 (RAW)", (1000, 600), (500, 400))
 
         card_w, card_l = parts.card_widget("실시간 수집 결과 (RAW)")
         popup_table = EqualSpacingTable(parent=dlg, row_height=28, col_padding=10, hscroll_handle=50)
