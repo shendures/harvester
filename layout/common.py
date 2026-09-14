@@ -5,6 +5,7 @@
 
 from conf import DataStore
 from style import THEME, Parts, EqualSpacingTable, StatCard
+from trigger.common import _confirm_destructive_action
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
@@ -161,6 +162,23 @@ def build_status_bar(open_log_viewer_callback):
     sbl.addWidget(log_view_btn)
 
     return status_bar, status_level, status_msg
+
+
+def build_reset_button(parts, parent, *, title: str, text: str, on_confirmed,
+                        informative_text: str = None, label: str = "RESET"):
+    """"초기화"류의 되돌릴 수 없는 액션 버튼을 만든다. 클릭 시
+    trigger.common._confirm_destructive_action()으로 Yes/No 재확인을 거친 뒤에만
+    on_confirmed()를 실행한다 — build_status_bar()와 동일하게 실제 로직은 호출부의
+    콜백이 담당하고, 이 함수는 UI 조립 + 확인 게이팅만 담당한다. 통계 분석 RESET
+    외에 다른 페이지가 같은 "재확인 후 초기화" 버튼이 필요할 때도 그대로 재사용한다."""
+    btn = parts.action_btn(label)
+
+    def _on_click():
+        if _confirm_destructive_action(parent, title, text, informative_text):
+            on_confirmed()
+
+    btn.clicked.connect(_on_click)
+    return btn
 
 
 def center_window_on_screen(window) -> None:

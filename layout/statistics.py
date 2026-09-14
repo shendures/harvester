@@ -6,8 +6,8 @@ from PyQt6.QtCore import QTimer, QSize, Qt
 
 from trigger import StatisticsPageTriggers
 from trigger.common import _default_dialog_qss
-from style import StatCard, EqualSpacingTable, Divider, _load_svg_icon
-from .common import parts, build_scroll_body, BG_SECONDARY, BORDER, GREEN, BLUE, PURPLE, RED, TEXT_SECONDARY
+from style import EqualSpacingTable, Divider, _load_svg_icon
+from .common import parts, build_scroll_body, build_stat_summary_card, build_reset_button, GREEN, BLUE, PURPLE, RED, TEXT_SECONDARY
 from .charts import RankedBarChart, HeatStripChart, GroupedBarChart
 
 
@@ -26,22 +26,22 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         # ── Reset ──────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.reset_btn = parts.action_btn("RESET")
-        self.reset_btn.clicked.connect(self._on_reset_clicked)
+        self.reset_btn = build_reset_button(
+            parts, self,
+            title="통계 초기화 확인",
+            text="<b>누적된 통계 분석 데이터를 초기화하시겠습니까?</b>",
+            informative_text="URL 응답 이력과 세션 이력이 모두 삭제되며, 되돌릴 수 없습니다.",
+            on_confirmed=self._on_reset_clicked,
+        )
         btn_row.addWidget(self.reset_btn)
         bl.addLayout(btn_row)
 
-        # ── Row 1: KPI cards ──────────────────────
-        kpi_row = QHBoxLayout()
-        kpi_row.setSpacing(10)
-        self.kpi_total = StatCard("총 수집 항목", "0")
-        self.kpi_success = StatCard("성공률", "0%", GREEN)
-        self.kpi_avg_t = StatCard("평균 응답", "—", BLUE)
-        self.kpi_sessions = StatCard("완료 세션", "0", PURPLE)
-        for kpi in [self.kpi_total, self.kpi_success, self.kpi_avg_t, self.kpi_sessions]:
-            kpi.setStyleSheet(f"background:{BG_SECONDARY}; border-radius:6px; border:1px solid {BORDER};")
-            kpi_row.addWidget(kpi, 1)
-        bl.addLayout(kpi_row)
+        # ── Row 1: KPI summary card (대시보드 "세션 통계"와 동일한 카드 패턴) ──
+        kpi_card_w, (self.kpi_total, self.kpi_success, self.kpi_avg_t, self.kpi_sessions) = build_stat_summary_card(
+            parts, "통계 요약",
+            [("총 수집 항목", "0"), ("성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("완료 세션", "0", PURPLE)],
+        )
+        bl.addWidget(kpi_card_w)
 
         # ── Row 2: Status ranked list + heat strip + trend sparkline ──
         row2 = QHBoxLayout()
