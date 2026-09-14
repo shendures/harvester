@@ -6,16 +6,17 @@ from copy import deepcopy
 import socket
 
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMessageBox,
+    QApplication, QFileDialog, QMessageBox, QSystemTrayIcon,
     QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 
 import db_conn
+import engine
 from conf import DataStore
 from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
-from preprocess import DEFAULT_RULES
+from preprocess import DEFAULT_RULES, custom_rule_exists
 
 store    = DataStore()
 theme    = THEME()
@@ -38,12 +39,23 @@ RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
 
-# 상세 보기(_show_detail 계열)에서 값 유무에 따른 텍스트 색상
-VALUE_COLORS = {0: ACCENT_LIGHT, 1: TEXT_PRIMARY, 2: GREEN, 3: RED}
-
 # 로그 레벨("ok"/"err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
 # 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
 LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
+
+# HTTP 상태코드별 색상 — 대시보드 실시간 테이블(DashboardPageTriggers.add_row)과
+# 통계 분석 "상태 코드 분포" 차트(StatisticsPageTriggers.reload)가 동일하게 사용.
+# 두 화면이 각자 지역변수로 따로 정의해 404/429 색이 서로 달랐던 것을(대시보드
+# 기준으로) 통일했다.
+STATUS_CODE_COLORS = {"200": GREEN, "301": BLUE, "404": RED, "429": AMBER, "500": RED, "000": TEXT_MUTED}
+
+# Before/After 비교 탭의 NO 컬럼 아이템에 원본 raw_data 인덱스를 저장해 두는
+# 커스텀 role. 같은 값을 가진 Raw/정제 행이 서로 대응하는 원본 레코드임을
+# 나타내며, 정렬 상태와 무관하게 두 테이블의 행 선택을 동기화하는 데 쓰인다.
+# 기존에 "정제됨" 여부로 이미 쓰고 있는 Qt.ItemDataRole.UserRole과 겹치지
+# 않도록 그다음 값을 쓴다(enum에 직접 산술하면 PyQt6에서 타입 오류가 나므로
+# .value로 정수를 뽑아 더한다).
+ROW_ORIGIN_ROLE = Qt.ItemDataRole.UserRole.value + 1
 
 # DB 타입별 기본 포트 (추출 설정/스케줄 DB 저장 다이얼로그 공용)
 DB_PORTS = {"MySQL": "3306", "PostgreSQL": "5432", "MongoDB": "27017"}
@@ -91,6 +103,10 @@ def _normalize_save_type(raw):
 # 스케줄 정제 규칙 설정 다이얼로그의 신규 등록 기본값 — SCHEDULED_REFINE_RULES가
 # 아니라 preprocess.DEFAULT_RULES(정제 엔진 자체의 기본값, MonitorPageSingle "②
 # 정제 규칙 설정" 탭의 초기 체크 상태와 값이 동일)에서 파생시킨다(2026-07-17).
+# custom_rule 값은 이 상수에서 시작점(폴백)만 가져올 뿐이다 — 실제 초기
+# 체크 상태는 trigger/scheduler.py가 "대상 블루프린트" 콤보의 현재 선택값으로
+# custom_rule_exists(seq_no)를 확인해 즉시 덮어쓴다(MonitorPageSingle과 동일한
+# 규칙: 파일 없으면 무조건 False, 있으면 이 기본값/저장된 값을 유지).
 # "값이 우연히 같다"가 아니라 같은 소스에서 나오도록 해, 향후 DEFAULT_RULES가
 # 다시 바뀌어도 이 다이얼로그의 기본값이 자동으로 함께 맞춰지게 하기 위함.
 # "제외 필드 지정"은 설정 항목 자체에서 빠지므로 키를 포함하지 않는다(Raw 수집
@@ -178,27 +194,180 @@ def _default_msgbox_qss(label_font_size: int = 12) -> str:
     """
 
 
+def _stop_btn_qss(*, padding: str = "6px 14px", font_size: int = 13) -> str:
+    """실행 중지 버튼(빨강 배색) 공용 QSS — trigger/toolbar.py의 풀사이즈 "⬛ 중지"
+    버튼과 layout/multi/blueprint_list.py의 배치 실행 버튼·행별 아이콘 버튼이
+    동일한 배색을 각자 하드코딩하고 있던 것을 통합했다. padding/font_size는
+    버튼 크기가 다른 두 맥락(풀사이즈 vs 컴팩트 아이콘)에 맞춰 호출부가 지정한다."""
+    return f"""
+        QPushButton {{
+            background:#7f1d1d; color:{RED}; border:none; border-radius:6px;
+            padding:{padding}; font-size:{font_size}px; font-weight:bold;
+        }}
+        QPushButton:hover {{ background:#991b1b; }}
+    """
+
+
+def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon.Warning,
+                          informative_text: str = None, font_size: int = 13) -> None:
+    """앱 전역에서 반복되던 QMessageBox 빌드 패턴(제목/본문(+선택적 상세 설명)/
+    아이콘 설정 후 공용 QSS 적용, exec) 하나로 통합한 공용 헬퍼 — 아래 3개
+    안내 다이얼로그(_show_db_conn_fail_dialog, _warn_custom_rule_missing,
+    _show_no_data_dialog)가 제목/문구/아이콘/폰트 크기만 다르게 이 함수를
+    호출한다."""
+    msg = QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    if informative_text is not None:
+        msg.setInformativeText(informative_text)
+    msg.setIcon(icon)
+    msg.setStyleSheet(_default_msgbox_qss(font_size))
+    msg.exec()
+
+
+def _validate_blueprint_before_run(parent, cfg: dict, *, is_unattended: bool) -> bool:
+    """cfg(블루프린트+런타임 설정 dict)가 실행 가능한지 검사 — 문제가 있으면
+    안내(대화형은 모달, 무인 실행은 트레이 알림)와 로그를 남기고 False, 정상이면
+    True를 반환한다. 요청을 한 건도 보내기 전에 막아, URL마다 같은 설정 오류
+    (KeyError)가 반복되는 것을 피한다. 무인(스케줄/전체 수집) 실행에서 모달을
+    띄우면 아무도 닫아줄 사람이 없어 그 자리에서 멈추므로, 이 프로젝트의 기존
+    관례(_on_finished의 0건 완료 분기 등)와 동일하게 트레이 알림으로 대체한다.
+    log_manager/tray_manager는 호출부가 항상 parent의 것을 그대로 넘기므로
+    parent에서 직접 읽는다(호출부 2곳 모두 MainWindowTriggers* 인스턴스)."""
+    error_msg = engine.validate_blueprint_conditions(cfg)
+    if error_msg is None:
+        return True
+    parent.log_manager.append_log("err", error_msg)
+    if is_unattended:
+        parent.tray_manager.show_message(
+            "⚠ 수집 설정 오류",
+            f"'{cfg.get('title') or cfg.get('task_nm', '')}' 실행을 시작할 수 없습니다 — "
+            f"블루프린트 설정을 확인해 주세요. (자세한 내용은 로그 참고)",
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
+    else:
+        _show_message_dialog(
+            parent, "수집 설정 오류", "<b>수집을 시작할 수 없습니다.</b>",
+            icon=QMessageBox.Icon.Critical, informative_text=error_msg,
+        )
+    return False
+
+
+# 예외 타입명 -> (설명, 해결 방법). "200 응답이지만 추출 실패"(build_failure_item이
+# resp_info["extract_error"]에 기록한 값) 발생 시 사용자에게 보여줄 정적 안내
+# 카탈로그 — style.py의 REFINE_RULE_DEFS와 같은 (키, 설명) 카탈로그 패턴.
+EXTRACT_ERROR_GUIDE = {
+    "KeyError": (
+        "블루프린트의 수집 설정(conditions)에 필요한 항목이 비어 있어 데이터를 추출하지 못했습니다.",
+        "블루프린트 편집에서 수집 항목(items) 설정 — 특히 root/detail 등 필수 필드가 채워져 있는지 확인하세요.",
+    ),
+    "IndexError": (
+        "예상한 위치에 데이터가 없어 추출에 실패했습니다(페이지 구조 변경, 리다이렉트 등 원인일 수 있습니다).",
+        "대상 페이지가 실제로 어떻게 응답하는지 직접 확인하고, 셀렉터/URL 설정을 다시 점검하세요.",
+    ),
+}
+DEFAULT_EXTRACT_ERROR_GUIDE = (
+    "알 수 없는 이유로 데이터 추출에 실패했습니다.",
+    "로그를 확인하거나 블루프린트 설정을 다시 점검하세요.",
+)
+# 예외는 없었지만(= extract_error 없음) 200 응답에서 매칭된 데이터가 0건인 경우
+# (worker.py의 empty_extract) 안내 — 대부분 그 시점에 실제로 데이터가 없는 정상
+# 페이지일 수 있어 "해결 방법" 없이 사실 설명만 제공한다.
+EMPTY_EXTRACT_DESC = "HTTP 응답은 정상(200)이었으나 매칭되는 데이터가 없어 0건이 추출되었습니다."
+
+
+def _show_extract_error_dialog(parent, resp_info: dict) -> None:
+    """수집 모니터링 테이블에서 주의가 필요한 200(⚠️) 행을 클릭했을 때 원인을 안내한다.
+    추출 예외(extract_error)는 원인 설명 + 해결 방법 + 예외 메시지(reason)를 보여주고,
+    예외 없이 추출 0건(empty_extract)은 "해결 방법"이 아니라 사실 설명만 보여준다 —
+    대부분 그 시점에 실제로 데이터가 없는 정상 페이지일 수 있기 때문이다."""
+    error_type = resp_info.get("extract_error", "")
+    if error_type:
+        desc, fix = EXTRACT_ERROR_GUIDE.get(error_type, DEFAULT_EXTRACT_ERROR_GUIDE)
+        title = error_type
+        reason = resp_info.get("reason", "")
+        detail = f"해결 방법: {fix}" + (f"\n\n누락/오류 세부 정보: {reason}" if reason else "")
+    else:
+        title = "추출 데이터 없음"
+        desc = EMPTY_EXTRACT_DESC
+        detail = None
+    _show_message_dialog(
+        parent, "추출 오류 안내", f"<b>{title}</b> — {desc}",
+        icon=QMessageBox.Icon.Warning, informative_text=detail,
+    )
+
+
 def _show_db_conn_fail_dialog(parent, reason: str) -> None:
     """DB 연결 실패 안내 다이얼로그 (출력 설정 / 스케줄 등록 양쪽에서 동일하게 사용)"""
-    msg = QMessageBox(parent)
-    msg.setWindowTitle("연결 실패")
-    msg.setIcon(QMessageBox.Icon.Critical)
-    msg.setText("<b>DB 연결에 실패했습니다.</b>")
-    msg.setInformativeText(reason)
-    msg.setStyleSheet(_default_msgbox_qss(12))
-    msg.exec()
+    _show_message_dialog(
+        parent, "연결 실패", "<b>DB 연결에 실패했습니다.</b>",
+        icon=QMessageBox.Icon.Critical, informative_text=reason, font_size=12,
+    )
+
+
+def _sync_custom_rule_checkbox(seq_no, checkboxes) -> bool:
+    """"커스텀 정제 규칙 적용" 체크박스를 refine/{seq_no}.py 존재 여부로
+    맞춘다 — 파일이 없으면 checkboxes["custom_rule"]을 무조건 끄고, 있으면
+    현재 체크 상태를 그대로 둔다(사용자가 남긴 선택 존중). 정제 페이지
+    (탭 재진입마다, 수집 완료 시)와 스케줄 등록 다이얼로그("대상 블루프린트"
+    변경 시)가 동일한 규칙을 공유한다.
+
+    Returns:
+        bool: 파일이 없어서(=missing) 체크를 껐으면 True, 아니면 False.
+    """
+    missing = bool(seq_no) and not custom_rule_exists(seq_no)
+    if missing:
+        cb = checkboxes.get("custom_rule")
+        if cb is not None:
+            cb.setChecked(False)
+    return missing
+
+
+def _handle_custom_rule_toggle(state, seq_no, checkboxes, warn_fn) -> None:
+    """"커스텀 정제 규칙 적용" 체크박스의 stateChanged 공통 처리 — 켜려는
+    시도인데 refine/{seq_no}.py가 없으면 체크를 되돌리고 warn_fn()을 호출한 뒤
+    끝내고(drop_columns 체크박스의 검증 패턴과 동일, style.py의
+    _on_drop_columns_toggled 참고), 있으면 규칙 ①③④(remove_null_row/
+    trim_whitespace/remove_duplicate)를 자동으로 켠다. fill_null은 대상에서
+    제외된다(커스텀 규칙이 정규화한 데이터라도 결측값 치환 여부는 별도로
+    판단해야 하기 때문). 정제 페이지(trigger/monitor.py)와 스케줄 등록
+    다이얼로그(trigger/scheduler.py)가 공유한다 — 두 호출부는 seq_no 조회
+    방식과 경고 title 조회 방식이 서로 달라(_active_blueprint_info() vs
+    BlueprintStorage().get()) warn_fn을 인자 없는 콜백으로 받는다."""
+    if state != Qt.CheckState.Checked.value:
+        return
+    # 경고가 뜨기 전에 체크박스를 먼저 되돌린다 — setChecked(False)가 이
+    # 핸들러를 재귀 호출하지만 state가 Unchecked라 위 guard에서 곧바로
+    # return되므로 안전하다.
+    if _sync_custom_rule_checkbox(seq_no, checkboxes):
+        warn_fn()
+        return
+    for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
+        cb = checkboxes.get(key)
+        if cb is not None:
+            cb.setChecked(True)
+
+
+def _warn_custom_rule_missing(parent, title) -> None:
+    """"커스텀 정제 규칙 적용"에 필요한 정제 스크립트가 없을 때 공통으로 띄우는
+    경고 — 정제 페이지(trigger/monitor.py)와 스케줄 등록 다이얼로그
+    (trigger/scheduler.py) 양쪽에서 동일한 문구로 재사용한다."""
+    _show_message_dialog(
+        parent, "정제 규칙 없음",
+        f"'{title}'에 등록된 사용자 정의 정제 규칙이 존재하지 않습니다.\n"
+        f"'커스텀 정제 규칙 적용'을 사용하려면 정제 스크립트 파일을 "
+        f"먼저 등록해야 합니다."
+    )
 
 
 def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
     """'수집 결과 없음' 안내 다이얼로그 (단일/다중 _on_finished에서 동일하게 사용)"""
-    msg = QMessageBox(parent)
-    msg.setWindowTitle("수집 결과 없음")
-    msg.setText("수집이 완료되었으나 데이터가 없습니다.\n"
-                f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
-                "URL 또는 수집 설정을 확인하고 다시 시도해 주세요.")
-    msg.setIcon(QMessageBox.Icon.Warning)
-    msg.setStyleSheet(_default_msgbox_qss(13))
-    msg.exec()
+    _show_message_dialog(
+        parent, "수집 결과 없음",
+        "수집이 완료되었으나 데이터가 없습니다.\n"
+        f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
+        "URL 또는 수집 설정을 확인하고 다시 시도해 주세요."
+    )
 
 
 def _stop_worker_if_running(worker) -> None:
@@ -208,12 +377,12 @@ def _stop_worker_if_running(worker) -> None:
         worker.wait(1500)
 
 
-def _after_delay_unless_cancelled(is_cancelled, fn, delay_ms: int = 1000) -> None:
-    """delay_ms 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
+def _after_delay_unless_cancelled(is_cancelled, fn) -> None:
+    """1초 뒤 is_cancelled()가 False면 fn()을 실행한다 — 정지 버튼 등으로 시작이
     취소된 경우 지연 중이던 콜백이 뒤늦게 실행되는 것을 막는다. 단일 '_toggle_run→
     _step_to_setting→_actual_start'와 다중 '_start_batch'의 시작 연출(수집 대기→수집
     세팅→데이터 수집 단계 표시)이 공유하는 타이머 유틸."""
-    QTimer.singleShot(delay_ms, lambda: None if is_cancelled() else fn())
+    QTimer.singleShot(1000, lambda: None if is_cancelled() else fn())
 
 
 def _get_log_manager(widget):
@@ -278,26 +447,20 @@ def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) 
     r1.addSpacing(6)
 
     if single_row:
-        r1.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
-        r1.addWidget(timeout_spin)
-        r1.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
-        r1.addWidget(retry_spin)
-        r1.addSpacing(6)
-        r1.addStretch()
-        c1.addLayout(r1)
+        row2 = r1
     else:
         r1.addStretch()
         c1.addLayout(r1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
 
-        r2 = QHBoxLayout()
-        r2.setSpacing(8)
-        r2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
-        r2.addWidget(timeout_spin)
-        r2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
-        r2.addWidget(retry_spin)
-        r2.addSpacing(6)
-        r2.addStretch()
-        c1.addLayout(r2)
+    row2.addWidget(parts.make_label("Timeout(s)", TEXT_SECONDARY, 12))
+    row2.addWidget(timeout_spin)
+    row2.addWidget(parts.make_label("   Retry", TEXT_SECONDARY, 12))
+    row2.addWidget(retry_spin)
+    row2.addSpacing(6)
+    row2.addStretch()
+    c1.addLayout(row2)
 
     c1.addSpacing(6)
     c1.addWidget(Divider())
@@ -401,8 +564,8 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
     다이얼로그에는 없으므로(무인 실행은 항상 무시 — _extract_result_table의
     `not silent` 조건 참고) 이 함수에 포함하지 않는다 — 필요한 호출부가
     file_page.layout()에 직접 addWidget()한다.
-    fmt 변경 시 다이얼로그 리사이즈까지 하려면 호출부가 반환된 토글 콜백을
-    fmt_combo.currentTextChanged에 직접 연결한 뒤 자신의 리사이즈 로직을 이어 호출한다."""
+    fmt 변경 시 CSV 전용 필드 토글까지 배선하려면 반환된 콜백을 아래
+    _wire_output_mode_toggle()의 on_fmt_changed 인자로 넘긴다."""
     file_page = QWidget()
     fp = QVBoxLayout(file_page)
     fp.setContentsMargins(14, 14, 14, 14)
@@ -475,6 +638,69 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
         "enc_combo": enc_combo, "csv_delimeter": csv_delimeter,
     }
     return file_page, widgets, _toggle_csv_fields
+
+
+def _resize_dialog_to_fit(dlg) -> None:
+    """레이아웃 변경(스택 페이지 전환, 섹션 표시/숨김 등) 후 다이얼로그 크기를
+    콘텐츠에 맞게 재계산한다. 레이아웃 변경 직후에는 dlg.sizeHint()가 아직 새
+    크기를 반영하지 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측
+    확인 — 늘어났던 세로 길이가 줄어들 때 되돌아가지 않던 버그의 원인), 이벤트
+    루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint 기준으로
+    resize한다. adjustSize()는 이미 show()된 다이얼로그에서 창을 줄이는
+    방향으로는 갱신되지 않아 사용하지 않는다."""
+    dlg.layout().activate()
+    QApplication.processEvents()
+    dlg.layout().activate()
+    dlg.resize(dlg.sizeHint())
+
+
+def _wire_output_mode_toggle(*, dlg, stack, file_btn, db_btn, mode_lbl,
+                              fmt_combo, set_mode, on_fmt_changed=None):
+    """FILE/DB 출력설정 QStackedWidget의 토글 버튼 전환 + 포맷 콤보 변경 시
+    다이얼로그 리사이즈 배선을 공용화한다(출력 설정 / 스케줄 등록·수정
+    다이얼로그에 통째로 복제돼 있던 토글+스택+리사이즈 glue를 통합).
+    stack은 FILE(0)/DB(1) 두 페이지가 이미 addWidget되고 초기
+    setCurrentIndex()까지 끝난 상태로 전달되어야 한다. set_mode는 모드
+    문자열("FILE"/"DB")을 호출자의 상태(self._out_mode 등 — 저장 위치가
+    호출자마다 달라 콜백으로 받는다)에 반영하는 콜백. on_fmt_changed는 포맷
+    콤보 변경 시 추가로 실행할 동작(예: CSV 구분자 필드 토글). 반환값은
+    리사이즈 함수 자체 — 호출부가 이후 다른 시점(다이얼로그 표시 직전 등)에
+    한 번 더 호출할 수 있다."""
+    def _resize():
+        current_page = stack.currentWidget()
+        if current_page:
+            current_page.layout().activate()
+            stack.setFixedHeight(current_page.layout().sizeHint().height())
+        _resize_dialog_to_fit(dlg)
+
+    def _on_file_clicked():
+        set_mode("FILE")
+        mode_lbl.setText("로컬 파일 저장 모드")
+        db_btn.setChecked(False)
+        stack.setCurrentIndex(0)
+        stack.setMinimumHeight(0)
+        stack.setMaximumHeight(16777215)
+        _resize()
+
+    def _on_db_clicked():
+        set_mode("DB")
+        mode_lbl.setText("DB 서버 전송 모드")
+        file_btn.setChecked(False)
+        stack.setCurrentIndex(1)
+        stack.setMinimumHeight(0)
+        stack.setMaximumHeight(16777215)
+        _resize()
+
+    def _on_fmt_changed(fmt_text: str):
+        if on_fmt_changed:
+            on_fmt_changed(fmt_text)
+        _resize()
+
+    file_btn.clicked.connect(_on_file_clicked)
+    db_btn.clicked.connect(_on_db_clicked)
+    fmt_combo.currentTextChanged.connect(_on_fmt_changed)
+    _on_fmt_changed(fmt_combo.currentText())
+    return _resize
 
 
 def _wire_db_test_button(test_btn, test_result_lbl, widgets: dict, parent_dialog) -> None:

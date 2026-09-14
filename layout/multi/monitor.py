@@ -13,7 +13,7 @@ class MonitorPageMulti(MonitorPageSingle):
     이 클래스는 _SILENT_JOBS 판정 기준값만 오버라이드합니다.)
     """
 
-    _SILENT_JOBS = ("스케줄 실행", "배치 실행")
+    _SILENT_JOBS = ("스케줄 실행", "전체 수집")
 
     def __init__(self, blueprint_info: dict):
         self.blueprint_info = deepcopy(blueprint_info)

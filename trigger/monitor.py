@@ -10,6 +10,7 @@ import subprocess
 from PyQt6.QtWidgets import (
     QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget, QSizePolicy, QScrollArea,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -23,9 +24,12 @@ from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_e
 
 from .common import (
     parts, BG_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
-    TEXT_MUTED, BORDER, GREEN, AMBER, RED, VALUE_COLORS, _normalize_save_type,
+    TEXT_MUTED, BORDER, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
+    _normalize_save_type,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
-    _build_collect_settings_fields, _default_dialog_qss,
+    _build_collect_settings_fields, _default_dialog_qss, _wire_output_mode_toggle,
+    _warn_custom_rule_missing as _common_warn_custom_rule_missing,
+    _handle_custom_rule_toggle,
 )
 
 
@@ -55,6 +59,27 @@ def _next_available_name(base_name: str, suffix_fmt: str, exists) -> str:
         count += 1
 
 
+def _apply_table_search_filter(table, search_box, count_lbl) -> None:
+    """search_box의 키워드로 각 행의 표시 여부를 정하고, 보이는 행 수를
+    count_lbl에 반영한다. 수집 결과/정제 결과/비교 탭 검색 필터가 동일한
+    패턴을 공유한다. 이 테이블들은 자체 검색창이 있어 컬럼별 필터(깔때기
+    아이콘)를 꺼 뒀으므로(EqualSpacingTable.disable_column_filters) 키워드
+    매칭만으로 표시 여부가 정해진다. table.columnFiltersChanged에 연결해
+    두면(호출부 참고) 정렬 직후에도 이 함수가 다시 실행되어, 정렬로 인해
+    검색 결과가 풀리지 않는다."""
+    keyword = search_box.text().lower().strip()
+    visible = 0
+    for r in range(table.rowCount()):
+        show = not keyword or any(
+            table.item(r, c) and keyword in table.item(r, c).text().lower()
+            for c in range(table.columnCount())
+        )
+        table.setRowHidden(r, not show)
+        if show:
+            visible += 1
+    count_lbl.setText(f"{visible} rows")
+
+
 class MonitorPageTriggers:
     """MonitorPageSingle의 필터·상세·추출·다이얼로그 메서드"""
 
@@ -68,7 +93,6 @@ class MonitorPageTriggers:
         if self.result_table.columnCount() == 0:
             self.result_table.setColumnCount(len(columns) + 1)
             self.result_table.setHorizontalHeaderLabels(["NO"] + columns)
-        self.result_table.setSortingEnabled(False)
 
         # 중복 감지용 키 집합은 self._existing_keys에 증분 유지(매 호출마다 재구축하지 않음)
         for entry in data:
@@ -82,6 +106,10 @@ class MonitorPageTriggers:
             )
             self._collected_data.append(entry)
             self._existing_keys.add(entry_key)
+            if is_dup:
+                self._dup_rows += 1
+            if is_empty_row:
+                self._empty_rows += 1
 
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
@@ -109,113 +137,113 @@ class MonitorPageTriggers:
                     item.setBackground(row_bg)
                 self.result_table.setItem(current_row, col_idx, item)
 
-        self.result_table.setSortingEnabled(True)
         self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
         self._update_summary_cards()
 
     def _update_summary_cards(self):
-        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계"""
-        columns = self._get_result_columns()
+        """Raw 탭 요약 카드: 전체 / 정상 / 전체 null / 중복 집계.
+
+        중복·빈행 여부는 _add_realtime_row가 행 추가 시점에 이미 판정해
+        self._dup_rows/self._empty_rows에 증분 반영해 두므로, 여기서는
+        self._collected_data를 다시 훑지 않고 그 값을 그대로 반영한다."""
         total = len(self._collected_data)
-        empty_rows = 0
-        dup_rows  = 0
-        seen_keys: set = set()
-        for entry in self._collected_data:
-            is_empty_row = all(
-                entry.get(c) in (None, "", "null", "None") for c in columns
-            )
-            key = tuple(str(entry.get(c, "")) for c in columns)
-            is_dup = key in seen_keys
-            seen_keys.add(key)
-            if is_empty_row:
-                empty_rows += 1
-            if is_dup:
-                dup_rows += 1
-        normal = total - empty_rows - dup_rows
+        normal = total - self._empty_rows - self._dup_rows
         self.sum_total.update_value(total)
         self.sum_ok.update_value(max(normal, 0))
-        self.sum_err.update_value(empty_rows)
-        self.sum_warn.update_value(dup_rows)
+        self.sum_err.update_value(self._empty_rows)
+        self.sum_warn.update_value(self._dup_rows)
 
     def _apply_filter(self):
-        keyword = self.search_box.text().lower().strip()
-        if not keyword:
-            for r in range(self.result_table.rowCount()):
-                self.result_table.setRowHidden(r, False)
-            self.count_lbl.setText(f"{self.result_table.rowCount()} rows")
-            return
-        visible = 0
-        for r in range(self.result_table.rowCount()):
-            matched = any(
-                self.result_table.item(r, c) and
-                keyword in self.result_table.item(r, c).text().lower()
-                for c in range(self.result_table.columnCount())
-            )
-            self.result_table.setRowHidden(r, not matched)
-            if matched:
-                visible += 1
-        self.count_lbl.setText(f"{visible} rows")
+        """수집 결과 탭 검색 필터. result_table.columnFiltersChanged에도 연결돼
+        있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
+        _apply_table_search_filter(self.result_table, self.search_box, self.count_lbl)
 
     def _apply_refined_filter(self):
-        """정제 결과 탭 검색 필터"""
-        keyword = self.refined_search_box.text().lower().strip()
-        if not keyword:
-            for r in range(self.refined_table.rowCount()):
-                self.refined_table.setRowHidden(r, False)
-            self.refined_count_lbl.setText(f"{self.refined_table.rowCount()} rows")
-            return
-        visible = 0
-        for r in range(self.refined_table.rowCount()):
-            matched = any(
-                self.refined_table.item(r, c) and
-                keyword in self.refined_table.item(r, c).text().lower()
-                for c in range(self.refined_table.columnCount())
-            )
-            self.refined_table.setRowHidden(r, not matched)
-            if matched:
-                visible += 1
-        self.refined_count_lbl.setText(f"{visible} rows")
+        """정제 결과 탭 검색 필터. refined_table.columnFiltersChanged에도
+        연결돼 있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
+        _apply_table_search_filter(
+            self.refined_table, self.refined_search_box, self.refined_count_lbl
+        )
 
-    # ── 탭 전환 감지 — 정제 규칙 미설정 안내 ───────────────────────────
+    def _apply_compare_filter(self):
+        """Before/After 비교 탭 검색 필터. 두 테이블 모두 columnFiltersChanged에
+        연결돼 있어(layout/single/monitor.py) 정렬 직후에도 다시 실행된다."""
+        for table, count_lbl in (
+            (self.cmp_raw_table, self.cmp_raw_count),
+            (self.cmp_ref_table, self.cmp_ref_count),
+        ):
+            _apply_table_search_filter(table, self.cmp_search_box, count_lbl)
+
+    # ── 탭 전환 감지 — 커스텀 정제 규칙 체크박스 상태 재동기화 ────────────
     def _on_monitor_tab_changed(self, index: int):
         """
-        "② 정제 규칙 설정" 탭(index=1) 진입 시, 이번 수집이 needs_cleaning=True인데
-        등록된 커스텀 규칙 파일이 없으면 팝업으로 안내합니다. 이번 수집 결과당 최초
-        1회만 확인하고(같은 결과를 보며 탭을 왔다갔다 해도 반복해서 뜨지 않음),
-        preprocess(task)에서 새 수집 결과가 들어올 때 다시 확인 가능하도록 리셋됩니다.
+        "② 정제 규칙 설정" 탭(index=1)에 들어올 때마다 needs_cleaning(블루프린트가
+        DB에서 내려주는 "정제 필요" 플래그)과 refine/{seq_no}.py 존재 여부를
+        함께 확인해 "커스텀 정제 규칙 적용" 체크박스를 무조건 재설정합니다
+        (경고창은 띄우지 않고 조용히 맞춥니다):
+
+        - needs_cleaning=True AND 스크립트 있음 → 체크(활성화).
+        - needs_cleaning=False → 체크 해제(비활성화)
+          (스크립트 존재 여부는 보지 않음 — pass/fail을 가르는 STEP 01).
+        - needs_cleaning=True인데 스크립트 없음 → 체크 해제(비활성화)
+          (STEP 01 통과 후 STEP 02에서 탈락).
+
+        경고창("정제 규칙 없음")은 오직 사용자가 체크박스를 직접 켜려고
+        시도할 때만(_on_custom_rule_toggled → _handle_custom_rule_toggle) 뜬다
+        — 탭 진입/재진입은 그 조건과 무관하다.
+
+        체크박스는 blockSignals로 감싸 setChecked한다 — 그냥 setChecked를
+        부르면 stateChanged가 _on_custom_rule_toggled → _handle_custom_rule_toggle로
+        이어지며 그 안에서 (스크립트 존재 여부만으로) 별도 경고를 다시 띄워
+        중복 팝업이 뜬다.
+
+        seq_no는 _current_task가 아니라 _active_blueprint_info()에서 읽는다 —
+        수집을 아직 한 번도 안 돌린 시점에도(=_current_task가 비어 있어도)
+        이 블루프린트 고유의 값을 즉시 알 수 있어야, 처음 탭을 열었을 때도
+        정상적으로 동작한다.
         """
-        if index != 1 or self._cleaning_warned:
+        if index != 1:
             return
 
-        seq_no         = self._current_task.get("seq_no")
-        needs_cleaning = self._current_task.get("needs_cleaning", False)
-        if not (needs_cleaning and seq_no):
+        seq_no = self._active_blueprint_info().get("seq_no")
+        if not seq_no:
             return
 
-        self._cleaning_warned = True
-        if not custom_rule_exists(seq_no):
-            QMessageBox.warning(
-                self, "정제 규칙 없음",
-                f"이 수집물(seq_no={seq_no})은 사용자 정의 정제 규칙이 필요하도록 "
-                f"표시되어 있으나(needs_cleaning=True), 등록된 규칙 파일이 없습니다.\n"
-                f"범용 규칙만 적용됩니다."
-            )
+        needs_cleaning = bool(self._active_blueprint_info().get("needs_cleaning"))
+        exists = custom_rule_exists(seq_no) if needs_cleaning else False
+        should_enable = needs_cleaning and exists
+
+        cb = self._rule_checkboxes.get("custom_rule")
+        if cb is not None:
+            cb.blockSignals(True)
+            cb.setChecked(should_enable)
+            cb.blockSignals(False)
 
     # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
+    def _warn_custom_rule_missing(self, seq_no) -> None:
+        """"커스텀 정제 규칙 적용"에 필요한 refine/{seq_no}.py 정제 스크립트가
+        없는 상태에서 사용자가 체크박스를 직접 켜려고 시도할 때
+        (_on_custom_rule_toggled) 띄우는 경고. 문구 자체는 trigger/common.py에
+        있다 — 스케줄 등록 다이얼로그(trigger/scheduler.py)도 그 함수를 그대로
+        재사용한다(이 메서드는 self._active_blueprint_info()로 title을 얻어
+        전달만 함)."""
+        title = self._active_blueprint_info().get("title") or seq_no
+        _common_warn_custom_rule_missing(self, title)
+
     def _on_custom_rule_toggled(self, state):
-        """"커스텀 정제 규칙 적용"(②) 체크 시 규칙 ①③④(remove_null_row/
-        trim_whitespace/remove_duplicate)를 자동으로 켭니다. fill_null(⑥, 결측값
-        치환)은 대상에서 제외됩니다(2026-07-17, 사용자 요청 — 커스텀 규칙이
-        정규화한 데이터라도 결측값 치환 여부는 별도로 판단해야 한다는 판단).
-        체크할 때마다 사용자가 개별적으로 조정해둔 상태를 덮어쓰며, 해제 시에는
-        ①③④에 영향을 주지 않습니다(직전 상태 그대로 유지).
+        """"커스텀 정제 규칙 적용"(②) 체크박스의 stateChanged 핸들러 — 실제
+        검증/자동 연동 로직은 trigger/common.py의 _handle_custom_rule_toggle이
+        전담하며(스케줄 등록 다이얼로그와 공유), 여기서는 seq_no와 경고 콜백만
+        이 클래스의 컨텍스트(_active_blueprint_info/_rule_checkboxes)로
+        채워 넘긴다. fill_null(⑥, 결측값 치환)은 자동 연동 대상에서 제외된다
+        (2026-07-17, 사용자 요청 — 커스텀 규칙이 정규화한 데이터라도 결측값
+        치환 여부는 별도로 판단해야 한다는 판단).
         """
-        if state != Qt.CheckState.Checked.value:
-            return
-        for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
-            cb = self._rule_checkboxes.get(key)
-            if cb is not None:
-                cb.setChecked(True)
+        seq_no = self._active_blueprint_info().get("seq_no")
+        _handle_custom_rule_toggle(
+            state, seq_no, self._rule_checkboxes,
+            lambda: self._warn_custom_rule_missing(seq_no),
+        )
 
     # ── 정제 실행 ─────────────────────────────────────────────────────
     def _run_refine(
@@ -300,7 +328,11 @@ class MonitorPageTriggers:
         try:
             refined, stats = refiner.run(self._collected_data)
         except (TypeError, ValueError) as e:
-            QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
+            if skip_ui_update:
+                if lm:
+                    lm.append_log("err", f"정제 중 오류가 발생했습니다: {e}")
+            else:
+                QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
             return
 
         self._refined_data = refined
@@ -334,6 +366,25 @@ class MonitorPageTriggers:
                 f"(제거 {stats.removed}행, 치환 {stats.filled}건, 정제율 {stats.refine_rate}"
                 f"{custom_rule_note})"
             )
+
+    # ── 정제 규칙 설정 영속화 ─────────────────────────────────────────
+    def _persist_refine_settings(self):
+        """"정제 규칙 설정" 탭의 체크박스/입력값을 블루프린트에 영속화한다 —
+        출력 설정(_open_output_settings_dialog)과 동일하게 BlueprintStorage에
+        저장해 다음에 이 수집 대상을 열었을 때 그대로 복원되도록 한다.
+        custom_rule은 탭 진입마다 needs_cleaning/스크립트 존재 여부로 항상
+        재계산되므로(_on_monitor_tab_changed) 저장 대상에서 제외한다."""
+        seq_no = self._active_blueprint_info().get("seq_no")
+        if not seq_no:
+            return
+        refine_settings = {
+            key: cb.isChecked()
+            for key, cb in self._rule_checkboxes.items()
+            if key != "custom_rule"
+        }
+        refine_settings["fill_null_value"] = self.fill_null_input.text()
+        refine_settings["drop_column_names"] = self._drop_column_names
+        BlueprintStorage().update_settings(seq_no, refine_settings=refine_settings)
 
     # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
     def _update_drop_columns_summary(self):
@@ -423,6 +474,7 @@ class MonitorPageTriggers:
         def _apply():
             self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
             self._update_drop_columns_summary()
+            self._persist_refine_settings()
             dlg.accept()
 
         apply_btn = parts.action_btn("적용")
@@ -430,6 +482,7 @@ class MonitorPageTriggers:
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         vl.addLayout(btn_row)
 
@@ -441,7 +494,6 @@ class MonitorPageTriggers:
         columns = self._get_result_columns()
         if self._refine_rules.get("drop_columns") and self._drop_column_names:
             columns = [c for c in columns if c not in self._drop_column_names]
-        self.refined_table.setSortingEnabled(False)
         self.refined_table.setRowCount(0)
         self.refined_table.setColumnCount(len(columns) + 1)
         self.refined_table.setHorizontalHeaderLabels(["NO"] + columns)
@@ -456,7 +508,6 @@ class MonitorPageTriggers:
                 item = _make_cell_item(val)
                 item.setForeground(QColor(TEXT_PRIMARY))
                 self.refined_table.setItem(row_idx, col_idx, item)
-        self.refined_table.setSortingEnabled(True)
         self.refined_count_lbl.setText(f"{len(data)} rows")
 
     def _update_refined_summary(self, stats: RefineStats):
@@ -486,7 +537,6 @@ class MonitorPageTriggers:
         )
 
         # ── 좌: Raw 테이블 — 삭제 행 빨간 음영, 생존 행 기본색 ────────
-        self.cmp_raw_table.setSortingEnabled(False)
         self.cmp_raw_table.setRowCount(0)
         self.cmp_raw_table.setColumnCount(len(columns) + 1)
         self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + columns)
@@ -497,28 +547,34 @@ class MonitorPageTriggers:
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
             no_item.setForeground(QColor(TEXT_MUTED))
+            no_item.setData(ROW_ORIGIN_ROLE, row_idx)  # raw_data를 그대로 enumerate하므로 row_idx가 곧 원본 인덱스
             self.cmp_raw_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(columns, start=1):
                 val  = entry.get(col_name, "—")
-                item = QTableWidgetItem()
-                item.setText(str(val) if val is not None else "—")
+                item = _make_cell_item(val)
                 if is_deleted:
                     item.setForeground(CLR_DEL_FG)
                 else:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 self.cmp_raw_table.setItem(row_idx, col_idx, item)
-        self.cmp_raw_table.setSortingEnabled(True)
         self.cmp_raw_count.setText(f"{len(raw_data)} rows")
 
         # ── 우: Refined 테이블 — 변경된 행만 초록 음영 ─────────────────
-        self.cmp_ref_table.setSortingEnabled(False)
         self.cmp_ref_table.setRowCount(0)
         self.cmp_ref_table.setColumnCount(len(ref_columns) + 1)
         self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + ref_columns)
         for row_idx, entry in enumerate(refined_data):
             self.cmp_ref_table.insertRow(row_idx)
             is_modified = row_idx in modified_rows_set
+            # stats가 없거나 orig_indices가 비어 있으면(정제 전 등) row_idx를
+            # 그대로 원본 인덱스로 취급 — 이 경우 Raw/정제 행 수가 같다는
+            # 전제이므로 어차피 어긋날 상황이 아니다.
+            orig_idx = (
+                stats.orig_indices[row_idx]
+                if stats and row_idx < len(stats.orig_indices)
+                else row_idx
+            )
 
             no_item = QTableWidgetItem()
             no_item.setData(Qt.ItemDataRole.DisplayRole, row_idx + 1)
@@ -527,6 +583,7 @@ class MonitorPageTriggers:
             # 보고 "정제됨"을 역추론하지 않고 이 값을 그대로 읽도록 명시적으로
             # 저장해 둔다 — 화면 표시 방식(색)과 데이터(정제 여부)를 분리.
             no_item.setData(Qt.ItemDataRole.UserRole, is_modified)
+            no_item.setData(ROW_ORIGIN_ROLE, orig_idx)
             self.cmp_ref_table.setItem(row_idx, 0, no_item)
 
             for col_idx, col_name in enumerate(ref_columns, start=1):
@@ -538,7 +595,6 @@ class MonitorPageTriggers:
                     item.setForeground(QColor(TEXT_PRIMARY))
                 item.setData(Qt.ItemDataRole.UserRole, is_modified)
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
-        self.cmp_ref_table.setSortingEnabled(True)
         self.cmp_ref_count.setText(f"{len(refined_data)} rows")
 
         # ── 요약 카드 ────────────────────────────────────────────────────
@@ -552,8 +608,9 @@ class MonitorPageTriggers:
         self.cmp_rate.update_value(rate)
 
     # ── 비교 탭 좌우 테이블 스크롤·정렬 동기화 ──────────────────────────
-    def _sync_cmp_vscroll(self, source, target, value):
-        """비교 탭 좌우 테이블의 세로 스크롤 위치를 상호 동기화합니다."""
+    def _sync_cmp_vscroll(self, target, value):
+        """비교 탭 좌우 테이블의 세로 스크롤 위치를 동기화합니다 (이미 같은 값이면
+        손대지 않아 피드백 루프를 방지)."""
         if target.verticalScrollBar().value() == value:
             return
         target.verticalScrollBar().setValue(value)
@@ -567,18 +624,18 @@ class MonitorPageTriggers:
         무한 루프 없이 안전하다."""
         for table in tables:
             others = [t for t in tables if t is not table]
-            # src/targets를 기본 인자로 묶어야 한다 — 그냥 클로저로 table/others를
-            # 참조하면 파이썬의 late binding 때문에 모든 람다가 루프의 마지막
-            # table 값을 공유해버린다(지금은 _sync_cmp_vscroll이 source 인자를
-            # 안 쓰고 있어 겉으로 드러나지 않을 뿐, 잠재 버그이므로 바로잡는다).
+            # targets를 기본 인자로 묶어야 한다 — 클로저로 그냥 참조하면 파이썬의
+            # late binding 때문에 모든 람다가 루프의 마지막 table의 others를
+            # 공유해버린다.
             table.verticalScrollBar().valueChanged.connect(
-                lambda value, src=table, targets=others: [
-                    self._sync_cmp_vscroll(src, t, value) for t in targets
+                lambda value, targets=others: [
+                    self._sync_cmp_vscroll(t, value) for t in targets
                 ]
             )
 
     def _sync_cmp_sort(self, source, target, logical_index, order):
-        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향으로 동기화합니다.
+        """비교 탭 좌우 테이블의 정렬을 같은 컬럼명·방향(정렬 해제 포함)으로
+        동기화합니다.
 
         Raw/Refined는 행 수·컬럼 구성이 다를 수 있어(중복/null 행 제거,
         drop_columns) "같은 줄에 같은 원본 행"까지는 보장하지 않고, 같은
@@ -590,22 +647,63 @@ class MonitorPageTriggers:
             return
         col_name = header_item.text()
 
-        # sortIndicatorSection()은 사용자가 아직 정렬한 적 없는 테이블에서도
-        # columnCount()와 같은 범위 밖 값을 반환할 수 있어(Qt 특성, 컬럼 수 변경 후
-        # 미갱신 상태) 반드시 상한까지 확인해야 함 (헤더 아이템 None 접근 방지)
-        target_header  = target.horizontalHeader()
-        target_sec     = target_header.sortIndicatorSection()
-        if 0 <= target_sec < target.columnCount():
-            target_item = target.horizontalHeaderItem(target_sec)
+        target_sort_column, target_sort_order = target.current_sort()
+        if target_sort_column is not None:
+            target_item = target.horizontalHeaderItem(target_sort_column)
             if (target_item is not None and target_item.text() == col_name
-                    and target_header.sortIndicatorOrder() == order):
+                    and target_sort_order == order):
                 return  # 이미 동일 상태 — 상호 연결로 인한 재귀 호출 종료
 
         for i in range(target.columnCount()):
             item = target.horizontalHeaderItem(i)
             if item is not None and item.text() == col_name:
-                target.sortByColumn(i, order)
+                target.apply_sort(i, order)
                 return
+
+    def _sync_cmp_row_selection(self, source, target) -> None:
+        """source에서 현재 선택된 행의 ROW_ORIGIN_ROLE(원본 raw_data 인덱스)과
+        같은 행을 target에서 찾아 선택·스크롤합니다. 이 값은 정렬 상태와
+        무관하게 각 QTableWidgetItem에 그대로 붙어 다니므로, 두 테이블이
+        서로 다르게 정렬돼 있어도 정확히 매칭됩니다. 대응 행이 없으면(Raw
+        쪽에서 정제 중 삭제된 행을 클릭한 경우) target의 선택을 해제합니다.
+
+        target.selectRow()/clearSelection()도 itemSelectionChanged를 emit해
+        반대 방향 핸들러를 다시 불러들이므로(무한 재귀), 플래그로 막습니다.
+        clearSelection()은 currentRow()를 초기화하지 않아 "target이 이미
+        source와 같은 행을 가리키는지" 비교만으로는 재귀를 막을 수 없어
+        (target의 stale currentRow가 다시 source를 엉뚱한 행으로 되돌림)
+        이 방식을 씁니다.
+        """
+        if getattr(self, "_cmp_row_selection_syncing", False):
+            return
+        row = source.currentRow()
+        if row < 0:
+            return
+        source_item = source.item(row, 0)
+        if source_item is None:
+            return
+        origin_id = source_item.data(ROW_ORIGIN_ROLE)
+
+        self._cmp_row_selection_syncing = True
+        try:
+            for r in range(target.rowCount()):
+                item = target.item(r, 0)
+                if item is not None and item.data(ROW_ORIGIN_ROLE) == origin_id:
+                    target.selectRow(r)
+                    target.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+                    return
+            target.clearSelection()  # 정제 중 삭제된 Raw 행 — 대응하는 정제 행 없음
+        finally:
+            self._cmp_row_selection_syncing = False
+
+    def _link_row_selection(self, table_a, table_b) -> None:
+        """table_a/table_b의 NO 컬럼에 저장된 ROW_ORIGIN_ROLE을 이용해, 한쪽의
+        선택 행이 바뀌면 반대쪽에서 같은 원본 행을 찾아 선택·스크롤합니다.
+        Before/After 비교 탭 본체와 "새 창에서 함께 보기" 팝업이 공용으로
+        호출합니다.
+        """
+        table_a.itemSelectionChanged.connect(lambda: self._sync_cmp_row_selection(table_a, table_b))
+        table_b.itemSelectionChanged.connect(lambda: self._sync_cmp_row_selection(table_b, table_a))
 
     def _render_detail(self, table, label, row, columns):
         """행 상세 정보를 컬럼별로 렌더링해 label에 표시한다 (_show_detail/_show_refined_detail 공용)."""
@@ -615,7 +713,7 @@ class MonitorPageTriggers:
             val = cell.text() if cell else "—"
             detail_parts.append(
                 f"<b style='color:{ACCENT_LIGHT};'>{col_name}:</b> "
-                f"<span style='color:{VALUE_COLORS.get(col_idx, TEXT_MUTED)};'>{val}</span>"
+                f"<span style='color:{TEXT_PRIMARY};'>{val}</span>"
             )
         label.setText("<br>".join(detail_parts))
         label.setTextFormat(Qt.TextFormat.RichText)
@@ -653,28 +751,25 @@ class MonitorPageTriggers:
             다이얼로그가 파괴될 때 함께 파괴되면 안 된다).
         """
         dlg = QDialog(self)
-        title = "수집 설정" if collect is not None else "추출 설정"
+        if collect is not None:
+            target_title = self._active_blueprint_info().get("title")
+            title = f"수집 설정 - {target_title}" if target_title else "수집 설정"
+        else:
+            title = "추출 설정"
         dlg.setWindowTitle(title)
         # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
         # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
-        # "수집 설정" 섹션도 Delay/Threads/Timeout/Retry를 한 줄로 배치하므로 동일하게
-        # 넓은 폭이 필요하다. collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃
-        # 호출) 폭을 넓힌다 — 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px
-        # 그대로.
-        dlg.setFixedWidth(680 if (collect is not None or auth_page is not None) else 500)
+        # "수집 설정" 섹션도 Delay(s)/Threads/Timeout(s)/Retry 4개 라벨+스핀박스를
+        # 한 줄로 배치하므로(_build_collect_settings_fields single_row=True) 더 넓은
+        # 폭이 필요하다 — 특히 가장 긴 라벨인 "Timeout(s)"가 680px에서는 잘렸다.
+        # collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃 호출) 폭을 넓힌다 —
+        # 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px 그대로.
+        dlg.setFixedWidth(760 if (collect is not None or auth_page is not None) else 500)
         dlg.setStyleSheet(_default_dialog_qss())
 
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(22, 18, 22, 18)
         vl.setSpacing(0)
-
-        title_row = QHBoxLayout()
-        title_row.addWidget(parts.make_label(title, TEXT_PRIMARY, 14, True))
-        title_row.addStretch()
-        vl.addLayout(title_row)
-        vl.addSpacing(10)
-        vl.addWidget(Divider())
-        vl.addSpacing(14)
 
         def _boxed(content: QWidget, margins: int = 14) -> QWidget:
             """"상세 설정" 박스(아래 QStackedWidget#extractStack)와 동일한 프레임
@@ -802,40 +897,12 @@ class MonitorPageTriggers:
 
         stack.setCurrentIndex(0 if is_file_mode else 1)
 
-        def update_dialog_size():
-            current_page = stack.currentWidget()
-            if current_page:
-                current_page.layout().activate()
-                stack.setFixedHeight(current_page.layout().sizeHint().height())
-            dlg.layout().activate()
-            dlg.adjustSize()
-
-        def _on_fmt_changed(fmt_text: str):
-            _toggle_csv_fields(fmt_text)
-            update_dialog_size()
-
-        def _on_file_clicked():
-            self._out_mode = "FILE"
-            out_mode_lbl.setText("로컬 파일 저장 모드")
-            out_db_btn.setChecked(False)
-            stack.setCurrentIndex(0)
-            stack.setMinimumHeight(0)
-            stack.setMaximumHeight(16777215)
-            update_dialog_size()
-
-        def _on_db_clicked():
-            self._out_mode = "DB"
-            out_mode_lbl.setText("DB 서버 전송 모드")
-            out_file_btn.setChecked(False)
-            stack.setCurrentIndex(1)
-            stack.setMinimumHeight(0)
-            stack.setMaximumHeight(16777215)
-            update_dialog_size()
-
-        out_file_btn.clicked.connect(_on_file_clicked)
-        out_db_btn.clicked.connect(_on_db_clicked)
-        fmt_combo.currentTextChanged.connect(_on_fmt_changed)
-        _on_fmt_changed(fmt_combo.currentText())
+        update_dialog_size = _wire_output_mode_toggle(
+            dlg=dlg, stack=stack, file_btn=out_file_btn, db_btn=out_db_btn,
+            mode_lbl=out_mode_lbl, fmt_combo=fmt_combo,
+            set_mode=lambda m: setattr(self, "_out_mode", m),
+            on_fmt_changed=_toggle_csv_fields,
+        )
 
         vl.addWidget(stack)
 
@@ -936,6 +1003,7 @@ class MonitorPageTriggers:
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         vl.addLayout(btn_row)
 
@@ -1013,7 +1081,7 @@ class MonitorPageTriggers:
                             writer.writeheader()
                             writer.writerows(data)
                     else:
-                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type)
+                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm)
 
                 elif file_format == "JSON":
                     if save_type is None:
@@ -1074,13 +1142,21 @@ class MonitorPageTriggers:
                     else:
                         self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
-                    QMessageBox.critical(
-                        self, "DB 저장 실패",
-                        f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
+                    if silent:
+                        if lm:
+                            lm.append_log("err", f"DB 저장 실패 — DB 접속 및 로그인 정보가 올바르지 않습니다: {e}")
+                    else:
+                        QMessageBox.critical(
+                            self, "DB 저장 실패",
+                            f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
         except Exception as e:
-            QMessageBox.critical(self, "추출 오류", str(e))
+            if silent:
+                if lm:
+                    lm.append_log("err", f"추출 오류: {e}")
+            else:
+                QMessageBox.critical(self, "추출 오류", str(e))
 
-    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type):
+    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type, lm=None):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.csv")
         if save_type == "new":
@@ -1088,6 +1164,8 @@ class MonitorPageTriggers:
                 file_name, "{base} ({count})",
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
             )
+            if final_file_name != file_name and lm:
+                lm.append_log("info", f"'{file_name}.csv' 파일이 이미 존재 — '{final_file_name}.csv'(으)로 새로 저장합니다.")
             full_path = os.path.join(file_path, f"{final_file_name}.csv")
             mode, write_header = 'w', True
         elif save_type == "overwrite":
@@ -1109,6 +1187,8 @@ class MonitorPageTriggers:
                 file_name, "{base} ({count})",
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.json")),
             )
+            if lm:
+                lm.append_log("info", f"'{file_name}.json' 파일이 이미 존재 — '{final_file_name}.json'(으)로 새로 저장합니다.")
             full_path = os.path.join(file_path, f"{final_file_name}.json")
             out_data = data
         elif save_type == "append" and os.path.exists(full_path):

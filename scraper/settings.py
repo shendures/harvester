@@ -9,8 +9,8 @@
 
 BOT_NAME = "harvester"
 
-SPIDER_MODULES = ["spiders"]
-NEWSPIDER_MODULE = "spiders"
+SPIDER_MODULES = ["scraper.spiders"]
+NEWSPIDER_MODULE = "scraper.spiders"
 
 ADDONS = {}
 
@@ -46,7 +46,7 @@ TELNETCONSOLE_ENABLED = False
 
 SPIDER_MIDDLEWARES = {
     # delay_until이 걸린 요청을 지연 재스케줄 (process_spider_output 훅이므로 SPIDER_MIDDLEWARES에 등록)
-    'middlewares.DelaySchedulerMiddleware': 500,
+    'scraper.middlewares.DelaySchedulerMiddleware': 500,
 }
 
 # Enable or disable downloader middlewares
@@ -56,22 +56,22 @@ SPIDER_MIDDLEWARES = {
 DOWNLOADER_MIDDLEWARES = {
 
     # 1. IP 관리 및 프록시 할당 (가장 바깥)
-    "middlewares.RateLimitedProxyMiddleware": None,  # 100
+    "scraper.middlewares.RateLimitedProxyMiddleware": None,  # 100
 
     # 2. Scrapy 기본 프록시 적용 로직
     "scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware": 110,
 
     # # 3. User-Agent 변경
-    # "middlewares.RandomUserAgentMiddleware": 400,
+    # "scraper.middlewares.RandomUserAgentMiddleware": 400,
 
     # # 4. Scrapy 기본 User-Agent는 무시 (RandomUserAgentMiddleware를 사용하므로)
     # "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
 
     # # 5. 쿠키 설정 미들웨어
-    # "middlewares.RandomCookieMiddleware": None,  # 650
+    # "scraper.middlewares.RandomCookieMiddleware": None,  # 650
 
     # requests와 response간의 Latency 측정
-    'middlewares.LatencyTrackingMiddleware': 743,
+    'scraper.middlewares.LatencyTrackingMiddleware': 743,
 }
 
 
@@ -93,7 +93,7 @@ DOWNLOADER_MIDDLEWARES = {
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   "pipelines.LoadItemPipeline": 100
+   "scraper.pipelines.LoadItemPipeline": 100
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

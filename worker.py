@@ -54,7 +54,6 @@ class MultiprocessWorker(QThread):
     progress     = pyqtSignal(int, int)
     new_row      = pyqtSignal(dict)
     log_message  = pyqtSignal(str, str)   # (level: str, message: str)
-    stats_update = pyqtSignal(dict)
     finished     = pyqtSignal(dict, dict) # (task, summary)
 
     def __init__(self, task: dict, job_name: str = "수동 실행"):
@@ -68,7 +67,6 @@ class MultiprocessWorker(QThread):
         self._done     = 0
         self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
         self._resp_times: list[float] = []
-        self._resp_time_sum = 0.0   # _resp_times의 누적 합 — 매 응답마다 sum() 재계산 방지
         self.total        = None
         self._started_at: datetime | None = None
         self.store     = DataStore()
@@ -223,7 +221,7 @@ class MultiprocessWorker(QThread):
             )
             return
 
-        result_info["resp_info"]["timestamp"] = datetime.now()
+        result_info["resp_info"]["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         result_info["job_name"] = self.job_name
 
         # [수정] 기존: resp_info["url"](리다이렉트 후 최종 URL)로 url_list를 대조
@@ -270,37 +268,34 @@ class MultiprocessWorker(QThread):
         })
         self._done += 1
 
-        # 상태 코드별 로그 레벨
-        if status_code in (404, 500, 502, 503):
-            self._errors += 1
-            level = "err"
-        elif status_code == 429:
+        # 200이면 성공, 그 외(비정상 상태코드 + engine.handle_request_failure()가 보고하는
+        # 커넥션 실패 유형 문자열 포함)는 전부 실패로 집계.
+        # 200인데 예외 없이 추출 데이터가 0건인 경우("warn")는 응답 자체는 정상이므로
+        # errors에는 포함하지 않되, resp_info에 empty_extract를 남겨 대시보드/Raw 탭이
+        # 동일한 기준으로 표시할 수 있게 한다(각 화면이 서로 다른 조건을 재구현하지 않도록).
+        extracted     = resp_info.get("data") or []
+        extract_error = resp_info.get("extract_error")
+        if status_code == 200 and not extracted and not extract_error:
+            resp_info["empty_extract"] = True
             level = "warn"
-        elif status_code == 301:
-            level = "info"
+            log_text = f"200 응답이지만 추출 데이터 0건: {res_url}"
         elif status_code == 200:
             level = "ok"
+            log_text = str(reason)
         else:
-            level = "info"
+            self._errors += 1
+            level = "err"
+            log_text = str(reason)
 
-        self.log_message.emit(level, str(reason))
+        self.log_message.emit(level, log_text)
 
         self.store.add_row(result_info)
         self.new_row.emit(result_info)
 
         if isinstance(resp_time, (int, float)):
             self._resp_times.append(float(resp_time))
-            self._resp_time_sum += float(resp_time)
-
-        avg = self._resp_time_sum / len(self._resp_times) if self._resp_times else 0.0
 
         self.progress.emit(self._done, total)
-        self.stats_update.emit({
-            "total":    self._done,
-            "errors":   self._errors,
-            "pages":    total,
-            "avg_time": f"{avg:.2f}s",
-        })
 
         # [수정] delay / threads — threads 검증은 run() 진입 시 완료됨
         sleep_sec = max(0.05, delay / threads)
@@ -387,6 +382,7 @@ class MultiprocessWorker(QThread):
 
         summary = {
             "job":         self.job_name,
+            "title":       self.task.get("title", ""),
             "url":         callback_url,
             "total":       self._done,
             "errors":      self._errors,
@@ -421,7 +417,7 @@ def set_scrapy_settings(settings_dict: dict):
     # 동작한다 — 파일 탐색 대신 환경변수/sys.path를 직접 설정해 우회.
     if utility.resource_path() not in sys.path:
         sys.path.insert(0, utility.resource_path())
-    os.environ.setdefault("SCRAPY_SETTINGS_MODULE", "settings")
+    os.environ.setdefault("SCRAPY_SETTINGS_MODULE", "scraper.settings")
 
     settings = get_project_settings()
     settings.set("LOG_ENABLED", True, priority="cmdline")
@@ -449,7 +445,7 @@ def set_scrapy_settings(settings_dict: dict):
 
     # 핵심 설정 — 실패 시 크롤링이 무의미해지므로 흡수하지 않고 그대로 전파
     settings.set("DOWNLOADER_MIDDLEWARES", customized_settings.set_downloader_middlewares(settings_dict))
-    settings.set("ITEM_PIPELINES",        {"pipelines.LoadItemPipeline": 100})
+    settings.set("ITEM_PIPELINES",        {"scraper.pipelines.LoadItemPipeline": 100})
     settings.set("CONCURRENT_REQUESTS",   settings_dict["threads"])
     settings.set("DOWNLOAD_DELAY",        settings_dict["delay"])
     settings.set("DOWNLOAD_TIMEOUT",      settings_dict.get("timeout", 10))

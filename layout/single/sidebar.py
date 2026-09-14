@@ -5,7 +5,10 @@ from PyQt6.QtCore import pyqtSignal
 
 from style import NavItem, Divider
 from trigger.common import NAV_MONITOR, NAV_REFINE, NAV_SCHEDULE, NAV_STATS, NAV_SESSION, NAV_AUTH
-from ..common import parts, BG_SECONDARY, ACCENT_LIGHT, TEXT_MUTED, GREEN, BORDER, _blueprint_requires_auth
+from ..common import (
+    parts, BG_SECONDARY, ACCENT_LIGHT, TEXT_MUTED, GREEN, BORDER, STATUS_BAR_HEIGHT,
+    _blueprint_requires_auth,
+)
 from .common import request_info
 
 
@@ -41,11 +44,7 @@ class SidebarSingle(QWidget):
         self.setFixedWidth(190)
         self.setStyleSheet(f"background:{BG_SECONDARY}; border-right:1px solid {BORDER};")
         lay = QVBoxLayout(self)
-        # 하단만 14(상단은 16) — 맨 아래 구분선(addStretch() 다음의 Divider)은
-        # 창 높이와 무관하게 이 마진값만으로 위치가 정해지는데, 대칭인 16으로 두면
-        # 메인 창 최하단 상태바(layout/common.py build_status_bar, border-top)
-        # 선보다 2px 위에 그려져 어긋난다 — 2px 줄여 두 선을 한 줄로 맞춘다.
-        lay.setContentsMargins(0, 16, 0, 14)
+        lay.setContentsMargins(0, 16, 0, 0)
         lay.setSpacing(2)
 
         logo = parts.make_label("DataCrawler", ACCENT_LIGHT, 15, True)
@@ -73,7 +72,18 @@ class SidebarSingle(QWidget):
             self._add_nav_btn(lay, icon, label, stack_idx)
 
         lay.addStretch()
-        lay.addWidget(Divider())
+
+        # 이 창 최하단 구분선(우측 콘텐츠 영역의 build_status_bar가 그리는
+        # border-top)과 한 줄로 맞추기 위해, Divider를 폰트 메트릭에 따라
+        # 흔들리는 콘텐츠 높이 위가 아니라 STATUS_BAR_HEIGHT로 고정한 컨테이너
+        # 맨 위에 둔다 — 그러면 두 선 모두 "창 높이 − STATUS_BAR_HEIGHT"로
+        # 결정되어 플랫폼별 폰트 해석 차이와 무관하게 항상 일치한다.
+        status_footer = QWidget()
+        status_footer.setFixedHeight(STATUS_BAR_HEIGHT)
+        footer_lay = QVBoxLayout(status_footer)
+        footer_lay.setContentsMargins(0, 0, 0, 0)
+        footer_lay.setSpacing(0)
+        footer_lay.addWidget(Divider())
 
         status_row = QHBoxLayout()
         status_row.setContentsMargins(16, 8, 16, 0)
@@ -82,7 +92,10 @@ class SidebarSingle(QWidget):
         status_row.addWidget(dot)
         status_row.addWidget(st)
         status_row.addStretch()
-        lay.addLayout(status_row)
+        footer_lay.addLayout(status_row)
+        footer_lay.addStretch()
+
+        lay.addWidget(status_footer)
 
         self._btns[0].setChecked(True)
 

@@ -17,6 +17,8 @@ from .common import (
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_LIGHT, AMBER, GREEN, BLUE, PURPLE, RED,
 )
 
+STATUS_COLOR = {"대기": AMBER, "실행 중": GREEN, "완료": BLUE, "비활성": TEXT_MUTED}
+
 
 class SchedulerPage(QWidget, SchedulerPageTriggers):
 
@@ -56,7 +58,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
         self.sched_table = EqualSpacingTable(parent=self, row_height=36, col_padding=10, hscroll_handle=50)
         self.sched_table.setColumnCount(8)
         self.sched_table.setHorizontalHeaderLabels(
-            ["NO", "Task Name", "대상", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
+            ["NO", "Task Name", "Target", "URL", "Execution Time", "Next Runtime", "Status", "Action"])
         tl.addWidget(self.sched_table)
         bl.addWidget(tw, 1)
 
@@ -104,7 +106,6 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
     def _refresh_table(self):
         schedules = store.get_schedules()
         self.sched_table.setRowCount(0)
-        STATUS_COLOR = {"대기": AMBER, "실행 중": GREEN, "완료": BLUE, "비활성": TEXT_MUTED}
 
         for idx, s in enumerate(schedules):
             r = self.sched_table.rowCount()

@@ -8,7 +8,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
-    QApplication, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
     QComboBox, QCheckBox, QWidget, QTableWidgetItem, QGridLayout, QStackedWidget,
     QSizePolicy, QSpinBox, QDateEdit,
 )
@@ -25,10 +25,12 @@ from style import (
 )
 
 from .common import (
-    store, theme, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    store, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT, GREEN, PURPLE,
-    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss,
+    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
     _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+    _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
+    _resize_dialog_to_fit, _wire_output_mode_toggle,
 )
 
 class SchedulerPageTriggers:
@@ -478,7 +480,7 @@ class SchedulerPageTriggers:
         dlg = QDialog(self)
         dlg.setWindowTitle("새 스케줄 등록" if sched_task == "등록" else "스케줄 수정")
         dlg.setMinimumWidth(560)
-        dlg.setStyleSheet(f"background:{BG_SECONDARY}; border:1px solid {BORDER};")
+        dlg.setStyleSheet(_default_dialog_qss())
 
         # 좌(기존 폼)/우(정제 규칙 패널, "정제" 선택 시에만 노출) 2열 구조 —
         # 정제 규칙 설정을 세로가 아닌 가로 방향으로 확장해 다이얼로그가
@@ -752,19 +754,38 @@ class SchedulerPageTriggers:
         if sched_refine_fill_input is not None:
             sched_refine_fill_input.setText(_saved_fill_value)
 
-        # "커스텀 정제 규칙 적용" 체크 시 ①③④ 자동 연동 — MonitorPageSingle의
-        # _on_custom_rule_toggled()와 동일 로직(fill_null 제외,
-        # 2026-07-17), 이 패널의 로컬 checkboxes 딕셔너리에 대해서만 적용.
+        # "커스텀 정제 규칙 적용" 초기값 재확인 — 현재 선택된 "대상 블루프린트"에
+        # refine/{seq_no}.py가 없으면 위에서 넣은 _saved_refine_rules(기본값 또는
+        # 저장된 값)와 무관하게 무조건 꺼둔다. 파일이 있으면 그대로 둔다
+        # (MonitorPageSingle __init__과 동일한 규칙 — 판단 기준은
+        # trigger/common.py의 _sync_custom_rule_checkbox 한 곳뿐).
+        _sync_custom_rule_checkbox(sched_blueprint_combo.currentData(), sched_refine_checkboxes)
+
+        # "커스텀 정제 규칙 적용" 체크박스의 stateChanged 핸들러 — 실제
+        # 검증/자동 연동 로직은 trigger/common.py의 _handle_custom_rule_toggle이
+        # 전담하며(정제 페이지의 _on_custom_rule_toggled와 공유), 여기서는
+        # seq_no와 경고 콜백만 이 다이얼로그의 컨텍스트로 채워 넘긴다. seq_no는
+        # 이 패널이 아니라 "대상 블루프린트" 콤보의 현재 선택값에서 가져온다 —
+        # 이 다이얼로그는 seq_no가 고정이 아니라 콤보로 실행 중에 바뀌기 때문이다.
         _sched_refine_custom_cb = sched_refine_checkboxes.get("custom_rule")
         if _sched_refine_custom_cb is not None:
             def _on_sched_refine_custom_rule_toggled(chk_state):
-                if chk_state != Qt.CheckState.Checked.value:
-                    return
-                for key in ("remove_null_row", "remove_duplicate", "trim_whitespace"):
-                    cb = sched_refine_checkboxes.get(key)
-                    if cb is not None:
-                        cb.setChecked(True)
+                seq_no = sched_blueprint_combo.currentData()
+                def _warn():
+                    bp = BlueprintStorage().get(seq_no) or {}
+                    _warn_custom_rule_missing(dlg, bp.get("title") or seq_no)
+                _handle_custom_rule_toggle(chk_state, seq_no, sched_refine_checkboxes, _warn)
             _sched_refine_custom_cb.stateChanged.connect(_on_sched_refine_custom_rule_toggled)
+
+            # "대상 블루프린트" 선택이 바뀔 때마다 그 블루프린트의 스크립트
+            # 존재 여부로 재동기화한다 — 정제 페이지의 "탭 재진입마다 재동기화"에
+            # 대응. 파일이 없으면 무조건 끄고(팝업 없이 조용히 — 콤보를 여러 번
+            # 눌러볼 때마다 모달이 뜨면 방해가 됨), 있으면 사용자가 남긴 상태를
+            # 그대로 둔다. 기존에 이 콤보에 이미 연결된 URL/렌더링 안전 한도
+            # 핸들러와는 무관하게 별도로 추가 연결한다.
+            def _sync_sched_custom_rule_on_blueprint_change(_):
+                _sync_custom_rule_checkbox(sched_blueprint_combo.currentData(), sched_refine_checkboxes)
+            sched_blueprint_combo.currentIndexChanged.connect(_sync_sched_custom_rule_on_blueprint_change)
 
         refine_panel_layout.addStretch()
 
@@ -778,14 +799,7 @@ class SchedulerPageTriggers:
             sched_auto_ref_btn.setChecked(is_refined)
             sched_refine_divider.setVisible(is_refined)
             sched_refine_panel.setVisible(is_refined)
-            dlg.layout().activate()
-            # setVisible() 직후에는 dlg.sizeHint()가 아직 새 크기를 반영하지
-            # 못한 경우가 있어(_update_sched_dialog_size()와 동일 원인), 이벤트
-            # 루프를 한 번 처리시켜 레이아웃을 정착시킨 뒤 resize. adjustSize()는
-            # 이미 show()된 다이얼로그에서는 줄어드는 방향으로 갱신되지 않아 미사용.
-            QApplication.processEvents()
-            dlg.layout().activate()
-            dlg.resize(dlg.sizeHint())
+            _resize_dialog_to_fit(dlg)
 
         sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
         sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
@@ -834,12 +848,6 @@ class SchedulerPageTriggers:
         sched_enc_combo = _sched_file_widgets["enc_combo"]
         sched_csv_delim = _sched_file_widgets["csv_delimeter"]
 
-        def _sched_on_fmt_changed(fmt_text: str):
-            _sched_toggle_csv_fields(fmt_text)
-
-        sched_fmt_combo.currentTextChanged.connect(_sched_on_fmt_changed)
-        _sched_on_fmt_changed(sched_fmt_combo.currentText())
-
         sched_extract_stack.addWidget(sched_file_page)  # index 0
 
         # ── PAGE 1 : DB 설정 ──────────────────────────────
@@ -877,48 +885,12 @@ class SchedulerPageTriggers:
         sched_extract_stack.addWidget(sched_db_page)  # index 1
         sched_extract_stack.setCurrentIndex(0 if self._sched_out_mode == "FILE" else 1)
 
-        def _update_sched_dialog_size():
-            current_page = sched_extract_stack.currentWidget()
-            if current_page:
-                current_page.layout().activate()
-                sched_extract_stack.setFixedHeight(current_page.layout().sizeHint().height())
-            dlg.layout().activate()
-            # setFixedHeight() 직후에는 dlg.sizeHint()가 아직 새 높이를 반영하지
-            # 못한 상태(한 박자 뒤처진 값)를 돌려주는 경우가 있어(실측 확인 —
-            # DB→FILE 전환 시 늘어난 세로 길이가 되돌아가지 않던 버그의 원인),
-            # 이벤트 루프를 한 번 처리시켜 레이아웃을 완전히 정착시킨 뒤 sizeHint
-            # 기준으로 resize. adjustSize()는 이미 show()된 다이얼로그에서 창을
-            # 줄이는 방향으로는 갱신되지 않아 사용하지 않음.
-            QApplication.processEvents()
-            dlg.layout().activate()
-            dlg.resize(dlg.sizeHint())
-
-        def _sched_on_file_clicked():
-            self._sched_out_mode = "FILE"
-            sched_out_mode_lbl.setText("로컬 파일 저장 모드")
-            sched_out_db_btn.setChecked(False)
-            sched_extract_stack.setCurrentIndex(0)
-            sched_extract_stack.setMinimumHeight(0)
-            sched_extract_stack.setMaximumHeight(16777215)
-            _update_sched_dialog_size()
-
-        def _sched_on_db_clicked():
-            self._sched_out_mode = "DB"
-            sched_out_mode_lbl.setText("DB 서버 전송 모드")
-            sched_out_file_btn.setChecked(False)
-            sched_extract_stack.setCurrentIndex(1)
-            sched_extract_stack.setMinimumHeight(0)
-            sched_extract_stack.setMaximumHeight(16777215)
-            _update_sched_dialog_size()
-
-        sched_out_file_btn.clicked.connect(_sched_on_file_clicked)
-        sched_out_db_btn.clicked.connect(_sched_on_db_clicked)
-
-        sched_fmt_combo.currentTextChanged.disconnect(_sched_on_fmt_changed)
-        def _sched_on_fmt_changed_with_resize(fmt_text: str):
-            _sched_on_fmt_changed(fmt_text)
-            _update_sched_dialog_size()
-        sched_fmt_combo.currentTextChanged.connect(_sched_on_fmt_changed_with_resize)
+        _update_sched_dialog_size = _wire_output_mode_toggle(
+            dlg=dlg, stack=sched_extract_stack, file_btn=sched_out_file_btn,
+            db_btn=sched_out_db_btn, mode_lbl=sched_out_mode_lbl, fmt_combo=sched_fmt_combo,
+            set_mode=lambda m: setattr(self, "_sched_out_mode", m),
+            on_fmt_changed=_sched_toggle_csv_fields,
+        )
 
         root.addWidget(sched_extract_stack)
         root.addSpacing(10)
@@ -931,7 +903,6 @@ class SchedulerPageTriggers:
             if existing_save_type in ["새로 만들기", "덮어쓰기", "추가하기"]:
                 sched_save_type.setCurrentText(existing_save_type)
         sched_save_type.setFixedWidth(130)
-        sched_save_type.setStyleSheet(theme.CB_STYLE)
 
         sv_row = QHBoxLayout()
         sv_row.setSpacing(8)
@@ -952,7 +923,6 @@ class SchedulerPageTriggers:
         sched_interval = QComboBox()
         sched_interval.addItems(["선택하세요", "매일", "매주", "매월", "특정 날짜"])
         sched_interval.setFixedWidth(120)
-        sched_interval.setStyleSheet(theme.CB_STYLE)
 
         container_daily   = QWidget()
         container_weekly  = QWidget()
@@ -977,7 +947,6 @@ class SchedulerPageTriggers:
         self.w_day = QComboBox()
         self.w_day.addItems(["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"])
         self.w_day.setFixedWidth(76)
-        self.w_day.setStyleSheet(theme.CB_STYLE)
         self.w_h, self.w_m, self.w_s = hms_combos()
         wl = QHBoxLayout(container_weekly)
         wl.setContentsMargins(0, 0, 0, 0)
@@ -998,7 +967,6 @@ class SchedulerPageTriggers:
         self.m_day = QComboBox()
         self.m_day.addItems([str(d) for d in range(1, 32)])
         self.m_day.setFixedWidth(50)
-        self.m_day.setStyleSheet(theme.CB_STYLE)
         self.m_h, self.m_m, self.m_s = hms_combos()
         ml = QHBoxLayout(container_monthly)
         ml.setContentsMargins(0, 0, 0, 0)
@@ -1192,6 +1160,7 @@ class SchedulerPageTriggers:
         apply_btn.clicked.connect(lambda: self._apply_schedule(dlg=dlg, sched_info_dict=sched_info_dict))
         cancel_btn.clicked.connect(dlg.reject)
         btn_row.addWidget(apply_btn)
+        btn_row.addSpacing(8)
         btn_row.addWidget(cancel_btn)
         root.addLayout(btn_row)
 

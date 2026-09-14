@@ -4,7 +4,7 @@
 # 서로를 직접 import하지 않는다(단, multi는 single을 상속 목적으로 import).
 
 from conf import DataStore
-from style import THEME, Parts, EqualSpacingTable
+from style import THEME, Parts, EqualSpacingTable, StatCard
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
@@ -73,16 +73,30 @@ def build_scroll_body(widget, spacing: int = 14) -> QVBoxLayout:
     return bl
 
 
-def make_header_table(parent, headers: list, row_height: int = 36,
-                       col_padding: int = 8, hscroll_handle: int = 50) -> EqualSpacingTable:
+def make_header_table(parent, headers: list) -> EqualSpacingTable:
     """헤더 컬럼이 고정된 EqualSpacingTable을 만든다. auth/session 페이지가 공유."""
-    t = EqualSpacingTable(
-        parent=parent, row_height=row_height,
-        col_padding=col_padding, hscroll_handle=hscroll_handle,
-    )
+    t = EqualSpacingTable(parent=parent, row_height=36, col_padding=8, hscroll_handle=50)
     t.setColumnCount(len(headers))
     t.setHorizontalHeaderLabels(headers)
     return t
+
+
+def build_stat_summary_card(parts, title: str, specs: list) -> tuple:
+    """(label, value[, color]) 튜플 리스트로 카드 안에 StatCard를 나란히 만든다.
+    (card_widget, [StatCard, ...])를 반환 — 호출부가 개별 StatCard를 self.attr에
+    대입한다. dashboard/monitor 페이지의 요약 카드 행(세션 통계, 수집 결과 요약,
+    정제 결과 요약 등)이 공유한다."""
+    card_w, card_l = parts.card_widget(title)
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    cards = []
+    for spec in specs:
+        label, value, *color = spec
+        card = StatCard(label, value, *color)
+        row.addWidget(card, 1)
+        cards.append(card)
+    card_l.addLayout(row)
+    return card_w, cards
 
 
 def row_of_seq(table, seq_no, seq_no_col: int) -> int:
@@ -109,6 +123,11 @@ def result_columns_from_blueprint(blueprint_info: dict) -> list:
         return []
 
 
+# 사이드바 하단 구분선(sidebar.py의 status_footer)과 반드시 같은 값을 써야 한다 —
+# 두 값이 갈라지면 사이드바 선과 이 상태바 선이 어긋난다.
+STATUS_BAR_HEIGHT = 41
+
+
 def build_status_bar(open_log_viewer_callback):
     """메인 창 최하단 상태바(최신 로그 한 줄 + 전체 로그 보기 버튼)를 만든다.
     MainWindowSingle/MainWindowMulti가 동일하게 사용한다.
@@ -118,7 +137,7 @@ def build_status_bar(open_log_viewer_callback):
         self.status_level/self.status_msg에 직접 대입해 보관한다.
     """
     status_bar = QWidget()
-    status_bar.setFixedHeight(41)
+    status_bar.setFixedHeight(STATUS_BAR_HEIGHT)
     status_bar.setStyleSheet(
         f"background:{BG_SECONDARY}; border-top:1px solid {BORDER};"
     )

@@ -10,10 +10,10 @@ from PyQt6.QtCore import Qt
 from conf import get_spider_mode, DEFAULT_COLLECT_SETTINGS
 from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
-from style import StatCard, EqualSpacingTable, apply_render_safety_limits
+from style import EqualSpacingTable, apply_render_safety_limits
 from ..common import (
-    parts, build_scroll_body,
-    BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    parts, build_scroll_body, build_stat_summary_card,
+    BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
 )
 from .common import ActiveBlueprintMixin, count_badge_qss
@@ -36,10 +36,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         super().__init__()
         self.step_circles = []
         self.step_labels = []
-        self.step_arrow_groups = []
-        self._index = 0
-        self._out_mode = None
-        self.output_info = customized_settings.get_output_settings()
         self._running = False
         self._session_error_count = 0
         self._session_latency_sum = 0.0
@@ -153,17 +149,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.progress_card_widget = progress_wrap
         self._place_progress_card(bl)
 
-        stw, stl = parts.card_widget("세션 통계")
-        sg = QHBoxLayout()
-        sg.setSpacing(10)
-        self.s_total = StatCard("요청 완료", "0")
-        self.s_err   = StatCard("오류", "0", RED)
-        self.s_pages = StatCard("총 수집 항목", "0", ACCENT_LIGHT)
-        self.s_speed = StatCard("평균 응답", "—", GREEN)
-        for card in [self.s_total, self.s_err, self.s_pages, self.s_speed]:
-            card.setStyleSheet(f"background:{BG_PRIMARY}; border-radius:6px; border:1px solid {BORDER};")
-            sg.addWidget(card, 1)
-        stl.addLayout(sg)
+        stw, (self.s_total, self.s_err, self.s_pages, self.s_speed) = build_stat_summary_card(
+            parts, "세션 통계",
+            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
+        )
         bl.addWidget(stw)
 
         # ── 수집 모니터링 테이블 (MonitorPageSingle에서 이동) ──────────
@@ -183,7 +172,8 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.monitor_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
         self.monitor_table.setColumnCount(9)
         self.monitor_table.setHorizontalHeaderLabels(
-            ["NO", "URL", "STATUS", "IP_ADDRESS", "USER-AGENT", "COOKIES", "LATENCY(PURE)", "LATENCY(TOTAL)", "JOB_NAME"])
+            ["NO", "URL", "Status", "IP Address", "User Agent", "Cookies", "Latency (Pure)", "Latency (Total)", "Job Name"])
+        self.monitor_table.itemClicked.connect(self._on_monitor_item_clicked)
         mon_tc.addWidget(self.monitor_table)
         bl.addWidget(mon_tcw, 1)
 
@@ -225,6 +215,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         content, widgets = _build_collect_settings_fields(
             self._active_blueprint_info().get("collect_settings") or DEFAULT_COLLECT_SETTINGS
         )
+        # _build_collect_settings_fields()는 다중 레이아웃의 "⚙ 수집 설정" 다이얼로그와도
+        # 공유되므로 여백은 거기서 건드리지 않고, 단일 대시보드 카드에서만 덮어쓴다.
+        content.layout().setContentsMargins(8, 6, 8, 6)
         c1.addWidget(content)
 
         self.delay_spin       = widgets["delay_spin"]
@@ -244,7 +237,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 customized_settings.get_render_safety_limits(),
             )
 
-        c1w.setFixedWidth(320)
+        # 카드 폭을 매직넘버로 고정하지 않고, 어떤 폰트/환경에서도 라벨이 잘리지 않도록
+        # content의 실제 sizeHint(현재 패딩 포함)에 카드 테두리 여백을 더해 계산한다.
+        margins = c1.contentsMargins()
+        c1w.setFixedWidth(content.sizeHint().width() + margins.left() + margins.right())
         cfg.addWidget(c1w, 1)
 
     # 단계 사이 (선)
@@ -287,9 +283,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self._session_latency_count = 0
 
         # 수집 모니터링 테이블 초기화
-        self.monitor_table.setSortingEnabled(False)
         self.monitor_table.setRowCount(0)
-        self.monitor_table.setSortingEnabled(True)
         self.mon_row_count_lbl.setText("0 rows")
 
         # 프로그레스 바 초기화

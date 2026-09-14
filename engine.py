@@ -8,7 +8,7 @@ import utility
 import conf
 from http import HTTPStatus
 
-from items import DonasItem, DonasItemLoader
+from scraper.items import DonasItem, DonasItemLoader
 from scrapy.selector import Selector
 
 from selenium import webdriver
@@ -18,11 +18,11 @@ from selenium.webdriver.remote.remote_connection import RemoteConnection
 from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
 
 # spiders
-from spiders.spihtml import HtmlExtractorSpider
-from spiders.spirenderer import HtmlSeleniumSpider
-from spiders.spijson import JsonExtractorSpider
-from spiders.spixml import XmlExtractorSpider
-from spiders.spidetail import DetailExtractorSpider
+from scraper.spiders.spihtml import HtmlExtractorSpider
+from scraper.spiders.spirenderer import HtmlSeleniumSpider
+from scraper.spiders.spijson import JsonExtractorSpider
+from scraper.spiders.spixml import XmlExtractorSpider
+from scraper.spiders.spidetail import DetailExtractorSpider
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def get_login_failure_phrases():
         "invalid credentials",
     ]
 
-def get_json_form(url, payload_yn):
+def get_json_form(url):
 
     if "?" not in url:
         raise ValueError(f"POST 요청 URL은 '<url>?<JSON 쿼리>' 형식이어야 합니다: {url!r}")
@@ -76,18 +76,102 @@ def get_spider(request_info: dict):
         raise ValueError(f"알 수 없는 spiders 값입니다: {spiders!r}")
 
 
+REQUIRED_CONDITION_KEYS = {
+    "html":        ["method", "items.root"],
+    "json":        ["method", "items.root"],
+    "xml":         ["method", "items.root"],
+    "html_render": ["method", "items.root"],
+}
+
+
+def _dig(d: dict, dotted_path: str):
+    for key in dotted_path.split("."):
+        if not isinstance(d, dict) or key not in d:
+            return None
+        d = d[key]
+    return d
+
+
+def validate_blueprint_conditions(request_info: dict) -> str | None:
+    """수집 시작 전 conditions에 스파이더 타입별 필수 키가 채워져 있는지 검사한다.
+    문제 없으면 None, 있으면 사용자에게 보여줄 안내 문자열을 반환한다 — URL마다
+    반복해서 같은 KeyError를 내며 낭비하는 대신 요청을 한 건도 보내기 전에 막는다."""
+    mode = conf.get_spider_mode(request_info)
+    conditions = request_info.get("conditions") or {}
+    missing = []
+
+    if mode == "detail":
+        for path in ("mainUrl", "mainFormat"):
+            if not _dig(conditions, path):
+                missing.append(path)
+        main_format = conditions.get("mainFormat")
+        if main_format == "html" and not _dig(conditions, "items.detail"):
+            missing.append("items.detail")
+        elif main_format == "json":
+            for path in ("items.detail_root", "items.detail", "items.main_root"):
+                if not _dig(conditions, path):
+                    missing.append(path)
+        elif main_format not in ("html", "json"):
+            missing.append("mainFormat(html 또는 json이어야 함)")
+    else:
+        for path in REQUIRED_CONDITION_KEYS.get(mode, []):
+            if not _dig(conditions, path):
+                missing.append(path)
+
+    if not missing:
+        return None
+    title = request_info.get("title") or "(제목 없음)"
+    return (
+        f"'{title}' 블루프린트의 수집 설정(conditions)에 필수 항목이 비어 있어 "
+        f"수집을 시작할 수 없습니다.\n\n누락된 항목: {', '.join(missing)}\n\n"
+        f"블루프린트 편집에서 해당 항목을 채운 뒤 다시 시도하세요."
+    )
+
+
+def handle_request_failure(failure):
+    """응답 자체를 못 받은 요청(타임아웃/DNS 실패/연결거부 등, 재시도 소진 후)의 Scrapy
+    errback — worker.py가 다른 응답과 동일하게 집계하도록 RESULT_INFO를 직접 보고한다.
+    실제 Response가 없어 get_response_status()/DonasItemLoader(selector 필요)를 쓸 수
+    없으므로 Request/Failure에서 복원 가능한 필드만으로 최소 resp_info를 직접 구성한다."""
+    request = failure.request
+    reason = failure.getErrorMessage() or type(failure.value).__name__
+    logger.warning("[handle_request_failure] 요청 실패: %s | %s", request.url, reason)
+
+    ua = request.headers.get('User-Agent')
+    resp_info = {
+        "url": request.url,
+        "req_url": request.meta.get("original_url", request.url),
+        "method": request.method,
+        "params": request.body.decode('utf-8', errors='replace') if request.body else "",
+        "ip_address": None,
+        "user_agents": ua.decode('utf-8') if ua else "",
+        "cookies": "",
+        "status": "000",  # 상태 코드를 받지 못한 경우(연결 실패 등) — 실패 유형은 reason에 기록됨
+        "reason": reason,
+        "pure_latency": None,   # 응답이 없어 latency 없음 — 통계 페이지의 평균 응답시간 집계에서 자동 제외됨
+        "total_latency": None,
+    }
+    print(f"RESULT_INFO:{json.dumps({'resp_info': resp_info}, ensure_ascii=False)}")
+
+
 def get_scrapy_request(url, conditions, callback):
     """
     조건 딕셔너리에 따라 Scrapy Request 또는 FormRequest 객체를 생성합니다.
     """
 
     # 1. 공통 파라미터 딕셔너리 준비
+    # meta에 original_url(치환 전 요청 URL)을 함께 실어 보낸다 — POST 요청은 아래에서
+    # url_list 매칭용 쿼리스트링(JSON 리터럴)이 제거된 processed_url로 바뀌므로, 응답
+    # 쪽(get_response_status)에서 워커의 url_list와 대조 가능한 원본 URL을 복원하려면
+    # 이 값이 필요하다. dict를 복사해 넣는다 — conditions는 url_list의 모든 요청이
+    # 공유하는 같은 객체라 여기서 직접 mutate하면 마지막 요청의 url로 덮어써진다.
     request_kwargs = {
         'url': url,
         'callback': callback,
+        'errback': handle_request_failure,  # 응답 자체를 못 받은 요청(타임아웃 등)도 집계되도록
         'method': conditions['method'],
         'headers': conditions.get("headers"),  # headers가 None이어도 Request 객체는 이를 처리함
-        'meta': conditions
+        'meta': {**conditions, 'original_url': url},
     }
 
     if conditions['method'] == "GET":
@@ -98,7 +182,7 @@ def get_scrapy_request(url, conditions, callback):
     # 2. POST 요청에 대한 추가 처리
     elif conditions['method'] == "POST":
 
-        processed_url, body = get_json_form(url, conditions.get("payload"))
+        processed_url, body = get_json_form(url)
 
         # URL이 변경되었을 경우 업데이트
         request_kwargs['url'] = processed_url
@@ -229,11 +313,17 @@ def perform_logout(seq_no: str) -> None:
 
 
 def get_response_status(response):
-    # 리다이렉트 발생 시 response.url은 최종 URL이므로,
-    # 워커의 url_list 매칭용으로 최초 요청 URL을 별도로 보존합니다.
-    # (redirect_urls의 첫 번째 원소 = 리다이렉트 전 최초 요청 URL)
+    # 워커의 url_list 매칭용 URL을 복원합니다. 우선순위:
+    # 1) original_url — get_scrapy_request()가 심어둔, url_list 생성에 쓰인 것과 동일한
+    #    치환 전 원본 URL. POST 요청은 get_json_form()이 쿼리스트링(JSON 리터럴)을
+    #    떼어 바디로 옮기고 URL을 축약하므로, response.url은 이미 그 축약된 URL이라
+    #    url_list와 절대 매칭되지 않는다 — 반드시 이 값을 써야 한다.
+    # 2) redirect_urls[0] — 리다이렉트 발생 시 response.url은 최종 URL이므로 그 대신
+    #    최초 요청 URL(위 original_url이 없을 때의 하위 호환 폴백).
+    # 3) response.url — 그 외 기본값.
     redirect_urls = response.meta.get("redirect_urls")
-    req_url = redirect_urls[0] if redirect_urls else response.url
+    original_url = response.meta.get("original_url")
+    req_url = original_url or (redirect_urls[0] if redirect_urls else response.url)
 
     # Selenium 등으로 생성된 응답은 ip_address가 None일 수 있고,
     # 비표준 상태 코드는 HTTPStatus()가 ValueError를 발생시키므로 방어적으로 처리합니다.
@@ -376,10 +466,34 @@ def set_item_loader(response, collect_info, data):
     return loader
 
 
+def build_failure_item(response, collect_info, error=None):
+    """비정상 상태코드 또는 추출 중 예외가 발생한 응답을 데이터 없는 최소 아이템으로
+    변환한다 — 실제 추출 결과는 없지만 RESULT_INFO로 흘러들어가 worker.py가 실패로
+    집계할 수 있게 한다. status는 응답을 받은 이상 항상 실제 HTTP 상태코드를 유지한다
+    (worker.py의 성공/실패 판정 기준). error가 주어지면(추출 단계에서 발생한 예외)
+    reason에 예외 메시지를 남기고, extract_error에 예외 타입명을 별도로 기록해
+    "200 응답이지만 데이터 추출은 실패"한 경우를 status/성공 판정과 무관하게 구분할
+    수 있게 한다."""
+    loader = set_item_loader(response, collect_info, None)
+    item = loader.load_item()
+    if error is not None:
+        item['result_info']['resp_info']['reason'] = str(error)
+        item['result_info']['resp_info']['extract_error'] = type(error).__name__
+    return item
+
+
 def set_cookies(response):
     """
-    DB에 저장할 쿠키값으로 수정
+    DB/대시보드에 표시할 쿠키값을 반환합니다.
+
+    RandomCookieMiddleware 등이 이번 요청에 실제로 실어 보낸 Cookie 헤더를
+    우선 사용하고, 없으면(랜덤 쿠키 비활성 등) 서버가 Set-Cookie로 내려준
+    값을 대신 반환합니다.
     """
+
+    req_cookie = response.request.headers.get('Cookie')
+    if req_cookie:
+        return req_cookie.decode('utf-8')
 
     cookies = response.headers.getlist('Set-Cookie')
     cookie = ""

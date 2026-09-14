@@ -91,8 +91,6 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
             )
             self.stack.addWidget(self.auth_page)  # 5 — NAV_AUTH
 
-        # GlobalToolbarSingle에 log_manager 주입 (log_manager는 __init__에서 이미 생성됨)
-        self.global_toolbar.set_log_manager(self.log_manager)
         self.global_toolbar.set_pages(
             dashboard=self.dashboard,
             monitor_page=self.monitor_page,

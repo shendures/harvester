@@ -123,7 +123,7 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
 
 
     def _make_cred_table(self):
-        headers = ["이름", "타입", "키 (마스킹)", "만료일", "상태", "액션"]
+        headers = ["Name", "Type", "Key (Masked)", "Expires", "Status", "Action"]
         return make_header_table(self, headers)
 
     def _insert_table_row(self, data: dict):

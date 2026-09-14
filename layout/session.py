@@ -31,7 +31,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         row0 = QHBoxLayout()
         row0.setSpacing(16)
 
-        self.ua_check = QCheckBox("UA 랜덤")
+        self.ua_check = QCheckBox("User-Agent 랜덤")
         self.ua_check.setToolTip("요청마다 User-Agent를 무작위로 변경")
         self.ua_check.setChecked(True)
 
@@ -106,7 +106,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
             card.setStyleSheet(theme.PROXY_CARD_DISABLED_QSS)
 
     def _make_proxy_table(self):
-        headers = ["NO", "프로토콜", "호스트", "포트", "상태"]
+        headers = ["NO", "Protocol", "Host", "Port", "Status"]
         t = make_header_table(self, headers)
         t.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         t.customContextMenuRequested.connect(self._proxy_table_context_menu)
@@ -115,7 +115,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         # itemClicked: 행 어디를 클릭해도 활성/비활성 토글
         t.itemClicked.connect(self._on_proxy_row_clicked)
         t.setStyleSheet(t.styleSheet() + theme.PROXY_TABLE_INDICATOR_QSS)
-        # "상태" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
+        # "Status" 체크박스 컬럼은 체크박스만 보이도록 — 현재 셀이 되어도 포커스 사각형을 그리지 않음
         t.setItemDelegateForColumn(4, NoFocusDelegate(t))
         return t
 

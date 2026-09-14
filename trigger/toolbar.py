@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import QApplication, QMainWindow
 from conf import BlueprintStorage
 
 from .common import (
-    store, ACCENT, ACCENT_HOVER, RED, _apply_task_settings, _reset_pages,
-    _after_delay_unless_cancelled,
+    store, ACCENT, ACCENT_HOVER, _apply_task_settings, _reset_pages,
+    _after_delay_unless_cancelled, _get_log_manager, _stop_btn_qss,
 )
 
 
@@ -33,9 +33,7 @@ class GlobalToolbarTriggers:
         if not self._running:
             self._start_cancelled = False
 
-            mw = self._main_window()
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
 
             store.clear_rows()
             _reset_pages(self.dashboard, self.monitor_page)
@@ -48,9 +46,7 @@ class GlobalToolbarTriggers:
             self._start_cancelled = True
             self.stop_requested.emit()
             self.set_running(False)
-            mw = self._main_window()
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
             self._full_reset()
             self._log("warn", "수집이 중단되었습니다. 수집 대기 상태로 초기화합니다.")
 
@@ -59,17 +55,13 @@ class GlobalToolbarTriggers:
         if self._start_cancelled:
             return
 
-        mw = self._main_window()
-
         if self.dashboard is None or self.session_page is None or self.monitor_page is None:
             self._log("err", "페이지 초기화가 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.")
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
             self.set_running(False)
             return
 
-        if mw is not None:
-            mw.dashboard._update_step_ui(1)
+        self._set_step_ui(1)
 
         QApplication.processEvents()
 
@@ -80,8 +72,6 @@ class GlobalToolbarTriggers:
         """[단계 2: 데이터 수집] 실제 시작"""
         if self._start_cancelled:
             return
-
-        mw = self._main_window()
 
         try:
             dashboard_page = self.dashboard
@@ -119,8 +109,7 @@ class GlobalToolbarTriggers:
         except Exception as e:
             self._log("err", f"설정 로드 실패: {e}")
             self.set_running(False)
-            if mw is not None:
-                mw.dashboard._update_step_ui(0)
+            self._set_step_ui(0)
 
     def _full_reset(self):
         """중지 버튼 클릭 시 호출 — DataStore 및 모든 페이지 UI를 완전히 초기화합니다."""
@@ -141,10 +130,7 @@ class GlobalToolbarTriggers:
     def _style_run_btn(self, running: bool):
         if running:
             self.run_btn.setText("⬛  중지")
-            self.run_btn.setStyleSheet(f"""
-                QPushButton{{background:#7f1d1d;color:{RED};border:none;border-radius:6px;
-                padding:6px 14px;font-size:13px;font-weight:bold;}}
-                QPushButton:hover{{background:#991b1b;}}""")
+            self.run_btn.setStyleSheet(_stop_btn_qss())
         else:
             self.run_btn.setText("▶  시작")
             self.run_btn.setStyleSheet(f"""
@@ -153,9 +139,10 @@ class GlobalToolbarTriggers:
                 QPushButton:hover{{background:{ACCENT_HOVER};}}""")
 
     def _log(self, level: str, message: str) -> None:
-        """log_manager가 주입된 경우에만 로그를 출력합니다."""
-        if self.log_manager is not None:
-            self.log_manager.append_log(level, message)
+        """log_manager가 준비된 경우에만 로그를 출력합니다."""
+        lm = _get_log_manager(self)
+        if lm is not None:
+            lm.append_log(level, message)
 
     def _main_window(self):
         """부모 위젯을 순회하여 MainWindowSingle 인스턴스를 반환합니다. 없으면 None."""
@@ -166,6 +153,11 @@ class GlobalToolbarTriggers:
                 return w
             w = w.parent()
         return None
+
+    def _set_step_ui(self, step: int) -> None:
+        mw = self._main_window()
+        if mw is not None:
+            mw.dashboard._update_step_ui(step)
 
     def set_pages(self, dashboard=None, monitor_page=None,
                   session_page=None, auth_page=None) -> None:
@@ -178,7 +170,3 @@ class GlobalToolbarTriggers:
             self.session_page = session_page
         if auth_page    is not None:
             self.auth_page    = auth_page
-
-    def set_log_manager(self, log_manager) -> None:
-        """MainWindowSingle 초기화 후 LogViewerDialog 싱글턴을 주입합니다."""
-        self.log_manager = log_manager

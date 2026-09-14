@@ -178,6 +178,7 @@ pyrightconfig.json
 # etc
 request_info.json
 schedules.json
+stats_history.json
 null
 *:Zone.Identifier
 

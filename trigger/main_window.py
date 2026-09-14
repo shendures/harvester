@@ -12,7 +12,7 @@ from conf import BlueprintStorage
 from .common import (
     store, TEXT_SECONDARY, LOG_LEVEL_COLORS, SCHEDULED_REFINE_RULES,
     _apply_task_settings, _reset_pages, _show_no_data_dialog, _stop_worker_if_running,
-    _after_delay_unless_cancelled,
+    _after_delay_unless_cancelled, _validate_blueprint_before_run,
     NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
 )
 
@@ -37,16 +37,26 @@ class TrayManagerTriggers:
 class MainWindowTriggersSingle:
     """MainWindowSingle의 페이지 전환·워커·종료 메서드"""
 
+    def _reload_stats_if_needed(self, stack_idx: int) -> None:
+        if stack_idx == NAV_STATS:
+            self.stats_page.reload()
+
     def _switch_page(self, idx):
         self.stack.setCurrentIndex(idx)
-        if idx == NAV_STATS:
-            self.stats_page.reload()
+        self._reload_stats_if_needed(idx)
 
     def _activate_nav_page(self, stack_idx: int) -> None:
         """표시 순서가 아닌 실제 스택 인덱스 기준으로 페이지를 전환하고 사이드바 체크를 동기화한다."""
         self.stack.setCurrentIndex(stack_idx)
         for btn, idx in self.sidebar._nav_idx_by_btn.items():
             btn.setChecked(idx == stack_idx)
+        self._reload_stats_if_needed(stack_idx)
+
+    def _mark_schedule_done(self, task: dict, *, total: int) -> None:
+        """task가 스케줄 실행(task_nm 보유)이면 schedule_page에 완료 표시한다."""
+        job_name = task.get("task_nm")
+        if job_name:
+            self.schedule_page.mark_done(job_name, total=total)
 
     def _reset_all_pages(self):
         _reset_pages(self.dashboard, self.monitor_page)
@@ -87,6 +97,10 @@ class MainWindowTriggersSingle:
         self._reset_all_pages()
 
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        is_unattended = cfg.get("job") == "스케줄 실행"
+        if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
+            self._abort_launch(cfg)
+            return
         # 수동 실행 경로는 기존과 동일하게 기존 워커를 중단하고 교체
         _stop_worker_if_running(self._worker)
 
@@ -94,7 +108,6 @@ class MainWindowTriggersSingle:
         self._worker.new_row.connect(self.dashboard.add_row)
         self._worker.new_row.connect(self.monitor_page._add_realtime_row)
         self._worker.progress.connect(self.update_progress)
-        self._worker.stats_update.connect(self.dashboard.update_stats)
         self._worker.log_message.connect(self.log_manager.append_log)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()
@@ -103,11 +116,23 @@ class MainWindowTriggersSingle:
         self.dashboard._update_step_ui(2)
         self._activate_nav_page(NAV_MONITOR)
 
+    def _abort_launch(self, task: dict) -> None:
+        """_launch_worker()가 사전 검증 실패로 워커를 못 만들고 중단할 때 호출 —
+        _on_finished()의 '0건 완료' 분기와 동일하게 UI를 idle로 되돌리고, 스케줄을
+        재무장하고, 대기 중이던 다음 작업을 이어서 실행한다. 워커가 아예 시작되지
+        않아 finished 시그널이 없으므로, 이 정리를 대신 직접 해줘야 한다."""
+        self.global_toolbar.set_running(False)
+        self.reset_progress()
+        self.dashboard.set_running(False)
+        self.dashboard._update_step_ui(0)
+        self._mark_schedule_done(task, total=0)
+        self._consume_pending_queue()
+
     def _consume_pending_queue(self):
         """
         대기 큐에서 다음 스케줄 작업을 꺼내 실행합니다.
         큐가 비어 있으면 아무것도 하지 않습니다.
-        _on_finished() 말미에서만 호출됩니다.
+        _on_finished() 또는 _abort_launch()(사전 검증 실패) 말미에서 호출됩니다.
         """
         if not self._pending_queue:
             return
@@ -191,9 +216,7 @@ class MainWindowTriggersSingle:
                     self.monitor_page.tab_widget.setCurrentIndex(0)
             # 0건이어도 스케줄은 재무장해야 함 — 그렇지 않으면 다음 회차가
             # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
-            job_name = task.get("task_nm")
-            if job_name:
-                self.schedule_page.mark_done(job_name, total=0)
+            self._mark_schedule_done(task, total=0)
             # 결과 없어도 대기 큐 소비는 계속 진행
             self._consume_pending_queue()
             return
@@ -238,9 +261,7 @@ class MainWindowTriggersSingle:
 
         self.dashboard._update_step_ui(0)
 
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
+        self._mark_schedule_done(task, total=summary.get("total", 0))
 
         if task.get("job") == "수동 실행":
             self._activate_nav_page(NAV_REFINE)
@@ -250,7 +271,12 @@ class MainWindowTriggersSingle:
         self._consume_pending_queue()
 
     def closeEvent(self, event):
-        if self.tray_manager.tray_icon.isVisible():
+        # tray_icon.isVisible()만으로는 부족하다 — 트레이 데몬이 없는 환경(WSL 등)에서도
+        # Qt는 show()가 호출됐다는 이유만으로 isVisible()이 True를 반환할 수 있어, 실제로는
+        # 아무도 못 보는 트레이 아이콘을 "떠 있다"고 오판해 창을 숨긴 채 프로세스가 영원히
+        # 종료되지 않는 좀비 상태가 된다. isSystemTrayAvailable()로 플랫폼에 트레이 자체가
+        # 있는지부터 먼저 확인해야 한다.
+        if QSystemTrayIcon.isSystemTrayAvailable() and self.tray_manager.tray_icon.isVisible():
             self.hide()
             self.tray_manager.show_message("알림", "프로그램이 트레이에서 실행 중입니다.")
             event.ignore()
@@ -283,7 +309,8 @@ class MainWindowTriggersSingle:
         self.status_level.setStyleSheet(
             f"color:{color}; font-size:11px; font-weight:bold;"
         )
-        self.status_msg.setText(message)
+        last_line = message.splitlines()[-1] if message else message
+        self.status_msg.setText(last_line)
         self.status_msg.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px;")
 
     # ── 전체 로그 다이얼로그 ─────────────────────────
@@ -315,13 +342,16 @@ class MainWindowTriggersSingle:
 # seq_no 인자화해 옮긴 것이므로, 그쪽을 수정하면 여기도 함께 확인해야 합니다.
 
 BATCH_JOB = "전체 수집"
+SELECT_JOB = "선택 수집"
+# 완료 즉시(대기 큐를 기다리지 않고) 모니터링 화면으로 전환하는 job 종류.
+IMMEDIATE_MONITOR_JOBS = ("수동 실행", SELECT_JOB)
 
 
 class MainWindowTriggersMulti(MainWindowTriggersSingle):
     """MainWindowMulti(다중 수집 레이아웃)의 순차 수집·번들 라우팅 메서드"""
 
     # ── 태스크 빌드 ───────────────────────────────────
-    def _build_task(self, seq_no: str) -> dict:
+    def _build_task(self, seq_no: str, job_name: str = BATCH_JOB) -> dict:
         """
         특정 블루프린트(seq_no)의 실행 태스크 dict를 구성합니다.
         (단일 GlobalToolbarTriggers._actual_start()와 공통 로직을 공유 —
@@ -332,7 +362,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         _apply_task_settings(
             task, collect=bundle.collect_settings, session_page=self.session_page,
             monitor_page=bundle.monitor_page, auth_page=bundle.auth_page,
-            job_name=BATCH_JOB,
+            job_name=job_name,
         )
         # 순차 수집은 대기 큐에 여러 태스크가 동시에 존재하므로,
         # monitor_page.output_info["extract"] 참조를 그대로 두면 나중에 그
@@ -342,13 +372,19 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         return task
 
     # ── 순차 수집 시작 ─────────────────────────────────
-    def _start_batch(self, seq_no_list: list):
-        """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다."""
+    def _start_batch(self, seq_no_list: list, is_batch_all: bool = False):
+        """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다.
+
+        is_batch_all: "전체 수집" 버튼에서 온 요청이면 True, 행별 개별 실행/
+        "선택 수집" 버튼에서 온 요청이면 False — job_name(및 완료 후 처리
+        방식)을 "전체 수집" vs "선택 수집"으로 가른다.
+        """
+        job_name = BATCH_JOB if is_batch_all else SELECT_JOB
         if not seq_no_list:
-            self.log_manager.append_log("warn", "[전체 수집] 선택된 블루프린트가 없습니다.")
+            self.log_manager.append_log("warn", f"[{job_name}] 선택된 블루프린트가 없습니다.")
             return
 
-        tasks = [self._build_task(s) for s in seq_no_list]
+        tasks = [self._build_task(s, job_name=job_name) for s in seq_no_list]
         for i, t in enumerate(tasks):
             t["batch_meta"] = {"index": i, "total": len(tasks)}
 
@@ -357,7 +393,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             self._pending_queue.extend(tasks)
             self.log_manager.append_log(
                 "info",
-                f"[전체 수집] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
+                f"[{job_name}] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
             )
             return
 
@@ -367,7 +403,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._reset_bundle_pages(first.get("seq_no"))
         self.log_manager.append_log(
             "info",
-            f"[전체 수집] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
+            f"[{job_name}] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
             f"'{first.get('title') or first.get('seq_no')}'"
         )
 
@@ -381,7 +417,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             dash._update_step_ui(1)
             _after_delay_unless_cancelled(
                 lambda: self._batch_start_cancelled,
-                lambda: self._launch_worker(first, job_name=BATCH_JOB),
+                lambda: self._launch_worker(first, job_name=job_name),
             )
 
         _after_delay_unless_cancelled(lambda: self._batch_start_cancelled, _to_setting)
@@ -400,6 +436,10 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        is_unattended = cfg.get("job") in ("스케줄 실행", BATCH_JOB)
+        if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
+            self._abort_launch(cfg)
+            return
         _stop_worker_if_running(self._worker)
 
         # 실행 대상 블루프린트로 화면 자동 포커스 — 이후 시그널은 아래에서
@@ -415,7 +455,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._worker.new_row.connect(mon._add_realtime_row)
         self._worker.progress.connect(
             lambda done, total, d=dash: self._update_progress_for(d, done, total))
-        self._worker.stats_update.connect(dash.update_stats)
         self._worker.log_message.connect(self.log_manager.append_log)
         self._worker.finished.connect(self._on_finished)
         self._worker.start()
@@ -427,6 +466,23 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         # 다중 레이아웃은 "모니터링"이 "수집 목록"(NAV_BLUEPRINT_LIST) 하단 상세로
         # 통합됐으므로, 단일과 달리 NAV_MONITOR가 아니라 그쪽으로 전환한다.
         self._activate_nav_page(NAV_BLUEPRINT_LIST)
+
+    def _abort_launch(self, task: dict) -> None:
+        """_launch_worker()가 사전 검증 실패로 워커를 못 만들고 중단할 때 호출 —
+        _on_finished()의 '0건 완료' 분기와 동일하게 해당 번들 UI를 idle로 되돌리고,
+        스케줄을 재무장하고, 대기 큐(전체 수집의 나머지 블루프린트 포함)를 이어서
+        소비한다. 워커가 아예 시작되지 않아 finished 시그널이 없으므로, 이 정리를
+        대신 직접 해줘야 한다."""
+        seq_no = task.get("seq_no")
+        dash = self._get_or_create_bundle(seq_no).dashboard
+        self.global_toolbar.set_running(False)
+        self._reset_progress_for(dash)
+        dash.set_running(False)
+        dash._update_step_ui(0)
+        self._broadcast_blueprint_status(seq_no, "done")
+        self._broadcast_blueprint_status(seq_no, "idle")
+        self._mark_schedule_done(task, total=0)
+        self._consume_pending_queue()
 
     # ── 진행률 (번들별) ────────────────────────────────
     @staticmethod
@@ -451,9 +507,10 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         meta = next_cfg.get("batch_meta")
         if meta:
+            job_name = next_cfg.get("job", BATCH_JOB)
             self.log_manager.append_log(
                 "info",
-                f"[전체 수집] {meta['index'] + 1}/{meta['total']}번째 "
+                f"[{job_name}] {meta['index'] + 1}/{meta['total']}번째 "
                 f"'{next_cfg.get('title') or next_cfg.get('seq_no')}' 실행 "
                 f"(남은 대기: {remaining}건)"
             )
@@ -518,12 +575,10 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 )
             else:
                 _show_no_data_dialog(self, url_count, skipped, elapsed)
-                if task.get("job") == "수동 실행":
+                if task.get("job") in IMMEDIATE_MONITOR_JOBS:
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
-            job_name = task.get("task_nm")
-            if job_name:
-                self.schedule_page.mark_done(job_name, total=0)
+            self._mark_schedule_done(task, total=0)
             self._consume_pending_queue()
             return
 
@@ -548,26 +603,27 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                         rules_override=sched_refine_rules, skip_ui_update=True,
                         fill_value_override=sched_fill_value,
                     )
-                # 스케줄 실행일 때만 스케줄 자신의 extract 설정을 강제 주입 (단일과
-                # 동일). 배치는 각 번들의 화면 설정 스냅샷을 그대로 사용한다.
-                is_schedule = task.get("job") == "스케줄 실행"
+                # 무인 실행(스케줄·전체 수집)은 저장 대상 충돌 시 확인 모달 대신
+                # extract_override로 결정론적 저장(schedule_save_type 없으면 "new"
+                # 기본값)을 태운다 — task["extract"]는 제출 시점 스냅샷(deepcopy)
+                # 이므로 화면 설정이 나중에 바뀌어도 영향받지 않는다. "선택 수집"은
+                # 완료 즉시 화면을 지켜보는 것을 전제로 하므로 제외한다.
                 mon._extract_result_table(
                     source=auto_save_source,
                     silent=is_unattended,
-                    extract_override=extract_cfg if is_schedule else None,
+                    extract_override=extract_cfg if is_unattended else None,
                 )
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
 
         dash._update_step_ui(0)
 
-        job_name = task.get("task_nm")
-        if job_name:
-            self.schedule_page.mark_done(job_name, total=summary.get("total", 0))
+        self._mark_schedule_done(task, total=summary.get("total", 0))
 
-        # 수동 실행: 즉시 모니터링 화면으로. 전체 수집: 마지막 순번이 끝난
-        # 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링 화면으로 전환.
-        if task.get("job") == "수동 실행":
+        # 수동 실행·선택 수집: 완료되는 즉시 모니터링 화면으로. 전체 수집: 마지막
+        # 순번이 끝난 뒤에만(대기 큐가 비었을 때) 마지막 블루프린트의 모니터링
+        # 화면으로 전환.
+        if task.get("job") in IMMEDIATE_MONITOR_JOBS:
             self._show_monitor_for(seq_no)
         elif task.get("job") == BATCH_JOB and not self._pending_queue:
             self.log_manager.append_log("info", "[전체 수집] 전체 순차 실행 완료")

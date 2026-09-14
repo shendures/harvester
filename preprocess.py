@@ -68,6 +68,7 @@ class RefineStats:
     deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
     deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "전체 필드 NULL"}
     modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
+    orig_indices:   list = field(default_factory=list)  # 정제 후 각 행(위치)의 원본 raw_data 인덱스
     custom_rule_applied: bool     = False  # ② custom_rule 정상 적용 여부
     custom_rule_error:   str | None = None  # ② custom_rule 실행 중 예외 메시지 (있으면 원본 데이터로 폴백)
 
@@ -166,6 +167,7 @@ class DataRefiner:
         data        = self._step_cast_numeric(data)
 
         stats.refined_count  = len(data)
+        stats.orig_indices   = orig_indices
 
         # 제거된 원본 인덱스 확정
         survived = set(orig_indices)

@@ -10,7 +10,7 @@
 # 그대로 쓰입니다.
 
 param(
-    [string]$AppName = "CollectorApp",
+    [string]$AppName = "DataCrawler",
     [string]$AppVersion = "1.0.0",
     [string]$AppPublisher = $AppName
 )
