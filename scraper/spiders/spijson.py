@@ -1,7 +1,7 @@
 import json
 import engine
 import utility
-from spiders.base import BaseExtractorSpider
+from .base import BaseExtractorSpider
 
 class JsonExtractorSpider(BaseExtractorSpider):
 

@@ -417,7 +417,7 @@ def set_scrapy_settings(settings_dict: dict):
     # 동작한다 — 파일 탐색 대신 환경변수/sys.path를 직접 설정해 우회.
     if utility.resource_path() not in sys.path:
         sys.path.insert(0, utility.resource_path())
-    os.environ.setdefault("SCRAPY_SETTINGS_MODULE", "settings")
+    os.environ.setdefault("SCRAPY_SETTINGS_MODULE", "scraper.settings")
 
     settings = get_project_settings()
     settings.set("LOG_ENABLED", True, priority="cmdline")
@@ -445,7 +445,7 @@ def set_scrapy_settings(settings_dict: dict):
 
     # 핵심 설정 — 실패 시 크롤링이 무의미해지므로 흡수하지 않고 그대로 전파
     settings.set("DOWNLOADER_MIDDLEWARES", customized_settings.set_downloader_middlewares(settings_dict))
-    settings.set("ITEM_PIPELINES",        {"pipelines.LoadItemPipeline": 100})
+    settings.set("ITEM_PIPELINES",        {"scraper.pipelines.LoadItemPipeline": 100})
     settings.set("CONCURRENT_REQUESTS",   settings_dict["threads"])
     settings.set("DOWNLOAD_DELAY",        settings_dict["delay"])
     settings.set("DOWNLOAD_TIMEOUT",      settings_dict.get("timeout", 10))

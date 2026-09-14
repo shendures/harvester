@@ -5,7 +5,7 @@
 > - **진행 이력**: `HISTORY.md`
 > - **exe/설치 프로그램 빌드 절차**: `BUILD_GUIDE.md`
 
-- **최신 갱신**: 2026-08-31 00:16
+- **최신 갱신**: 2026-09-14
 
 ---
 
@@ -29,7 +29,7 @@
 | 테마·공용 위젯·정제 규칙 UI 빌더 | `style.py` | 881줄 |
 | 수집 워커 (QThread + multiprocessing) | `worker.py` | 513줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 320줄 |
-| Spider 5종 | `spiders/` | html / html_render / json / xml / detail |
+| Spider 5종 | `scraper/spiders/` | html / html_render / json / xml / detail |
 | 데이터 정제 | `preprocess.py` | 358줄 |
 | 설정·상태 공유 (싱글턴 3종) | `conf.py` | 437줄 |
 
@@ -53,9 +53,9 @@
     worker.py (MultiprocessWorker, QThread)
         └── run_spider() — 별도 프로세스
                 └── Scrapy CrawlerProcess
-                        └── spiders/*.py
+                        └── scraper/spiders/*.py
                                 └── engine.py (요청 생성, 데이터 추출)
-                                        └── pipelines.py (결과 출력)
+                                        └── scraper/pipelines.py (결과 출력)
 
 [데이터 공유]
     multiprocessing.Queue  ←→  DataStore (싱글턴, 메인 프로세스 전용)
@@ -64,7 +64,7 @@
     request_info.json  →  BlueprintStorage (싱글턴)
     {render,login,refine}/{seq_no}.py  →  CustomModuleStorage (싱글턴)
     customized_settings.py (기본값 정의)
-    settings.py (Scrapy 설정)
+    scraper/settings.py (Scrapy 설정)
 ```
 
 ### 핵심 실행 흐름 (코드로 검증됨)
@@ -74,7 +74,7 @@ GUI 시작 버튼
   → GlobalToolbarTriggers._actual_start()      # blueprint + UI 설정으로 task 구성
   → MainWindowSingle._launch_worker()                 # MultiprocessWorker(QThread) 시작
   → multiprocessing.Process(run_spider)         # Scrapy 격리 실행
-      → CrawlerProcess → spiders/*.py
+      → CrawlerProcess → scraper/spiders/*.py
       → LoadItemPipeline: "RESULT_INFO:{json}" → stdout → Queue
   → MultiprocessWorker._handle_line()           # 파싱 → 시그널 emit
   → DashboardPageSingle / MonitorPageSingle 실시간 갱신
@@ -210,7 +210,7 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 
 ---
 
-### Spider 패키지 (`spiders/`)
+### Spider 패키지 (`scraper/spiders/`)
 
 각 Spider는 데이터 형식과 수집 방식에 따라 분리되어 있습니다.
 
@@ -226,7 +226,7 @@ Scrapy 요청 생성과 데이터 추출 로직의 핵심 모듈.
 
 ---
 
-### 파이프라인 (`pipelines.py`)
+### 파이프라인 (`scraper/pipelines.py`)
 
 Scrapy Item이 Spider에서 나온 뒤 거치는 후처리 단계.
 
@@ -318,7 +318,7 @@ PR #8에서 제거됨 (`ISSUES.md` 이슈 ④ 참고). GUI의 DB 내보내기 UI
 | `set_downloader_middlewares()` | 요청 정보 기반으로 활성화할 미들웨어 딕셔너리 반환 |
 | `set_ip_settings()` | 프록시 IP 설정 반환 |
 
-#### `settings.py`
+#### `scraper/settings.py`
 Scrapy 프레임워크 설정 파일.
 
 주요 설정:
@@ -328,11 +328,11 @@ Scrapy 프레임워크 설정 파일.
 - `DOWNLOADER_MIDDLEWARES`: 프록시, User-Agent 랜덤화, 레이턴시 추적 순서로 구성
   (`scrapy_selenium.SeleniumMiddleware`는 죽은 의존성이라 `ISSUES.md` 이슈 ⑬에서
   제거됨 — 렌더링은 `spirenderer.py`가 자체 Chrome 드라이버로 전담)
-- `SPIDER_MIDDLEWARES`: `middlewares.DelaySchedulerMiddleware` 등록(500)
+- `SPIDER_MIDDLEWARES`: `scraper.middlewares.DelaySchedulerMiddleware` 등록(500)
 - `TELNETCONSOLE_ENABLED = False` — 배포용 exe가 콘솔 접속 기능을 쓰지 않는데도
   기본 활성화 상태라 Windows 방화벽 알림을 유발해 비활성화
 
-#### `middlewares.py`
+#### `scraper/middlewares.py`
 Scrapy 다운로더/스파이더 미들웨어 모음.
 
 | 클래스 | 역할 |
@@ -364,7 +364,7 @@ Scrapy 다운로더/스파이더 미들웨어 모음.
 URL 목록을 생성하는 단일 함수 `get_grains(collect_info)`.
 내부적으로 `utility.generate_combined_urls()`를 호출합니다.
 
-#### `items.py`
+#### `scraper/items.py`
 Scrapy Item 및 ItemLoader 정의. 수집 결과를 구조화된 형태로 파이프라인에 전달합니다.
 
 #### `db_conn.py`

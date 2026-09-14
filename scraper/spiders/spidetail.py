@@ -2,7 +2,7 @@ import json
 import glean
 import engine
 import utility
-from spiders.base import BaseExtractorSpider
+from .base import BaseExtractorSpider
 
 class DetailExtractorSpider(BaseExtractorSpider):
 
