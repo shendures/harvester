@@ -58,7 +58,7 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         self._allow_ip_cnts.setValue(10)
         row1.addWidget(self._allow_ip_cnts)
         row1.addSpacing(16)
-        row1.addWidget(parts.make_label("MAX RETRY", TEXT_SECONDARY, 12))
+        row1.addWidget(parts.make_label("최대 재시도 횟수", TEXT_SECONDARY, 12))
         self._retry_spin = QSpinBox()
         self._retry_spin.setRange(1, 20)
         self._retry_spin.setValue(3)
