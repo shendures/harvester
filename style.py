@@ -1196,8 +1196,11 @@ class EqualSpacingTable(QTableWidget):
 
     @staticmethod
     def _parse_sort_float(value: str):
+        """"0.45s"/"123s" 처럼 숫자 뒤에 단위 접미사가 붙은 셀도 숫자로 인식하도록
+        끝의 비숫자 문자를 떼어낸 뒤 파싱한다(Avg Response/Duration 컬럼 등)."""
         try:
-            return float(value.replace(",", ""))
+            stripped = re.sub(r"[^0-9.\-]+$", "", value.replace(",", ""))
+            return float(stripped)
         except ValueError:
             return None
 

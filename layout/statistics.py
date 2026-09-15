@@ -17,9 +17,10 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
     def __init__(self):
         super().__init__()
         self._build()
-        # auto-refresh every 3 s
+        # auto-refresh every 3 s — 세션 이력 테이블은 세션 종료 시에만 바뀌므로
+        # 제외하고 KPI/차트만 갱신한다(trigger/statistics.py의 reload() 참고)
         self._timer = QTimer()
-        self._timer.timeout.connect(self.reload)
+        self._timer.timeout.connect(self._refresh_summary)
         self._timer.start(3000)
 
     def _build(self):
