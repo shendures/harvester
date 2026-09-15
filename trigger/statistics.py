@@ -81,7 +81,7 @@ class StatisticsPageTriggers:
         err_vals = [hour_err.get(h, 0) for h in hours]
         self.trend_chart.set_data(
             [f"{h:02d}h" for h in hours],
-            [("성공", ok_vals, GREEN), ("오류", err_vals, RED)]
+            [("성공", ok_vals, GREEN), ("실패", err_vals, RED)]
         )
 
     def _refresh_session_table(self):

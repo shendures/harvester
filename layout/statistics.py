@@ -109,7 +109,7 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         card_w, card_l = parts.card_widget("시간대별 수집량 추이 (00~24시 누적)")
         popup_chart = GroupedBarChart()
         labels, ok_vals, err_vals = self._aggregate_hourly_all_time()
-        popup_chart.set_data(labels, [("성공", ok_vals, GREEN), ("오류", err_vals, RED)])
+        popup_chart.set_data(labels, [("성공", ok_vals, GREEN), ("실패", err_vals, RED)])
         card_l.addWidget(popup_chart)
         lay.addWidget(card_w)
 
