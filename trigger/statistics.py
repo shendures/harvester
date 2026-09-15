@@ -17,6 +17,14 @@ class StatisticsPageTriggers:
 
     # ── data ───────────────────────────────────
     def reload(self):
+        """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
+        3초 주기 타이머는 세션 이력 테이블이 빠진 _refresh_summary()만 호출한다
+        (layout/statistics.py 참고) — 세션 이력은 세션 종료 시점에만 바뀌므로
+        매 틱 재구성이 불필요하고, 재구성마다 사용자가 적용한 정렬도 풀렸었다."""
+        self._refresh_summary()
+        self._refresh_session_table()
+
+    def _refresh_summary(self):
         toolbar = getattr(self.window(), "global_toolbar", None)
         running = bool(getattr(toolbar, "_running", False)) if toolbar else False
         self.reset_btn.setEnabled(not running)
@@ -79,6 +87,9 @@ class StatisticsPageTriggers:
             [f"{h:02d}h" for h in hours],
             [("성공", ok_vals, GREEN), ("오류", err_vals, RED)]
         )
+
+    def _refresh_session_table(self):
+        sessions = store.get_sessions()
 
         # Session table ( 통계 분석 - 세션 이력 )
         self.session_table.setRowCount(0)
