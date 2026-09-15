@@ -76,6 +76,17 @@ def update_empty_value(value):
     return value
 
 
+def resolve_csv_encoding(label: str) -> str:
+    """"인코딩" 콤보박스 표시값을 open()이 받는 코덱명으로 변환합니다.
+    인식할 수 없는 값(빈 문자열, 구버전 데이터 등)은 기존 하드코딩 동작과
+    동일하게 'utf-8-sig'로 안전하게 대체합니다."""
+    return {
+        "UTF-8": "utf-8",
+        "UTF-8 BOM": "utf-8-sig",
+        "CP949 (EUC-KR)": "cp949",
+    }.get(label, "utf-8-sig")
+
+
 def to_forward_slash(value):
     return value.replace("\\", "/")
 
