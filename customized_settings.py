@@ -49,7 +49,7 @@ def get_output_settings():
                             'file_path': QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation),
                             'file_name': 'untitled0',
                             'file_format': 'CSV',
-                            'file_encoding': 'UTF-8 BOM',
+                            'file_encoding': 'UTF-8',
                             'file_delimiter': ',',
                             'is_open_save_path': True
                         },

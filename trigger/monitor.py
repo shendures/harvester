@@ -1039,18 +1039,19 @@ class MonitorPageTriggers:
 
                 if file_format == "CSV":
                     delimiter = extract_cfg["file"]["file_delimiter"]
+                    encoding = utility.resolve_csv_encoding(extract_cfg["file"].get("file_encoding"))
                     if save_type is None:
                         final_file_name = _next_available_name(
                             file_name, "{base} ({count})",
                             lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
                         )
                         with open(os.path.join(file_path, f"{final_file_name}.csv"),
-                                  mode='w', encoding='utf-8-sig', newline='') as f:
+                                  mode='w', encoding=encoding, newline='') as f:
                             writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
                             writer.writeheader()
                             writer.writerows(data)
                     else:
-                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm)
+                        self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm, encoding)
 
                 elif file_format == "JSON":
                     if save_type is None:
@@ -1125,7 +1126,7 @@ class MonitorPageTriggers:
             else:
                 QMessageBox.critical(self, "추출 오류", str(e))
 
-    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type, lm=None):
+    def _write_csv_unattended(self, file_path, file_name, delimiter, headers, data, save_type, lm=None, encoding='utf-8-sig'):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 CSV를 모달 없이 저장합니다."""
         full_path = os.path.join(file_path, f"{file_name}.csv")
         if save_type == "new":
@@ -1142,7 +1143,7 @@ class MonitorPageTriggers:
         else:  # "append"
             write_header = not os.path.exists(full_path)
             mode = 'a'
-        with open(full_path, mode=mode, encoding='utf-8-sig', newline='') as f:
+        with open(full_path, mode=mode, encoding=encoding, newline='') as f:
             writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
             if write_header:
                 writer.writeheader()

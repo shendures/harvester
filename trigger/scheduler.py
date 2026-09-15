@@ -806,7 +806,7 @@ class SchedulerPageTriggers:
                 else output_info["extract"]["file"]["file_format"]
             ),
             "file_encoding": (
-                ef.get("file_encoding") or "UTF-8 BOM" if sched_task == "수정"
+                ef.get("file_encoding") or "UTF-8" if sched_task == "수정"
                 else output_info["extract"]["file"]["file_encoding"]
             ),
             "file_delimiter": (
