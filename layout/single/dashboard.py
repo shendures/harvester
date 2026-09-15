@@ -25,9 +25,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
     # 이 표시기는 카드 안에서만 쓰이는 전용 위젯이라 다른 화면과 공유하는
     # 여백 규칙이 없다 — 카드 폭 안에서 4단계가 보기 좋게 퍼지도록 튜닝된
     # 값이므로, 매직 넘버로 흩어놓지 않고 이름 붙여 한 곳에서 관리한다.
-    _STEP_CIRCLE_SIZE = 34                 # 원형 단계 번호 라벨 지름
+    _STEP_CIRCLE_SIZE = 34
     _STEP_ROW_H_MARGIN = 60                # 좌우 여백 — 카드 폭 대비 4단계를 중앙에 모아 배치
-    _STEP_ROW_V_MARGIN = 20                # 상하 여백
+    _STEP_ROW_V_MARGIN = 20
     _STEP_LINE_V_OFFSET = 25               # 연결선을 원 중심 높이로 끌어올리는 하단 여백
     # (원 34px + 아래 텍스트 라벨 높이만큼 행이 원보다 커서, 연결선을 상단
     # 정렬 그대로 두면 원의 위쪽에 붙어버린다. 원의 시각적 중심에 맞춘 값.)
@@ -47,11 +47,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         bl = build_scroll_body(self, spacing=12)
         self._configure_body_margins(bl)
 
-        # Config row
         cfg = QHBoxLayout()
         cfg.setSpacing(10)
 
-        # STEP TRACKER
         stw, stl = parts.card_widget("작업 진행 상태")
         step_container = QWidget()
         step_layout = QHBoxLayout(step_container)
@@ -63,30 +61,25 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         steps = ["수집 대기", "수집 세팅", "데이터 수집", "결과물 추출"]
 
         for i, text in enumerate(steps):
-            # 1. 단계 숫자 원형 레이블
             circle = QLabel(str(i + 1))
             circle.setFixedSize(self._STEP_CIRCLE_SIZE, self._STEP_CIRCLE_SIZE)
             circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # 초기 스타일 (대기 상태)
             circle.setStyleSheet(f"""
                         background: {BG_SECONDARY}; border: 2px solid {BORDER}; 
                         border-radius: 14px; color: {TEXT_MUTED}; font-weight: bold;
                     """)
             self.step_circles.append(circle)
 
-            # 2. 단계 텍스트 레이블
             lbl = QLabel(text)
             lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; font-weight: bold;")
             self.step_labels.append(lbl)
 
-            # 레이아웃에 추가
             step_unit = QVBoxLayout()
             step_unit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             step_unit.addWidget(circle, 0, Qt.AlignmentFlag.AlignCenter)
             step_unit.addWidget(lbl, 0, Qt.AlignmentFlag.AlignCenter)
             step_layout.addLayout(step_unit)
 
-            # 단계 사이 연결 선 (마지막 단계 제외)
             if i < len(steps) - 1:
                 line = QFrame()
                 line.setFrameShape(QFrame.Shape.HLine)
@@ -99,7 +92,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
 
         self._update_step_ui(0)  # 초기 실행 시 "수집 대기" 상태로 불이 들어오게 설정
 
-        # card 1 — "수집 & 저장 설정"(Delay/Threads/Timeout/Retry/Auto Save)
         self._build_collect_settings_card(cfg)
 
         # "작업 진행 상태"(+단일의 "수집 & 저장 설정") 행을 별도 위젯으로 감싸 둔다 —
@@ -109,7 +101,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.step_card_widget.setLayout(cfg)
         self._place_step_card(bl)
 
-        # ── 프로그레스 바 (작업 진행 상태 ~ 세션 통계 사이) ──────────
         pb_card = QWidget()
         pb_card.setFixedHeight(41)
         pb_card.setStyleSheet(
@@ -155,9 +146,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         )
         bl.addWidget(stw)
 
-        # ── 수집 모니터링 테이블 (MonitorPageSingle에서 이동) ──────────
+        # 수집 모니터링 테이블 (MonitorPageSingle에서 이동)
         mon_tcw, mon_tc = parts.card_widget("수집 모니터링")
-        mon_tcw.setMinimumHeight(300)  # 최소 높이를 300으로 제한
+        mon_tcw.setMinimumHeight(300)
         mon_tbl_ctrl = QHBoxLayout()
         mon_tbl_ctrl.addStretch()
         self.mon_row_count_lbl = parts.count_badge("0 rows", ACCENT_LIGHT)
@@ -242,14 +233,12 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         c1w.setFixedWidth(content.sizeHint().width() + margins.left() + margins.right())
         cfg.addWidget(c1w, 1)
 
-    # 단계 사이 (선)
     def _update_step_ui(self, step_idx):
         """
         현재 인덱스에 해당하는 단계만 주인공으로 만들고,
         나머지는 과거/미래 상관없이 모두 배경으로 보냅니다.
         """
         for i in range(len(self.step_circles)):
-            # 현재 활성화된 단계 (Accent Color)
             if i == step_idx:
                 circle_style = f"""
                     background: {ACCENT};
@@ -258,7 +247,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 """
                 label_style = f"color: {TEXT_PRIMARY}; font-weight: bold;"
 
-            # 그 외 모든 단계 (Muted Color)
             else:
                 circle_style = f"""
                     background: {BG_SECONDARY};
@@ -267,12 +255,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 """
                 label_style = f"color: {TEXT_MUTED}; font-weight: normal;"
 
-            # 스타일 적용
             self.step_circles[i].setStyleSheet(circle_style + "border-radius: 14px; font-weight: bold;")
             self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
 
     def _reset_dashboard(self):
-        # 세션 통계 초기화
         self.s_total.update_value(0)
         self.s_err.update_value(0)
         self.s_pages.update_value(0)
@@ -281,11 +267,9 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self._session_latency_sum = 0.0
         self._session_latency_count = 0
 
-        # 수집 모니터링 테이블 초기화
         self.monitor_table.setRowCount(0)
         self.mon_row_count_lbl.setText("0 rows")
 
-        # 프로그레스 바 초기화
         self.prog_bar.setValue(0)
         self.prog_pct.setText("0%")
         self.prog_lbl.setText("대기 중")

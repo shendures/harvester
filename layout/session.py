@@ -69,7 +69,6 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
         # ── 프록시 목록 카드 ──────────────────────────────
         self.pw, pl = parts.card_widget("프록시 목록")
-        # 테이블 헤더 행
         hdr_row = QHBoxLayout()
         hdr_row.setSpacing(8)
         hdr_row.addStretch()
@@ -90,7 +89,6 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         pl.addWidget(self._proxy_table)
         bl.addWidget(self.pw)
 
-        # 연결 부분
         self._global_cb.toggled.connect(self._activate_proxy_option)
         self._activate_proxy_option(self._global_cb.isChecked())
 
@@ -132,14 +130,13 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
 
         align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
 
-        # col 0 — NO (테이블 내 순번, 1-base). _delete_row에서 삭제 시 재넘버링됨.
+        # 테이블 내 순번(1-base). _delete_row에서 삭제 시 재넘버링됨.
         no_item = QTableWidgetItem(str(r + 1))
         no_item.setForeground(QColor(TEXT_SECONDARY))
         no_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
         no_item.setFlags(no_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 0, no_item)
 
-        # col 1 — 프로토콜
         color_map = {"HTTP": BLUE, "HTTPS": BLUE, "SOCKS5": PURPLE, "SOCKS4": AMBER}
         proto_item = QTableWidgetItem(data["protocol"])
         proto_item.setForeground(QColor(color_map.get(data["protocol"], TEXT_SECONDARY)))
@@ -147,21 +144,18 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         proto_item.setFlags(proto_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 1, proto_item)
 
-        # col 2 — 호스트
         host_item = QTableWidgetItem(data["host"])
         host_item.setForeground(QColor(TEXT_PRIMARY))
         host_item.setTextAlignment(align)
         host_item.setFlags(host_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 2, host_item)
 
-        # col 3 — 포트
         port_item = QTableWidgetItem(data["port"])
         port_item.setForeground(QColor(TEXT_SECONDARY))
         port_item.setTextAlignment(align)
         port_item.setFlags(port_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         t.setItem(r, 3, port_item)
 
-        # col 4 — 상태 (사용 여부 체크박스. ItemIsUserCheckable — setCellWidget 없이 렌더링)
         status_item = QTableWidgetItem()
         status_item.setFlags(
             Qt.ItemFlag.ItemIsEnabled |

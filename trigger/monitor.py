@@ -114,7 +114,6 @@ class MonitorPageTriggers:
             current_row = self.result_table.rowCount()
             self.result_table.insertRow(current_row)
 
-            # 행 배경색 — 중복: 빨강, 전체 컬럼 빈 값: 주황, 정상(1개 이상 값 존재): 기본
             if is_dup:
                 row_bg = QColor(RED).darker(180)
             elif is_empty_row:
@@ -174,7 +173,6 @@ class MonitorPageTriggers:
         ):
             _apply_table_search_filter(table, self.cmp_search_box, count_lbl)
 
-    # ── 탭 전환 감지 — 커스텀 정제 규칙 체크박스 상태 재동기화 ────────────
     def _on_monitor_tab_changed(self, index: int):
         """
         "② 정제 규칙 설정" 탭(index=1)에 들어올 때마다 needs_cleaning(블루프린트가
@@ -219,7 +217,6 @@ class MonitorPageTriggers:
             cb.setChecked(should_enable)
             cb.blockSignals(False)
 
-    # ── 커스텀 정제 규칙 체크박스 연동 ───────────────────────────────
     def _warn_custom_rule_missing(self, seq_no) -> None:
         """"커스텀 정제 규칙 적용"에 필요한 refine/{seq_no}.py 정제 스크립트가
         없는 상태에서 사용자가 체크박스를 직접 켜려고 시도할 때
@@ -245,7 +242,6 @@ class MonitorPageTriggers:
             lambda: self._warn_custom_rule_missing(seq_no),
         )
 
-    # ── 정제 실행 ─────────────────────────────────────────────────────
     def _run_refine(
         self,
         rules_override: dict[str, bool] | None = None,
@@ -281,7 +277,6 @@ class MonitorPageTriggers:
             drop_columns  = []
             fill_value    = fill_value_override if fill_value_override is not None else ""
         else:
-            # 체크박스 → _refine_rules 동기화
             for key, cb in self._rule_checkboxes.items():
                 self._refine_rules[key] = cb.isChecked()
 
@@ -297,7 +292,6 @@ class MonitorPageTriggers:
             drop_columns = self._drop_column_names
             fill_value   = self._fill_null_value
 
-        # ── 사용자 정의 정제 규칙(있으면) 로드 — 실행은 DataRefiner의 ② custom_rule step이 담당 ──
         # seq_no/needs_cleaning은 현재 수집(task)에 귀속된 값이라 수집마다 다름
         seq_no         = self._current_task.get("seq_no")
         needs_cleaning = self._current_task.get("needs_cleaning", False)
@@ -318,7 +312,6 @@ class MonitorPageTriggers:
                     f"범용 규칙만 적용합니다."
                 )
 
-        # DataRefiner 구성 및 실행
         refiner = DataRefiner(
             rules        = active_rules,
             drop_columns = drop_columns,
@@ -350,15 +343,12 @@ class MonitorPageTriggers:
                 )
 
         if not skip_ui_update:
-            # UI 갱신
             self._populate_refined_table(refined)
             self._update_refined_summary(stats)
             self._update_compare_tab(self._collected_data, refined, stats)
 
-            # 정제 결과 탭으로 자동 이동
             self.tab_widget.setCurrentIndex(2)
 
-        # 로그 기록
         if lm:
             lm.append_log(
                 "ok",
@@ -367,7 +357,6 @@ class MonitorPageTriggers:
                 f"{custom_rule_note})"
             )
 
-    # ── 정제 규칙 설정 영속화 ─────────────────────────────────────────
     def _persist_refine_settings(self):
         """"정제 규칙 설정" 탭의 체크박스/입력값을 블루프린트에 영속화한다 —
         출력 설정(_open_output_settings_dialog)과 동일하게 BlueprintStorage에
@@ -386,12 +375,10 @@ class MonitorPageTriggers:
         refine_settings["drop_column_names"] = self._drop_column_names
         BlueprintStorage().update_settings(seq_no, refine_settings=refine_settings)
 
-    # ── "제외 필드 지정"(⑤) 요약 라벨 갱신 ───────────────────────────
     def _update_drop_columns_summary(self):
         n = len(self._drop_column_names)
         self.drop_columns_summary_lbl.setText(f"{n}개 필드 제외 중" if n else "제외 필드 없음")
 
-    # ── Raw 수집 결과 존재 여부 확인 (없으면 경고) ───────────────────
     def _has_collected_data_or_warn(self) -> bool:
         """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
 
@@ -406,7 +393,6 @@ class MonitorPageTriggers:
         )
         return False
 
-    # ── "제외 필드 지정"(⑤) 필드 다중 선택 Dialog ───────────────────
     def _open_drop_columns_dialog(self):
         """제외할 필드를 선택하는 별도 Dialog — 필드 수십 개도 그리드+스크롤로 대응.
 
@@ -534,7 +520,6 @@ class MonitorPageTriggers:
             else columns
         )
 
-        # ── 좌: Raw 테이블 — 삭제 행 빨간 음영, 생존 행 기본색 ────────
         self.cmp_raw_table.setRowCount(0)
         self.cmp_raw_table.setColumnCount(len(columns) + 1)
         self.cmp_raw_table.setHorizontalHeaderLabels(["NO"] + columns)
@@ -558,7 +543,6 @@ class MonitorPageTriggers:
                 self.cmp_raw_table.setItem(row_idx, col_idx, item)
         self.cmp_raw_count.setText(f"{len(raw_data)} rows")
 
-        # ── 우: Refined 테이블 — 변경된 행만 초록 음영 ─────────────────
         self.cmp_ref_table.setRowCount(0)
         self.cmp_ref_table.setColumnCount(len(ref_columns) + 1)
         self.cmp_ref_table.setHorizontalHeaderLabels(["NO"] + ref_columns)
@@ -595,7 +579,6 @@ class MonitorPageTriggers:
                 self.cmp_ref_table.setItem(row_idx, col_idx, item)
         self.cmp_ref_count.setText(f"{len(refined_data)} rows")
 
-        # ── 요약 카드 ────────────────────────────────────────────────────
         raw_total = len(raw_data)
         ref_total = len(refined_data)
         removed   = raw_total - ref_total
@@ -605,7 +588,6 @@ class MonitorPageTriggers:
         self.cmp_removed.update_value(removed)
         self.cmp_rate.update_value(rate)
 
-    # ── 비교 탭 좌우 테이블 스크롤·정렬 동기화 ──────────────────────────
     def _sync_cmp_vscroll(self, target, value):
         """비교 탭 좌우 테이블의 세로 스크롤 위치를 동기화합니다 (이미 같은 값이면
         손대지 않아 피드백 루프를 방지)."""
@@ -844,7 +826,6 @@ class MonitorPageTriggers:
         stack.setStyleSheet(_boxed_panel_qss("extractStack", selector="QStackedWidget", stack_children=True))
         stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
-        # ── PAGE 0: FILE 설정 ─────────────────────────────
         file_page, _file_widgets, _toggle_csv_fields = _build_output_file_page(
             self.output_info["extract"]["file"], dlg
         )
@@ -858,7 +839,6 @@ class MonitorPageTriggers:
         file_page.layout().addWidget(open_path_chk)
         stack.addWidget(file_page)  # index 0
 
-        # ── PAGE 1: DB 설정 ───────────────────────────────
         db_page = QWidget()
         dp = QVBoxLayout(db_page)
         dp.setContentsMargins(14, 14, 14, 14)

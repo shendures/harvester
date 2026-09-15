@@ -162,7 +162,6 @@ class BlueprintStorage(_LazyInitSingleton):
     """
 
     def __init__(self, app_name: str = utility.get_app_name(), filename: str = "request_info.json"):
-        # 최초 1회만 초기화
         if self._initialized:
             return
         self._initialized = True
@@ -170,7 +169,6 @@ class BlueprintStorage(_LazyInitSingleton):
         self.file_path = os.path.join(self.app_dir, filename)
         self.default_source = os.path.join(utility.resource_path(), filename)
 
-        # 파일 시스템 초기화
         self._initialize_storage()
 
         # 수집 정보 로드 — 항상 list[dict]로 정규화하고, 그중 하나를
@@ -413,7 +411,6 @@ class CustomModuleStorage(_LazyInitSingleton):
     _KINDS = ("render", "login", "refine")
 
     def __init__(self, app_name: str = utility.get_app_name()):
-        # 최초 1회만 초기화
         if self._initialized:
             return
         self._initialized = True

@@ -44,7 +44,6 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
 
     def _build(self):
 
-        # ──  왼쪽 컨텐츠 영역: SidebarSingle ──
         left_widget = QWidget()
         self.setCentralWidget(left_widget)
         layout = QHBoxLayout(left_widget)
@@ -55,13 +54,11 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
         self.sidebar.page_changed.connect(self._switch_page)
         layout.addWidget(self.sidebar)
 
-        # ── 오른쪽 컨텐츠 영역: GlobalToolbarSingle + QStackedWidget ──
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        # 공통 Toolbar (모든 페이지 공유)
         self.global_toolbar = GlobalToolbarSingle()
         self.global_toolbar.start_requested.connect(self._start_crawl)
         self.global_toolbar.stop_requested.connect(self._stop_crawl)
@@ -100,11 +97,9 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
 
         right_layout.addWidget(self.stack, 1)
 
-        # ── 메인 창 최하단 상태바 (최신 로그 한 줄 + 전체 로그 보기 버튼) ──
         status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
         right_layout.addWidget(status_bar)
 
-        # log_manager.last_log 시그널 → 상태바 업데이트 연결
         self.log_manager.last_log.connect(self._update_status_bar)
 
         layout.addWidget(right_widget, 1)

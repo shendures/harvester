@@ -151,7 +151,6 @@ class GroupedBarChart(QWidget):
         all_vals = [v for _, vals, _ in self.datasets for v in vals]
         max_v = max(all_vals, default=0) or 1
 
-        # 범례
         lx = pad_l
         for label, _, color in self.datasets:
             p.setPen(Qt.PenStyle.NoPen)
@@ -162,13 +161,11 @@ class GroupedBarChart(QWidget):
             p.drawText(int(lx) + 12, 2, 60, 12, Qt.AlignmentFlag.AlignVCenter, str(label))
             lx += 12 + 8 + len(label) * 7 + 6
 
-        # 격자선
         p.setPen(QPen(QColor(BORDER), 1, Qt.PenStyle.DotLine))
         for i in range(1, 5):
             y = pad_t + chart_h - int(chart_h * i / 4)
             p.drawLine(pad_l, y, W - pad_r, y)
 
-        # 막대 (시간대별 그룹)
         n = len(self.x_labels)
         n_series = len(self.datasets)
         group_w = chart_w / n

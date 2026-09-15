@@ -350,23 +350,22 @@
             opacity: 1; 
         }
         
-        /* 🔥 인증(로그인/API) 입력 필드 정렬 */
         #auth_login_fields, #auth_api_fields {
             display: flex;
-            flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
-            gap: 15px; /* 필드 간 간격 */
+            flex-wrap: wrap;
+            gap: 15px;
             align-items: center;
         }
         
         .login-field-group {
             display: flex;
             align-items: center;
-            flex: 1; /* 가용 공간을 균등하게 차지 */
-            min-width: 250px; /* 최소 너비 설정 (너무 작아지지 않게) */
+            flex: 1;
+            min-width: 250px;
         }
 
         .login-field-group label {
-            width: 30px; /* 레이블 너비 고정 */
+            width: 30px;
             flex-shrink: 0;
             font-weight: 500;
             text-align: right;
@@ -382,16 +381,14 @@
             flex-grow: 1;
         }
         
-        /* 🔥 페이지 유형 메인 그룹 정렬 */
         #page_type_main_group {
             display: flex;
             align-items: center;
-            justify-content: space-between; /* 양쪽 끝 정렬 */
-            flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
-            gap: 15px; /* 내부 요소 간 간격 */
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
         }
 
-        /* 🔥 [추가] Steps 입력 필드 화살표 항상 표시 */
         #step_input {
             -moz-appearance: textfield; /* Firefox (default visible) */
         }
@@ -689,8 +686,8 @@
         }
 
         /**
-         * [수정됨] 단일 선택만 가능하도록 로직 변경
-         * @param {Event} event 
+         * 클릭 시 항목을 단일 선택 상태로만 유지합니다.
+         * @param {Event} event
          */
         function handleItemClick(event) {
             const clickedItem = event.currentTarget;
@@ -806,7 +803,7 @@
             document.getElementById('auth_api_fields').style.display = (method === 'api_key') ? 'flex' : 'none';
         }
 
-        // 🔥 [수정] 페이지 유형 변경에 따른 UI 업데이트 및 Step 값 조정 (상세 페이지 선택 시 2부터 시작)
+        // 페이지 유형 변경에 따른 UI 업데이트 및 Step 값 조정 (상세 페이지 선택 시 2부터 시작)
         function handlePageTypeChange(event) {
             const pageType = event.target.value;
             const isDetail = pageType === 'DETAIL';
@@ -817,14 +814,13 @@
                 stepInput.value = 1; 
                 stepInput.readOnly = true; 
             } else { // DETAIL
-                stepInput.value = 2; // 💡 상세 페이지 선택 시 Step을 2로 설정
+                stepInput.value = 2;
                 stepInput.readOnly = false;
             }
             
             detailOptions.style.display = isDetail ? 'block' : 'none';
         }
 
-        // 🔥 [추가된 함수] Step 입력 값 유효성 검사 및 정수화
         function stepValidation(event) {
             let value = parseInt(event.target.value);
             if (isNaN(value) || value < 1) {
@@ -849,7 +845,7 @@
             
             document.getElementById('option_redirect').checked = true;
             
-            // ✨ 인증 옵션(로그인/API 인증) 초기화
+            // 인증 옵션(로그인/API 인증) 초기화
             document.getElementById('option_auth').checked = false;
             document.getElementById('auth_method_login').checked = true;
             document.getElementById('login_url').value = '';
@@ -861,17 +857,17 @@
             document.getElementById('api_auth_header_name').value = 'X-API-Key';
             toggleAuthMethodFields();
             toggleApiAuthHeaderNameField();
-            toggleAuthInput(); // 입력 영역 숨김
+            toggleAuthInput();
 
             document.getElementById('option_header').checked = false;
             toggleHeaderInput();
 
-            // 🔥 [추가] 페이지 유형 초기화
+            // 페이지 유형 초기화
             document.getElementById('page_single').checked = true;
             document.getElementById('step_input').value = 1;
             document.getElementById('step_input').readOnly = true;
             document.getElementById('detail_url_input').value = '';
-            document.getElementById('main_format_html').checked = true; // [수정] ID 변경
+            document.getElementById('main_format_html').checked = true;
             document.getElementById('detail_options').style.display = 'none';
             
             document.getElementById('format_html').checked = true;
@@ -882,7 +878,7 @@
             document.getElementById('output').textContent = '';
             document.getElementById('output').style.display = 'none';
             document.getElementById('output_controls').style.display = 'none';
-            document.getElementById('output').dataset.unmasked = ''; // 복사 데이터 초기화
+            document.getElementById('output').dataset.unmasked = '';
 
             previousSourceType = 'CRAWL';
             handleSourceChange({ target: { value: 'CRAWL' } });
@@ -938,7 +934,7 @@
                 input.placeholder = currentPlaceholder;
             });
             
-            // [추가] HTML/XML 포맷이 아니면 랜더링 옵션을 강제로 해제합니다.
+            // HTML/XML 포맷이 아니면 랜더링 옵션을 강제로 해제합니다.
             const renderingCheckbox = document.getElementById('option_rendering');
             if (!isHtml) {
                 renderingCheckbox.checked = false;
@@ -1024,7 +1020,7 @@
                 // Payload 체크 해제 시:
                 // 2. Header Option을 기본값(체크 해제)으로 되돌립니다.
                 headerOptionCheckbox.checked = false;
-                toggleHeaderInput(); // 헤더 입력 영역 숨김
+                toggleHeaderInput();
             }
         }
 
@@ -1066,26 +1062,26 @@
 
             // 2. Clear UI and set default
             clearAllConditionAndHeaderItems();
-            document.getElementById('method_get').checked = true; // 기본값 GET
-            document.getElementById('option_payload').checked = false; // Payload 해제
-            document.getElementById('option_header').checked = false; // Header 해제
-            document.getElementById('page_single').checked = true; // 페이지 유형 단일
+            document.getElementById('method_get').checked = true;
+            document.getElementById('option_payload').checked = false;
+            document.getElementById('option_header').checked = false;
+            document.getElementById('page_single').checked = true;
             document.getElementById('step_input').value = 1;
             document.getElementById('step_input').readOnly = true;
             document.getElementById('detail_url_input').value = '';
-            document.getElementById('main_format_html').checked = true; // [수정] ID 변경
+            document.getElementById('main_format_html').checked = true;
             document.getElementById('detail_options').style.display = 'none';
 
             if (isCrawl) {
-                document.getElementById('format_html').checked = true; // 기본값 HTML
+                document.getElementById('format_html').checked = true;
                 lastNonPayloadFormat = 'html';
             } else { // API
                 document.getElementById('format_json').checked = true; // API는 JSON으로 강제
                 lastNonPayloadFormat = 'json';
             }
             
-            toggleHeaderInput(); // Header input area hidden
-            document.getElementById('payload_option_group').style.display = 'none'; // Payload 체크박스 영역 숨김
+            toggleHeaderInput();
+            document.getElementById('payload_option_group').style.display = 'none';
             
             // 3. Apply Source-Specific UI Adjustments
             const postGroup = document.getElementById('method_post_group');
@@ -1173,16 +1169,15 @@
                     ? patternData.authMethod
                     : (loadedLogin && typeof loadedLogin === 'object' ? 'login' : null);
 
-                // 🔥 [수정] pageType 및 step/detailUrl 키를 로딩할 때 새로운 키 이름 ('steps', 'mainUrl')도 지원하도록 수정
+                // pageType 및 step/detailUrl 키를 로딩할 때 새로운 키 이름('steps', 'mainUrl')도 함께 지원합니다.
                 let loadedPageType = (patternData.pageType || 'SINGLE').toUpperCase(); // 'single' -> 'SINGLE', 'detail' -> 'DETAIL'
                 if (loadedPageType !== 'SINGLE' && loadedPageType !== 'DETAIL') {
                     loadedPageType = 'SINGLE'; // Fallback
                 }
                 
-                // 🔥 [수정] 'format' 또는 'dataFormat' 키 로드
                 let loadedFormat = patternData.dataFormat || patternData.format || 'html';
-                
-                // [수정] mainFormat 로드 (mainFormat > prevFormat 순으로 로드)
+
+                // mainFormat 로드 (mainFormat > prevFormat 순으로 로드)
                 const loadedMainFormat = (patternData.mainFormat || patternData.prevFormat || 'html').toLowerCase();
 
                 config = {
@@ -1191,11 +1186,10 @@
                     redirect: patternData.redirect !== undefined ? patternData.redirect : true,
                     login: loadedLogin,
                     authMethod: loadedAuthMethod,
-                    // 🔥 [수정] 페이지 유형 로드
-                    pageType: loadedPageType, 
+                    pageType: loadedPageType,
                     step: parseInt(patternData.steps || patternData.step) || 1, // 'steps' 또는 'step' 로드
                     detailUrl: patternData.mainUrl || patternData.detailUrl || null, // 'mainUrl' 또는 'detailUrl' 로드
-                    mainFormat: loadedMainFormat, // [수정] key name to mainFormat
+                    mainFormat: loadedMainFormat,
                     header: patternData.headers && (Array.isArray(patternData.headers) || typeof patternData.headers === 'object'),
                     dataFormat: loadedFormat.toLowerCase(),
                     rendering: patternData.rendering !== undefined ? patternData.rendering : false,
@@ -1281,7 +1275,7 @@
             const payloadCheckbox = document.getElementById('option_payload');
             payloadCheckbox.checked = config.payload;
 
-            let formatValue = config.dataFormat.toLowerCase(); // 🔥 [수정] 'config.dataFormat' 사용
+            let formatValue = config.dataFormat.toLowerCase();
             if (formatValue === 'payload') {
                 formatValue = 'json';
             }
@@ -1306,7 +1300,6 @@
             handleRequestMethodChange({ target: { value: config.method } });
             document.getElementById('option_redirect').checked = config.redirect;
 
-            // 🔥 [추가] 페이지 유형 업데이트
             const pageTypeRadio = document.getElementById(`page_${config.pageType.toLowerCase()}`);
             if (pageTypeRadio) {
                 pageTypeRadio.checked = true;
@@ -1388,7 +1381,7 @@
             document.getElementById('output').textContent = '';
             document.getElementById('output').style.display = 'none';
             document.getElementById('output_controls').style.display = 'none';
-            document.getElementById('output').dataset.unmasked = ''; // 복사 데이터 초기화
+            document.getElementById('output').dataset.unmasked = '';
             
             showToast('✅ JSON 패턴 로드가 완료되었습니다. "조건 생성"을 클릭하여 결과를 확인하세요.');
 
@@ -1456,12 +1449,10 @@
 
             const accessTypeOutput = selectedSourceValue.toLowerCase(); // 'CRAWL' -> 'crawl' : 'API' -> 'api'
 
-            // 🔥 [수정] 페이지 유형 관련 설정 값 수집
             const pageTypeRaw = document.querySelector('input[name="page_type"]:checked').value;
             const pageTypeValue = pageTypeRaw.toLowerCase(); // 'SINGLE'/'DETAIL' -> 'single'/'detail'
             const isDetail = pageTypeRaw === 'DETAIL';
             const stepValue = parseInt(document.getElementById('step_input').value.trim());
-            // [수정] main_format 라디오 버튼에서 값 가져오기
             const mainFormat = isDetail ? document.querySelector('input[name="main_format"]:checked').value : null;
             const detailUrl = isDetail ? document.getElementById('detail_url_input').value.trim() : null;
 
@@ -1472,7 +1463,7 @@
                 return;
             }
             
-            // ✨ 인증 옵션(로그인/API 인증) 처리 로직 — 두 방식은 상호 배타적으로 선택됨
+            // 인증 옵션(로그인/API 인증) 처리 로직 — 두 방식은 상호 배타적으로 선택됨
             const authChecked = document.getElementById('option_auth').checked;
             const authMethod = authChecked
                 ? document.querySelector('input[name="auth_method"]:checked').value // 'login' | 'api_key'
@@ -1522,7 +1513,7 @@
                 method: method,
                 redirect: redirect, // 체크/미체크 여부와 무관하게 항상 출력
                 payload: payload,
-                dataFormat: format, // 🔥 [수정] 'format' -> 'dataFormat'으로 변경
+                dataFormat: format,
                 pageType: pageTypeValue, // 'SINGLE'/'DETAIL' -> 'single'/'detail'
                 steps: stepValue,
                 authMethod: authMethod, // 'login' | 'api_key' | null — 인증 방식 식별용
@@ -1609,7 +1600,7 @@
             }
 
             // 모든 필드가 null인 경우 키를 제거 (optional 필드의 경우)
-            // 🔥 [수정] 'login'은 제외: 로그인 미사용 시에도 "login": null을 명시적으로 출력합니다.
+            // 'login'은 제외: 로그인 미사용 시에도 "login": null을 명시적으로 출력합니다.
             // spirenderer.py의 conditions["login"]이 .get() 없이 직접 키 접근을 하므로,
             // 키 자체가 없으면 KeyError가 발생합니다 (guidelines/ISSUES.md 이슈 ㉑).
             for (const key of ['mainUrl', 'mainFormat', 'headers', 'params', 'items']) {
@@ -1631,7 +1622,6 @@
             outputBox.textContent = finalPatternString;
             outputControls.querySelector('p').textContent = '생성된 조건 (최상위 레벨 객체)';
             
-            // 🔥 조건 생성 성공 알림 추가
             showToast('✅ 조건 생성이 완료되었습니다.');
         }
 
@@ -1654,7 +1644,7 @@
         }
 
         /**
-         * [수정됨] data-unmasked 속성에서 원본 패스워드를 포함한 JSON을 복사합니다.
+         * data-unmasked 속성에서 원본 패스워드를 포함한 JSON을 복사합니다.
          */
         async function copyPattern() {
             const outputBox = document.getElementById('output');
@@ -1668,7 +1658,7 @@
             // 원본 JSON 문자열을 파싱 후, 다시 minified JSON으로 변환하여 복사
             try {
                 const unmaskedObject = JSON.parse(textToCopy);
-                textToCopy = JSON.stringify(unmaskedObject); // Minified JSON으로 복사
+                textToCopy = JSON.stringify(unmaskedObject);
             } catch (e) {
                 showToast('🚨 복사할 JSON 데이터를 처리하는 중 오류가 발생했습니다.');
                 return;
@@ -1698,13 +1688,10 @@
             });
             document.getElementById('api_auth_type').addEventListener('change', toggleApiAuthHeaderNameField);
 
-            // 🔥 [수정] 페이지 유형 변경 이벤트 리스너 추가
             document.querySelectorAll('input[name="page_type"]').forEach(radio => {
                 radio.addEventListener('change', handlePageTypeChange);
             });
-            // 상세 페이지 포맷 변경 시 조건 자동 추가 로직 삭제됨
-            
-            // 🔥 [추가] Step 입력 필드 및 URL 입력 필드 리스너 추가
+
             document.getElementById('step_input').addEventListener('blur', stepValidation);
             document.getElementById('detail_url_input').addEventListener('blur', trimOnBlur);
             
@@ -1739,7 +1726,6 @@
             toggleAuthMethodFields();
             toggleApiAuthHeaderNameField();
 
-            // 🔥 [수정] 초기 페이지 유형 상태 적용: handlePageTypeChange 호출
             handlePageTypeChange({ target: { value: document.querySelector('input[name="page_type"]:checked').value } }); 
 
             handleRequestMethodChange({ target: { value: 'GET' } });

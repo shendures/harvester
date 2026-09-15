@@ -61,15 +61,15 @@ import conf
 @dataclass
 class RefineStats:
     """정제 과정에서 발생한 수치를 담는 불변 결과 객체."""
-    raw_count:      int  = 0   # 원본 행 수
-    refined_count:  int  = 0   # 정제 후 행 수
-    removed:        int  = 0   # 제거된 행 수 (중복 + null 행 합산)
-    filled:         int  = 0   # null → 지정값 치환된 값 수
-    deleted_indices: list = field(default_factory=list)  # 제거된 행의 원본 인덱스 목록
+    raw_count:      int  = 0
+    refined_count:  int  = 0
+    removed:        int  = 0   # 중복 + null 행 합산
+    filled:         int  = 0
+    deleted_indices: list = field(default_factory=list)
     deleted_reasons: dict = field(default_factory=dict)  # {원본인덱스: "중복" | "전체 필드 NULL"}
     modified_rows:  dict = field(default_factory=dict)  # {정제행위치: {컬럼: (변경전, 변경후)}}
     orig_indices:   list = field(default_factory=list)  # 정제 후 각 행(위치)의 원본 raw_data 인덱스
-    custom_rule_applied: bool     = False  # ② custom_rule 정상 적용 여부
+    custom_rule_applied: bool     = False
     custom_rule_error:   str | None = None  # ② custom_rule 실행 중 예외 메시지 (있으면 원본 데이터로 폴백)
 
     @property
@@ -82,16 +82,15 @@ class RefineStats:
 
 # ── 기본 정제 규칙 ────────────────────────────────────────────────────
 DEFAULT_RULES: dict[str, bool] = {
-    "remove_null_row":  True,   # 모든 필드 null 행 제거
-    "custom_rule":       True,  # ② 커스텀 규칙(seq_no, 있으면) 적용
-    "trim_whitespace":  True,   # 문자열 앞뒤 공백 trim
-    "remove_duplicate": True,   # 중복 행 제거
-    "drop_columns":     False,  # 선택 필드 제외 (기본 비활성)
-    "fill_null":        False,  # null → 지정값 치환 (기본 비활성)
-    "cast_numeric":     False,  # 숫자 타입 변환  (기본 비활성)
+    "remove_null_row":  True,
+    "custom_rule":       True,
+    "trim_whitespace":  True,
+    "remove_duplicate": True,
+    "drop_columns":     False,
+    "fill_null":        False,
+    "cast_numeric":     False,
 }
 
-# null 판정 기준값 집합
 _NULL_VALUES: frozenset = frozenset({None, "", "null", "None", "NULL", "N/A", "n/a"})
 
 # ── 정제 엔진 ────────────────────────────────────────────────────────
@@ -315,13 +314,11 @@ class DataRefiner:
                 if not isinstance(v, str):
                     continue
                 stripped = v.strip()
-                # int 시도
                 try:
                     row[k] = int(stripped)
                     continue
                 except (ValueError, OverflowError):
                     pass
-                # float 시도
                 try:
                     row[k] = float(stripped)
                 except (ValueError, OverflowError):

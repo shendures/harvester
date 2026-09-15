@@ -111,24 +111,22 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             r = self.sched_table.rowCount()
             self.sched_table.insertRow(r)
 
-            # 인덱스
             idx_item = QTableWidgetItem()
             idx_item.setData(Qt.ItemDataRole.DisplayRole, idx)
             idx_item.setForeground(QColor(TEXT_MUTED))
             self.sched_table.setItem(r, 0, idx_item)
 
-            # Task Name
             name_item = QTableWidgetItem(s["task_nm"])
             name_item.setForeground(QColor(TEXT_PRIMARY))
             self.sched_table.setItem(r, 1, name_item)
 
-            # 대상 (스케줄이 지정한 블루프린트의 title)
+            # Target 컬럼은 스케줄이 지정한 블루프린트의 title을 표시
             target_bp = BlueprintStorage().get(s.get("seq_no"))
             target_item = QTableWidgetItem(target_bp.get("title") if target_bp else "—")
             target_item.setForeground(QColor(TEXT_SECONDARY))
             self.sched_table.setItem(r, 2, target_item)
 
-            # URL / Execution Time (설정 주기 문자열)
+            # Execution Time 컬럼은 설정 주기 문자열(exec_str)을 표시
             vals = [s.get("callback_url", ""), s["schedule"]["exec_str"]]
             colors = [ACCENT_LIGHT, TEXT_PRIMARY]
             for col, (val, color) in enumerate(zip(vals, colors), start=3):
@@ -136,7 +134,7 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
                 item.setForeground(QColor(color))
                 self.sched_table.setItem(r, col, item)
 
-            # Next Runtime — Remaining Time only
+            # Next Runtime 컬럼은 절대 시각이 아닌 Remaining Time만 표시
             run_at = s["schedule"]["run_at"]
             if run_at:
                 remaining_txt = self._format_remaining(run_at)
@@ -146,13 +144,11 @@ class SchedulerPage(QWidget, SchedulerPageTriggers):
             nr_item.setForeground(QColor(PURPLE))
             self.sched_table.setItem(r, 5, nr_item)
 
-            # Status
             status = s["schedule"]["status"]
             si = QTableWidgetItem(status)
             si.setForeground(QColor(STATUS_COLOR.get(status, TEXT_MUTED)))
             self.sched_table.setItem(r, 6, si)
 
-            # Action (수정 / 삭제)
             action_w = QWidget()
             action_w.setStyleSheet("background:transparent;")
             al = QHBoxLayout(action_w)

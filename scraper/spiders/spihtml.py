@@ -15,11 +15,9 @@ class HtmlExtractorSpider(BaseExtractorSpider):
             root = self.request_info["conditions"]["items"]["root"]
             _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
 
-            # 데이터 생성
             selectors = response.xpath(root)
             result = engine.get_result(self.request_info, selectors, _items)
 
-            # 데이터 처리
             loader = engine.set_item_loader(response, self.request_info, result)
 
             yield loader.load_item()

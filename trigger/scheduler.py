@@ -430,9 +430,6 @@ class SchedulerPageTriggers:
         except Exception as e:
             print(f"[SchedulerPage] 스케줄 파일 로드 실패: {e}")
 
-    # ── 스케줄 작업 등록·수정 통합 저장 ──────────────────
-
-    # ── 스케줄 작업 Dialog (등록 / 수정 통합) ──────────────
     def _manage_schedule_task(self, sched_task=None, idx=None):
         """
         스케줄 등록·수정 다이얼로그를 띄운다.
@@ -442,7 +439,6 @@ class SchedulerPageTriggers:
         sched_task : str  '등록' | '수정'
         idx        : int  수정 대상 스케줄 인덱스 (수정 모드에서만 필요)
         """
-        # ── 수정 모드 선가드 ──────────────────────────────
         s = None
         if sched_task == "수정":
             if idx is None:
@@ -464,7 +460,6 @@ class SchedulerPageTriggers:
         else:
             output_info = customized_settings.get_output_settings()
 
-        # ── 정제 규칙 설정(스케줄 전용) 초기값 ─────────────
         # "refine_rules" 키가 없으면(구버전 스케줄 또는 신규 등록) 기본값으로 폴백.
         # "제외 필드 지정"(drop_columns)은 애초에 키 자체를 두지 않는다(오른쪽 정제
         # 규칙 패널 참고 — Raw 수집 결과를 봐야 설정 가능한 규칙이라 무인 실행
@@ -476,7 +471,6 @@ class SchedulerPageTriggers:
             _saved_refine_rules = SCHEDULED_REFINE_RULES_DIALOG_DEFAULT
             _saved_fill_value   = ""
 
-        # ── 다이얼로그 기본 설정 ──────────────────────────
         dlg = QDialog(self)
         dlg.setWindowTitle("새 스케줄 등록" if sched_task == "등록" else "스케줄 수정")
         dlg.setMinimumWidth(560)
@@ -496,7 +490,6 @@ class SchedulerPageTriggers:
         root.setContentsMargins(22, 18, 22, 18)
         root.setSpacing(0)
 
-        # ── 공통 헬퍼 ─────────────────────────────────────
         def sec_label(text):
             lbl = parts.make_label(text.upper(), TEXT_MUTED, 9)
             lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1.5px;")
@@ -552,7 +545,6 @@ class SchedulerPageTriggers:
             except Exception:
                 return 0, 0, 0
 
-        # ── 타이틀 ────────────────────────────────────────
         root.addWidget(parts.make_label(
             "새 스케줄 등록" if sched_task == "등록" else "스케줄 수정",
             TEXT_PRIMARY, 14, True
@@ -561,11 +553,9 @@ class SchedulerPageTriggers:
         root.addWidget(Divider())
         root.addSpacing(14)
 
-        # ── 기본 정보 ─────────────────────────────────────
         root.addWidget(sec_label("기본 정보"))
         root.addSpacing(8)
 
-        # 대상 블루프린트 선택 — 이 스케줄이 어느 수집 항목을 실행할지 지정
         sched_blueprint_combo = QComboBox()
         for bp in BlueprintStorage().list_blueprints():
             sched_blueprint_combo.addItem(bp.get("title") or bp.get("seq_no"), bp.get("seq_no"))
@@ -577,7 +567,6 @@ class SchedulerPageTriggers:
             callback_url = QLineEdit(BlueprintStorage().read()["callback_url"])
             default_idx = sched_blueprint_combo.findData(BlueprintStorage().active_seq_no)
             sched_blueprint_combo.setCurrentIndex(max(default_idx, 0))
-            # 대상 선택이 바뀌면 그 블루프린트의 URL로 Target URL을 갱신
             def _on_sched_blueprint_changed(_):
                 callback_url.setText(
                     (BlueprintStorage().get(sched_blueprint_combo.currentData()) or {}).get("callback_url", "")
@@ -603,7 +592,6 @@ class SchedulerPageTriggers:
         root.addWidget(Divider())
         root.addSpacing(12)
 
-        # ── 수집 설정 ─────────────────────────────────────
         root.addWidget(sec_label("수집 설정"))
         root.addSpacing(8)
 
@@ -661,7 +649,6 @@ class SchedulerPageTriggers:
         root.addWidget(Divider())
         root.addSpacing(12)
 
-        # ── Save Setting ──────────────────────────────────
         root.addWidget(sec_label("Save Setting"))
         root.addSpacing(8)
 
@@ -693,7 +680,6 @@ class SchedulerPageTriggers:
         root.addLayout(out_row)
         root.addSpacing(8)
 
-        # ── 자동 저장 대상 (RAW / 정제) ────────────────────
         if sched_task == "등록":
             sched_auto_save_source = output_info["extract"].get("auto_save_source", "raw")
         else:
@@ -718,7 +704,6 @@ class SchedulerPageTriggers:
         root.addLayout(auto_src_row)
         root.addSpacing(8)
 
-        # ── 정제 규칙 설정 패널 (오른쪽, "정제" 선택 시에만 노출) ──────
         # "제외 필드 지정"은 Raw 수집 결과를 봐야 설정 가능한 규칙이라 무인 실행
         # 특성상 제공하지 않음(나머지 6개 규칙만 구성 가능).
         sched_refine_divider = Divider(orientation="v")
@@ -804,7 +789,6 @@ class SchedulerPageTriggers:
         sched_auto_raw_btn.clicked.connect(lambda: _sched_select_auto_src(False))
         sched_auto_ref_btn.clicked.connect(lambda: _sched_select_auto_src(True))
 
-        # ── 추출 설정 스택 (FILE / DB) ────────────────────
         sched_extract_stack = QStackedWidget()
         sched_extract_stack.setObjectName("schedExtractStack")
         sched_extract_stack.setStyleSheet(
@@ -812,7 +796,6 @@ class SchedulerPageTriggers:
         )
         sched_extract_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
-        # ── PAGE 0 : FILE 설정 ────────────────────────────
         sched_file_defaults = {
             "file_path": (ef.get("file_path") or customized_settings.set_desktop_dir()) if sched_task == "수정"
                          else (output_info["extract"]["file"]["file_path"] or customized_settings.set_desktop_dir()),
@@ -842,7 +825,6 @@ class SchedulerPageTriggers:
 
         sched_extract_stack.addWidget(sched_file_page)  # index 0
 
-        # ── PAGE 1 : DB 설정 ──────────────────────────────
         sched_db_page = QWidget()
         sdp = QVBoxLayout(sched_db_page)
         sdp.setContentsMargins(14, 14, 14, 14)
@@ -887,7 +869,6 @@ class SchedulerPageTriggers:
         root.addWidget(sched_extract_stack)
         root.addSpacing(10)
 
-        # ── 저장 방식 콤보 ────────────────────────────────
         sched_save_type = QComboBox()
         sched_save_type.addItems(["선택하세요", "새로 만들기", "덮어쓰기", "추가하기"])
         if sched_task == "수정":
@@ -908,7 +889,6 @@ class SchedulerPageTriggers:
 
         _update_sched_dialog_size()
 
-        # ── Interval ──────────────────────────────────────
         root.addWidget(sec_label("Interval"))
         root.addSpacing(8)
 
@@ -1032,7 +1012,6 @@ class SchedulerPageTriggers:
         datl.addWidget(self.dat_s, 0, Qt.AlignmentFlag.AlignVCenter)
         container_date.setVisible(False)
 
-        # ── 수정 모드: 기존 값을 위젯에 반영 ─────────────
         if sched_task == "수정":
             _iv_map = {"daily": 1, "weekly": 2, "monthly": 3, "date": 4}
             sched_interval.setCurrentIndex(_iv_map.get(existing_interval, 0))
@@ -1073,7 +1052,6 @@ class SchedulerPageTriggers:
         else:
             self.date_edit.setDate(QDate.currentDate())
 
-        # ── 주기 선택 행 ──────────────────────────────────
         iv_row = QHBoxLayout()
         iv_row.setSpacing(8)
         iv_row.setContentsMargins(0, 0, 0, 0)
@@ -1106,7 +1084,6 @@ class SchedulerPageTriggers:
         root.addWidget(Divider())
         root.addSpacing(12)
 
-        # ── sched_info_dict 구성 ──────────────────────────
         sched_info_dict = {
             "sched_task":   sched_task,         # _apply_schedule이 모드를 구분하는 키
             "idx":          idx,                 # 수정 시 int, 등록 시 None
@@ -1144,7 +1121,6 @@ class SchedulerPageTriggers:
             "db_data":      _sdb_data,
         }
 
-        # ── 하단 버튼 ─────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         apply_btn  = parts.action_btn("적용")

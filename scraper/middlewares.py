@@ -1,9 +1,3 @@
-# Define here the models for your spider middleware
-#
-# See documentation in:
-# https://docs.scrapy.org/en/latest/topics/spider-middleware.html
-
-
 import random
 import time
 import string
@@ -18,16 +12,13 @@ import uuid
 
 class LatencyTrackingMiddleware:
     def process_request(self, request, spider):
-        # 🌟 실제 다운로더로 넘어가기 직전에 시간을 기록합니다.
         request.meta['actual_start_time'] = time.time()
-        return None  # 다음 단계로 진행
+        return None
 
     def process_response(self, request, response, spider):
-        # 🌟 응답이 돌아온 직후 시간을 계산합니다.
         start_time = request.meta.get('actual_start_time')
         if start_time:
             latency = time.time() - start_time
-            # 스파이더 로그가 아닌 여기서 직접 찍거나, response.meta에 다시 담아줍니다.
             request.meta['total_latency'] = latency
         return response
 
@@ -89,8 +80,7 @@ class RateLimitedProxyMiddleware:
         if not self.proxies:
             print("⚠️ ip_list 설정이 누락되었습니다. 프록시가 적용되지 않습니다.")
 
-        # IP별 요청 시각을 저장하는 딕셔너리
-        # 구조: {'http://ip:port': [timestamp1, timestamp2, ...]}
+        # IP별 요청 시각 기록: {'http://ip:port': [timestamp1, timestamp2, ...]}
         self.proxy_usage = defaultdict(list)
         self.stats = crawler.stats
         self.rescheduler = _DelayedRescheduler(crawler)
@@ -129,7 +119,6 @@ class RateLimitedProxyMiddleware:
             usage_list[:] = [t for t in usage_list if t > current_time - self.TIME_WINDOW]
 
             if len(usage_list) < self.req_per_minute:
-                # 요청 시각을 기록하고 프록시를 할당합니다.
                 usage_list.append(current_time)
                 if not self.rotate:
                     self._next_index = idx + 1
@@ -137,7 +126,6 @@ class RateLimitedProxyMiddleware:
                 spider.logger.debug(f"🌐 Requesting {request.url} using {proxy}. Count: {len(usage_list)}")
                 return None
 
-        # --- 모든 프록시가 제한 초과 시 처리 ---
         retries = request.meta.get('rate_limit_retries', 0)
         if retries >= self.MAX_RATE_LIMIT_RETRIES:
             self.stats.inc_value('rate_limit/max_reached')
@@ -171,128 +159,87 @@ class DelaySchedulerMiddleware:
 
     def process_spider_output(self, response, result, spider):
         for request_or_item in result:
-            # 결과가 Request 객체이고, 재시도 지연 정보가 있다면
             if isinstance(request_or_item, scrapy.Request) and 'delay_until' in request_or_item.meta:
                 delay_until = request_or_item.meta.pop('delay_until')
                 wait_time = delay_until - time.time()
 
                 if wait_time > 0:
-                    # 아직 대기 시간이 남았다면 지연 후 재주입 (즉시 yield하지 않음)
+                    # 즉시 yield하지 않고 지연 후 재주입합니다.
                     spider.logger.debug(
                         f"Re-scheduling request {request_or_item.url} for later ({wait_time:.2f}s delay).")
                     self.rescheduler.schedule(request_or_item, wait_time)
                     continue
 
-                # 대기 시간이 지났다면 정상적으로 처리합니다.
             yield request_or_item
 
 
 class RandomUserAgentMiddleware:
-    # 사용할 User-Agent 목록을 정의합니다.
     USER_AGENT_LIST = [
-        # --- 1. 데스크톱 환경 (Desktop) ---
-
-        # [Chrome] Windows 10/11 (가장 흔함)
+        # 데스크톱 환경
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
 
-        # [Chrome] macOS
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
 
-        # [Firefox] Windows 10/11
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:118.0) Gecko/20100101 Firefox/118.0',
 
-        # [Firefox] macOS
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
 
-        # [Edge] Windows 10/11
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.2210.133',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.2151.72',
 
-        # [Safari] macOS
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
 
-        # [Linux] (데스크톱)
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
 
-        # --- 2. 모바일 환경 (Mobile) ---  ::: 모바일 UA를 입력 시, response_url에서 모바일 페이지받게 되어 요청 URL중복 검증 시 이슈가 발생함.
+        # 모바일 환경 — 모바일 UA 입력 시 response_url에서 모바일 페이지를 받게 되어 요청 URL중복 검증 시 이슈가 발생함(비활성화)
 
-        # # [iOS] iPhone (Safari)
-        # 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        # # [iOS] iPad (Safari)
-        # 'Mozilla/5.0 (iPad; CPU OS 16_7_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari/604.1',
-        # # [Android] Chrome (최신 안드로이드)
-        # 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
-        # # [Android] Chrome (구형 안드로이드)
-        # 'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36',
-
-        # --- 3. 기타/특수 User-Agent (선택 사항) ---
-
-        # Bing 봇 (가끔은 주요 검색 엔진 봇 행세를 하는 것이 차단 회피에 도움)
+        # 검색엔진 봇 UA — 주요 검색 엔진 봇 행세를 하는 것이 차단 회피에 도움이 되는 경우가 있어 포함
         'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
-        # Google 봇
         'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
     ]
 
     def process_request(self, request, spider):
-        """요청에 무작위 User-Agent 헤더를 설정합니다."""
-
-        # 'User-Agent' 헤더를 무작위로 선택된 문자열로 덮어씁니다.
         user_agent = random.choice(self.USER_AGENT_LIST)
         request.headers.setdefault('User-Agent', user_agent)
 
         spider.logger.debug(f"🎭 Using User-Agent: {user_agent}")
 
-        return None  # 요청을 다음 미들웨어로 전달
+        return None
 
 
 class RandomCookieMiddleware:
 
-    # 1. 2차 규칙 모방을 위한 값 생성 함수 정의
-
     def _generate_random_hex(self, length=32):
-        """지정된 길이의 랜덤 16진수 문자열을 생성합니다."""
         return ''.join(random.choices(string.hexdigits.lower(), k=length))
 
     def _generate_tracking_id(self):
-        """Google Analytics (_ga)와 유사한 형식의 랜덤 트래킹 ID를 모방합니다."""
         random_part = random.randint(100000000, 999999999)
         timestamp = int(time.time() * 1000)
         return f"GA1.2.{random_part}.{timestamp}"
 
     def _generate_uuid(self):
-        """⭐️ UUIDv4 형식을 생성합니다. (32자 16진수 + 하이픈)"""
-        # uuid4()는 무작위성을 기반으로 생성되므로 세션 ID로 적합합니다.
         return str(uuid.uuid4())
 
     def process_request(self, request, spider):
-        """요청에 다양한 규칙을 가진 랜덤 쿠키를 주입합니다."""
-
-        # 이미 요청에 쿠키가 설정되어 있다면 건너뜁니다.
         if request.cookies:
             return None
 
-        # 1. UUID 세션 ID 모방 (가장 강력한 무작위 값)
         random_uuid_session = self._generate_uuid()
-
-        # 2. 무작위성이 높은 일반 세션 ID 모방 (32자 길이)
         random_hex_session = self._generate_random_hex(length=32)
-
-        # 3. 특정 포맷을 가진 트래킹 ID 모방
         random_ga_id = self._generate_tracking_id()
 
-        # 4. 요청에 쿠키 딕셔너리 주입
         # 사이트가 사용하는 키 이름을 추정하여 적용합니다.
         request.cookies = {
-            'session_uuid': random_uuid_session,  # UUID 형식 세션 ID
-            'sessionid_hex': random_hex_session,  # 일반 16진수 세션 ID
-            '_ga': random_ga_id,  # 트래킹 ID
+            'session_uuid': random_uuid_session,
+            'sessionid_hex': random_hex_session,
+            '_ga': random_ga_id,
         }
 
-        # 5. 핵심 우회 설정: IP 로테이션 시 쿠키 병합 방지
+        # 핵심 우회 설정: IP 로테이션 시 쿠키 병합 방지
         request.meta['dont_merge_cookies'] = True
 
         # dont_merge_cookies가 True면 Scrapy 내장 CookiesMiddleware가
@@ -303,4 +250,4 @@ class RandomCookieMiddleware:
 
         spider.logger.debug(f"🍪 랜덤 쿠키 주입: UUID={random_uuid_session}")
 
-        return None  # 다음 미들웨어로 요청 전달
+        return None

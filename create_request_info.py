@@ -18,10 +18,8 @@ def map_blueprints_to_request_info(blueprint_list):
     request_info_setting_list = []
 
     for request_info in blueprint_list:
-        # 1. 기본 설정 딕셔너리 로드
         settings = customized_settings.get_request_settings()
 
-        # 2. DB에서 가져온 데이터 매핑 (딕셔너리 키 접근)
         settings["seq_no"] = request_info.get("seq_no")
         settings["title"] = request_info.get("titles")  # DB 컬럼명이 titles인 경우
         settings["url"] = request_info.get("urls")
@@ -29,7 +27,6 @@ def map_blueprints_to_request_info(blueprint_list):
         settings["conditions"] = utility.transform_to_json(request_info.get("conditions"))
 
         settings["spiders"] = request_info.get("spiders")
-        # settings["auth"] = request_info.get("auth")
         settings["needs_cleaning"] = request_info.get("needs_cleaning")
         request_info_setting_list.append(settings)
 
@@ -50,7 +47,6 @@ if __name__ == "__main__":
 
     db_env = db_conn.get_params("PostgreSQL")
     blueprint_list = db_conn.read_db_data(db_env, ACTIVE_BLUEPRINT_QUERY)
-    # 데이터가 리스트 형태인지 확인 후 진행
     if isinstance(blueprint_list, list):
         request_info_setting_list = create_request_info_setting_file(blueprint_list, "request_info")
     else:

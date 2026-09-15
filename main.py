@@ -43,9 +43,9 @@ def main():
         socket.disconnectFromServer()
         sys.exit(0)
 
-    local_server = QLocalServer()  # 클라이언트
+    local_server = QLocalServer()
     QLocalServer.removeServer(myappid)  # 이전 소켓 잔재 청소
-    if not local_server.listen(myappid):  # 지정한 이름으로 서버 시작
+    if not local_server.listen(myappid):
         sys.exit(1)
 
     # 레이아웃 선택: request_info.json의 블루프린트 개수로 자동 판단
@@ -60,8 +60,6 @@ def main():
     # list_seq_nos()(deepcopy 없음)로 가볍게 조회한다.
     blueprint_count = len(BlueprintStorage().list_seq_nos())
 
-    # 플래그와 실제 개수가 모순되면(예: 1개인데 --multi, 2개 이상인데 --single)
-    # 잘못된 레이아웃으로 조용히 기동되지 않도록 즉시 중단한다.
     mismatch = None
     if forced_multi and blueprint_count < 2:
         mismatch = (

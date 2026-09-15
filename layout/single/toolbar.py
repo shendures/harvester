@@ -30,7 +30,6 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         self._build()
         self.task = {}
 
-    # ── UI 구성 ───────────────────────────────────────
     def _build(self):
         self.setFixedHeight(49)
         self.setStyleSheet(
@@ -40,18 +39,15 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         lay.setContentsMargins(14, 0, 14, 0)
         lay.setSpacing(10)
 
-        # 수집 방식 라벨
         method, url = self._toolbar_display_info()
         self._method_label = parts.make_label(method, ACCENT_LIGHT, 12, True)
         self._configure_method_label(self._method_label)
         lay.addWidget(self._method_label)
 
-        # URL 입력창
         self.url_input = QLineEdit(url)
         self.url_input.setCursorPosition(0)
         lay.addWidget(self.url_input, 1)
 
-        # URL 복사 버튼
         self._copy_btn = parts.outline_btn("URL 복사")
         self._copy_btn.clicked.connect(self._copy_url)
         lay.addWidget(self._copy_btn)
@@ -62,7 +58,6 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         """시작/중지 버튼 + 추출 설정 버튼 — GlobalToolbarMulti가 오버라이드해
         생략한다(다중 레이아웃은 이 두 기능을 "수집 목록" 테이블의 항목별
         ▶/⚙ 버튼으로 옮겼다)."""
-        # 시작 / 중지 버튼
         self.run_btn = QPushButton("▶  시작")
         self.run_btn.setFixedWidth(90)
         self.run_btn.setCursor(Qt.CursorShape.PointingHandCursor)

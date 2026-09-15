@@ -10,7 +10,6 @@ class JsonExtractorSpider(BaseExtractorSpider):
     def parse(self, response):
         try:
 
-            # RESPONSE STATUS 출력
             engine.get_response_status(response)
 
             if response.status != 200:
@@ -22,7 +21,6 @@ class JsonExtractorSpider(BaseExtractorSpider):
             _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
             result = engine.get_result(self.request_info, utility.get_target(json.loads(response.text), root), _items)
 
-            # 데이터 처리
             loader = engine.set_item_loader(response, self.request_info, result)
 
             yield loader.load_item()

@@ -15,9 +15,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.remote_connection import RemoteConnection
-from webdriver_manager.chrome import ChromeDriverManager  # 드라이버 자동 설치/관리
+from webdriver_manager.chrome import ChromeDriverManager
 
-# spiders
 from scraper.spiders.spihtml import HtmlExtractorSpider
 from scraper.spiders.spirenderer import HtmlSeleniumSpider
 from scraper.spiders.spijson import JsonExtractorSpider
@@ -159,7 +158,6 @@ def get_scrapy_request(url, conditions, callback):
     조건 딕셔너리에 따라 Scrapy Request 또는 FormRequest 객체를 생성합니다.
     """
 
-    # 1. 공통 파라미터 딕셔너리 준비
     # meta에 original_url(치환 전 요청 URL)을 함께 실어 보낸다 — POST 요청은 아래에서
     # url_list 매칭용 쿼리스트링(JSON 리터럴)이 제거된 processed_url로 바뀌므로, 응답
     # 쪽(get_response_status)에서 워커의 url_list와 대조 가능한 원본 URL을 복원하려면
@@ -179,15 +177,12 @@ def get_scrapy_request(url, conditions, callback):
         # 일반 요청 (렌더링 페이지도 spirenderer가 자체 Chrome 드라이버로 처리하므로 동일)
         return scrapy.Request(**request_kwargs)
 
-    # 2. POST 요청에 대한 추가 처리
     elif conditions['method'] == "POST":
 
         processed_url, body = get_json_form(url)
 
-        # URL이 변경되었을 경우 업데이트
         request_kwargs['url'] = processed_url
 
-        # 3. 데이터 전송 방식에 따른 분기 (FormRequest vs. Request with Body)
         if conditions.get("payload") is False:
             request_kwargs['formdata'] = body
             # Form Data 전송 (application/x-www-form-urlencoded)
@@ -207,7 +202,6 @@ def get_scrapy_request(url, conditions, callback):
 def set_chrome_webdriver(headless=False):
     options = webdriver.ChromeOptions()
 
-    # 브라우저창 없이 실행 시
     if headless:
         options.add_argument('headless')
     options.add_argument('window-size=1920x1080')
@@ -397,14 +391,10 @@ def extract_data_from_root(root: Selector, _items: Dict[str, str]) -> List[Dict[
         [{"컬럼명1": 값1, "컬럼명2": 값2}, ...] 형태의 딕셔너리 리스트.
     """
 
-    # 1. 컬럼별 데이터를 추출합니다.
     result_map = {}
     row_count = 0
 
     for column_name, relative_xpath in _items.items():
-        # ⭐ root 셀렉터에 대해 상대 XPath를 실행합니다.
-        # .xpath() 결과를 .getall()을 사용하여 텍스트 리스트로 추출합니다.
-        # XPath가 'text()'를 포함하지 않는 경우를 대비해, 추출된 노드를 다시 .get()하여 내부 HTML/텍스트를 가져옵니다.
         extracted_nodes = root.xpath(relative_xpath)
 
         values = []
@@ -415,34 +405,25 @@ def extract_data_from_root(root: Selector, _items: Dict[str, str]) -> List[Dict[
                 #  JSON 파싱 가능한 문자열은 json 타입 판정으로 ValueError가 발생합니다)
                 value = node.root.strip()
             else:
-                # 요소 노드 — node.xpath(".").get()으로 HTML 문자열을 얻고
-                # re.sub를 사용하여 HTML 태그를 제거하고 공백을 정리합니다.
                 value = re.sub('<.+?>', ' ', node.xpath(".").get(default='').strip(), 0).strip()
             values.append(value)
 
-        # 데이터 없으면 None으로 처리
         if len(values) != 0:
             result_map[column_name] = values
         elif len(values) == 0:
             result_map[column_name] = [None]
 
-        # 행(row)의 개수를 설정하고 일관성을 확인합니다.
         if row_count == 0:
             row_count = len(values)
         elif len(values) != row_count:
-            # 데이터 수 불일치에 대한 경고 로그 (실제 크롤링 시 매우 중요)
             print(f"⚠️ 경고: '{column_name}' 컬럼의 데이터 수({len(values)})가 기준 수({row_count})와 일치하지 않습니다. 매핑 오류가 발생할 수 있습니다.")
 
-    # 2. 추출된 값들을 행(row) 단위로 묶고 딕셔너리로 변환합니다.
-
-    # zip(*result_map.values())를 사용하여 각 컬럼의 리스트를 행 단위로 묶습니다.
     zipped_data = zip(*result_map.values())
 
     column_names = list(result_map.keys())
 
     final_list = []
 
-    # 각 행을 순회하며 딕셔너리를 생성합니다.
     for row_values in zipped_data:
         row_dict = dict(zip(column_names, row_values))
         final_list.append(row_dict)

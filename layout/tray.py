@@ -18,14 +18,12 @@ class TrayManager(QObject, TrayManagerTriggers):
         self.main_window = main_window
         self.tray_icon = QSystemTrayIcon(self.main_window)
 
-        self.icon_path = utility.resource_path() + "\\" + "combine-harvester.ico"  # 아이콘
+        self.icon_path = utility.resource_path() + "\\" + "combine-harvester.ico"
 
-        # 아이콘 설정 (기존 소스에서 사용하던 아이콘 경로 적용)
-        self.tray_icon.setIcon(QIcon(self.icon_path))  # 실제 아이콘 경로로 수정 필요
+        self.tray_icon.setIcon(QIcon(self.icon_path))
 
         self.setup_menu()
 
-        # 트레이 아이콘 클릭 이벤트 연결 (더블 클릭 시 창 보이기 등)
         self.tray_icon.activated.connect(self.on_tray_icon_activated)
 
     def setup_menu(self):

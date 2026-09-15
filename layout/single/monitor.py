@@ -27,11 +27,11 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
     def __init__(self):
         super().__init__()
         self._all_rows       = []
-        self._collected_data = []   # raw 수집 데이터
+        self._collected_data = []
         self._existing_keys  = set()   # _collected_data 중복판정용 캐시(증분 갱신)
         self._dup_rows       = 0       # _collected_data 중 중복 판정된 행 수(증분 갱신)
         self._empty_rows     = 0       # _collected_data 중 전체 컬럼 빈 값인 행 수(증분 갱신)
-        self._refined_data   = []   # 정제 후 데이터
+        self._refined_data   = []
         self._current_task   = {}   # 최근 완료된 수집의 task(seq_no/needs_cleaning 등 포함)
         self._out_mode       = None
         self.output_info     = self._active_blueprint_info().get("output_settings") or customized_settings.get_output_settings()
@@ -44,14 +44,14 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self._refine_rules = {
             "remove_null_row":   saved_refine.get("remove_null_row", True),    # 모든 필드 null 행 제거
             "custom_rule":       True,   # 탭에 들어올 때마다 needs_cleaning/스크립트 존재 여부로 재계산됨
-            "trim_whitespace":   saved_refine.get("trim_whitespace", True),    # 문자열 앞뒤 공백 trim
-            "remove_duplicate":  saved_refine.get("remove_duplicate", True),   # 중복 행 제거
-            "drop_columns":      saved_refine.get("drop_columns", False),     # 선택 필드 제외 (비활성 기본)
-            "fill_null":         saved_refine.get("fill_null", False),        # null → 지정값 치환 (비활성 기본)
-            "cast_numeric":      saved_refine.get("cast_numeric", False),     # 숫자 타입 변환 (비활성 기본)
+            "trim_whitespace":   saved_refine.get("trim_whitespace", True),
+            "remove_duplicate":  saved_refine.get("remove_duplicate", True),
+            "drop_columns":      saved_refine.get("drop_columns", False),
+            "fill_null":         saved_refine.get("fill_null", False),
+            "cast_numeric":      saved_refine.get("cast_numeric", False),
         }
-        self._drop_column_names: list[str] = list(saved_refine.get("drop_column_names", []))   # 제외할 컬럼명 목록
-        self._fill_null_value: str = saved_refine.get("fill_null_value", "")   # null 치환값 (기본: 빈 값)
+        self._drop_column_names: list[str] = list(saved_refine.get("drop_column_names", []))
+        self._fill_null_value: str = saved_refine.get("fill_null_value", "")
         self._build()
 
     def _build(self):
@@ -59,7 +59,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── QTabWidget (4탭 구조) ─────────────────────────────────────
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet(f"""
             QTabWidget::pane {{
@@ -92,31 +91,24 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         """)
         root.addWidget(self.tab_widget)
 
-        # ── 탭 ① Raw 수집 결과 ────────────────────────────────────────
         self._build_raw_tab()
-        # ── 탭 ② 정제 규칙 설정 ───────────────────────────────────────
         self._build_refine_rules_tab()
-        # ── 탭 ③ 정제 결과 ────────────────────────────────────────────
         self._build_refined_tab()
-        # ── 탭 ④ Before / After 비교 ──────────────────────────────────
         self._build_compare_tab()
 
         # 탭 전환 시 "② 정제 규칙 설정" 진입을 감지해 규칙 미설정 여부를 알림
         self.tab_widget.currentChanged.connect(self._on_monitor_tab_changed)
 
-    # ── 탭 ① Raw 수집 결과 ────────────────────────────────────────────
     def _build_raw_tab(self):
         raw_widget = QWidget()
         bl = build_scroll_body(raw_widget, spacing=12)
 
-        # 수집 결과 요약 카드 (4칸)
         sum_card_w, (self.sum_total, self.sum_ok, self.sum_err, self.sum_warn) = build_stat_summary_card(
             parts, "수집 결과 요약",
             [("전체 항목", "0"), ("정상 행", "0", GREEN), ("전체 null", "0", AMBER), ("중복 행", "0", RED)],
         )
         bl.addWidget(sum_card_w)
 
-        # 실시간 수집 결과 테이블
         # card_widget()은 제목 문자열만 받고 우측에 위젯을 얹는 기능이 없어(앱
         # 전체 다수 카드가 공유하는 헬퍼라 여기서 확장하지 않음), 이 카드에서만
         # 제목 줄을 직접 구성해 우측 최상단에 "새 창에서 보기" 버튼을 둔다.
@@ -153,7 +145,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         tbl_ctrl.addWidget(raw_exp_btn)
         tc.addLayout(tbl_ctrl)
 
-        # null·중복 안내
         info_lbl = parts.make_label(
             "● 주황색 배경: 전체 null 행  ● 빨간색 배경: 중복 행",
             AMBER, 11
@@ -167,7 +158,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.result_table.columnFiltersChanged.connect(self._apply_filter)
         tc.addWidget(self.result_table)
 
-        # 선택 항목 상세
         dw, dl = parts.card_widget("선택 항목 상세")
         self.detail_lbl = parts.make_label("테이블에서 행을 클릭하세요.", TEXT_MUTED, 12)
         dl.addWidget(self.detail_lbl)
@@ -183,12 +173,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         self.tab_widget.addTab(raw_widget, "① Raw 수집 결과")
 
-    # ── 탭 ② 정제 규칙 설정 ──────────────────────────────────────────
     def _build_refine_rules_tab(self):
         rules_widget = QWidget()
         bl = build_scroll_body(rules_widget, spacing=12)
 
-        # ── 기본 정제 규칙 카드 ──────────────────────────────────────
         rw, rl = parts.card_widget("정제 규칙")
         # 화면 표시 순서는 실제 처리 순서와 무관하므로(style.REFINE_RULE_DEFS 참고)
         # "위에서 아래 순서로 적용됩니다" 같은 안내는 혼란을 줄 수 있어 넣지 않음
@@ -247,19 +235,16 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         bl.addStretch()
         self.tab_widget.addTab(rules_widget, "② 정제 규칙 설정")
 
-    # ── 탭 ③ 정제 결과 ────────────────────────────────────────────────
     def _build_refined_tab(self):
         refined_widget = QWidget()
         bl = build_scroll_body(refined_widget, spacing=12)
 
-        # 정제 결과 요약 카드
         ref_sum_w, (self.ref_total, self.ref_removed, self.ref_filled, self.ref_rate) = build_stat_summary_card(
             parts, "정제 결과 요약",
             [("정제 후 행 수", "—"), ("제거된 행", "—", RED), ("치환된 값", "—", AMBER), ("정제율", "—", GREEN)],
         )
         bl.addWidget(ref_sum_w)
 
-        # 정제 데이터 테이블
         rtcw, rtc = parts.card_widget("정제 데이터 (REFINED)")
         ref_ctrl = QHBoxLayout()
 
@@ -285,7 +270,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.refined_table.columnFiltersChanged.connect(self._apply_refined_filter)
         rtc.addWidget(self.refined_table)
 
-        # 정제 결과 상세
         rdw, rdl = parts.card_widget("선택 항목 상세 (정제 후)")
         self.refined_detail_lbl = parts.make_label("테이블에서 행을 클릭하세요.", TEXT_MUTED, 12)
         rdl.addWidget(self.refined_detail_lbl)
@@ -299,12 +283,10 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         self.tab_widget.addTab(refined_widget, "③ 정제 결과")
 
-    # ── 탭 ④ Before / After 비교 ─────────────────────────────────────
     def _build_compare_tab(self):
         cmp_widget = QWidget()
         bl = build_scroll_body(cmp_widget, spacing=12)
 
-        # 정제 요약 카드
         cmp_sum_w, (self.cmp_raw_total, self.cmp_ref_total, self.cmp_removed, self.cmp_rate) = build_stat_summary_card(
             parts, "정제 요약",
             [("Raw 행 수", "—"), ("정제 후 행 수", "—", GREEN), ("제거된 행", "—", RED), ("정제율", "—", ACCENT_LIGHT)],
@@ -337,7 +319,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         side_l.setContentsMargins(0, 0, 0, 0)
         side_l.setSpacing(10)
 
-        # 좌: Raw
         raw_cmp_w, raw_cmp_l = parts.card_widget("Raw 데이터")
         self.cmp_raw_count = parts.count_badge("— rows", AMBER)
         raw_cmp_l.addWidget(self.cmp_raw_count)
@@ -347,7 +328,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         raw_cmp_l.addWidget(self.cmp_raw_table)
         side_l.addWidget(raw_cmp_w, 1)
 
-        # 우: Refined
         ref_cmp_w, ref_cmp_l = parts.card_widget("정제 데이터")
         self.cmp_ref_count = parts.count_badge("— rows", GREEN)
         ref_cmp_l.addWidget(self.cmp_ref_count)
@@ -359,7 +339,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         bl.addWidget(side_w, 1)
 
-        # 좌우 테이블 세로 스크롤 동기화
         self._link_vscroll_group([self.cmp_raw_table, self.cmp_ref_table])
 
         # 좌우 테이블 정렬 동기화 (같은 컬럼명·방향, 정렬 해제 포함)
@@ -483,10 +462,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
 
         dlg.show()
 
-    # ── 워커 시그널 수신: 실시간 수집 결과 테이블 행 추가 ────────────
     def _reset_monitor_page(self):
         """중지 또는 수집 시작 시 — 모든 탭의 데이터 및 위젯 초기화"""
-        # ① Raw 탭
         self.result_table.setRowCount(0)
         self.result_table.setColumnCount(0)
         self._all_rows       = []
@@ -501,7 +478,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.sum_warn.update_value(0)
         self.detail_lbl.setText("테이블에서 행을 클릭하세요.")
 
-        # ② 정제 결과 탭
         self._refined_data = []
         self.refined_table.setRowCount(0)
         self.refined_table.setColumnCount(0)
@@ -512,7 +488,6 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.ref_rate.update_value("—")
         self.refined_detail_lbl.setText("테이블에서 행을 클릭하세요.")
 
-        # ③ 비교 탭
         self.cmp_raw_table.setRowCount(0)
         self.cmp_raw_table.setColumnCount(0)
         self.cmp_ref_table.setRowCount(0)
@@ -524,11 +499,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         self.cmp_removed.update_value("—")
         self.cmp_rate.update_value("—")
 
-
-    # ── 추출 관련 메서드 ──────────────────────────────────────────────
     def preprocess(self, task):
         """정제 단계 진입 직전 상태 준비 — 실제 FILE/DB 추출은 _extract_result_table()이 수행."""
-        # seq_no/needs_cleaning 등 정제 시 참조할 현재 작업 정보 보관
         self._current_task = task or {}
 
         # "커스텀 정제 규칙 적용"은 파일이 없으면 절대 체크된 채로 남아있으면 안

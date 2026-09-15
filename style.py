@@ -1451,7 +1451,6 @@ class Parts:
         self.theme = THEME()
 
     def make_label(self, text, color=None, size=13, bold=False):
-        # 버그 수정: 기본 컬러를 인스턴스 변수(self.theme)에서 참조하도록 변경
         if color is None:
             color = self.theme.TEXT_SECONDARY
 
@@ -1500,7 +1499,6 @@ class Parts:
 
     def action_btn(self, text, color=None, hover=None, parent=None):
         """강조형 주요 액션 버튼 생성"""
-        # 버그 수정: 기본 컬러를 인스턴스 변수에서 안전하게 바인딩
         if color is None:
             color = self.theme.ACCENT
         if hover is None:

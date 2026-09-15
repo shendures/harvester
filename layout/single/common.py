@@ -6,8 +6,8 @@
 from conf import BlueprintStorage
 from ..common import result_columns_from_blueprint
 
-blueprint = BlueprintStorage()  # 수집 정보 클래스
-request_info = blueprint.read()  # 수집 정보
+blueprint = BlueprintStorage()
+request_info = blueprint.read()
 
 
 class ActiveBlueprintMixin:
