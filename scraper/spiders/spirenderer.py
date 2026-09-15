@@ -33,7 +33,6 @@ class HtmlSeleniumSpider(BaseExtractorSpider):
         # driver를 만들거나 쿠키를 재주입할 필요가 없습니다.
         self.driver = None
 
-    # 2. start_requests: 모든 수집 목록의 URL을 예약합니다.
     def start_requests(self):
         try:
             conditions = self.request_info["conditions"]
@@ -73,7 +72,6 @@ class HtmlSeleniumSpider(BaseExtractorSpider):
     def parse(self, response):
         try:
 
-            # RESPONSE STATUS 출력
             engine.get_response_status(response)
 
             if response.status != 200:
@@ -108,7 +106,6 @@ class HtmlSeleniumSpider(BaseExtractorSpider):
                 root_selectors = Selector(text=self.driver.page_source).xpath(root)
                 result = engine.get_result(self.request_info, root_selectors, _items)
 
-            # 데이터 처리
             loader = engine.set_item_loader(response, self.request_info, result)
 
             yield loader.load_item()

@@ -35,14 +35,11 @@ class SearchLineEdit(QLineEdit):
 
     def inputMethodEvent(self, event):
         super().inputMethodEvent(event)       # 기본 IME 처리 유지 (화면 표시 등)
-        preedit   = event.preeditString()     # 현재 조합 중인 글자
-        committed = self.text()               # 이미 확정된 텍스트
+        preedit   = event.preeditString()
+        committed = self.text()
         self.composing_changed.emit(committed + preedit)
 
 
-# ══════════════════════════════════════════════════════
-#  LOG VIEWER DIALOG  (전체 로그 확인 모달리스 다이얼로그)
-# ══════════════════════════════════════════════════════
 class LogViewerDialog(QDialog):
     """
     로그 버퍼를 직접 소유하고 표시하는 모달리스 다이얼로그.
@@ -57,9 +54,7 @@ class LogViewerDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # ── 로그 버퍼 (구 LogView._html_history) ──────────────────────────
         self._html_history: list[tuple[str, str]] = []   # [(level, html), ...]
-        # ── 검색 상태 ─────────────────────────────────────────────────────
         self._active_filter = "ALL"
         self._last_keyword  = ""    # 검색어 변경 감지 — 바뀌면 커서 리셋
         self._total_matches = 0     # 현재 뷰어 기준 전체 매치 수
@@ -71,7 +66,6 @@ class LogViewerDialog(QDialog):
         self.setStyleSheet(_default_dialog_qss())
         self._build()
 
-    # ── 로그 수신 (구 LogView.append_log) ───────────────────────────────
     def append_log(self, level: str, message: str) -> None:
         """
         외부(Worker, GlobalToolbarSingle 등)에서 호출 — 이력 버퍼에 누적하고
@@ -87,26 +81,22 @@ class LogViewerDialog(QDialog):
             f'<span style="color:{TEXT_SECONDARY};">{message}</span>'
         )
         self._html_history.append((level, line_html))
-        # 다이얼로그가 열려 있을 때만 뷰어에 실시간 반영
         if self.isVisible() and self._passes_filter(level):
             self._viewer.append(line_html)
             self._scroll_to_bottom()
         self.last_log.emit(level, message)
 
-    # ── 전체 초기화 (구 LogView.clear_all) ──────────────────────────────
     def clear_all(self) -> None:
         """이력 버퍼와 뷰어 표시 내용을 동시에 초기화합니다."""
         self._html_history.clear()
         self._viewer.clear()
         self._reset_search_state()
 
-    # ── UI 구성 ──────────────────────────────────────
     def _build(self):
         vl = QVBoxLayout(self)
         vl.setContentsMargins(16, 14, 16, 14)
         vl.setSpacing(10)
 
-        # 헤더 행
         hdr = QHBoxLayout()
         title = QLabel("전체 로그")
         title.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:14px; font-weight:bold;")
@@ -123,13 +113,11 @@ class LogViewerDialog(QDialog):
         hdr.addWidget(close_btn)
         vl.addLayout(hdr)
 
-        # 구분선
         div = QWidget()
         div.setFixedHeight(1)
         div.setStyleSheet(f"background:{BORDER};")
         vl.addWidget(div)
 
-        # 필터 버튼 행
         filter_row = QHBoxLayout()
         filter_row.setSpacing(6)
         self._filter_btns: dict[str, QPushButton] = {}
@@ -145,7 +133,6 @@ class LogViewerDialog(QDialog):
             filter_row.addWidget(btn)
         filter_row.addStretch()
 
-        # 지우기 버튼
         clr_btn = QPushButton("지우기")
         clr_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clr_btn.setStyleSheet(f"""
@@ -157,7 +144,6 @@ class LogViewerDialog(QDialog):
         filter_row.addWidget(clr_btn)
         vl.addLayout(filter_row)
 
-        # ── 검색 행 ──────────────────────────────────
         search_row = QHBoxLayout()
         search_row.setSpacing(6)
 
@@ -234,7 +220,6 @@ class LogViewerDialog(QDialog):
             f"QPushButton:hover{{background:{BG_HOVER};color:{ACCENT_LIGHT};border-color:{ACCENT_LIGHT};}}"
         )
 
-    # ── 이력 로드 및 필터 ────────────────────────────
     def _load_history(self):
         """열릴 때 기존 이력 전체 렌더링"""
         for level, html in self._html_history:
@@ -248,11 +233,9 @@ class LogViewerDialog(QDialog):
     def _apply_filter(self, level: str):
         """필터 버튼 클릭 — 선택 레벨만 재렌더링"""
         self._active_filter = level
-        # 버튼 스타일 갱신
         for lv, btn in self._filter_btns.items():
             btn.setChecked(lv == level)
             btn.setStyleSheet(self._filter_btn_style(lv == level))
-        # 뷰어 재렌더링
         self._viewer.clear()
         for lv, html in self._html_history:
             if self._passes_filter(lv):
@@ -265,12 +248,10 @@ class LogViewerDialog(QDialog):
         sb = self._viewer.verticalScrollBar()
         sb.setValue(sb.maximum())
 
-    # ── 지우기 ───────────────────────────────────────
     def _clear_log(self):
         """이력 버퍼·뷰어 동시 초기화"""
         self.clear_all()
 
-    # ── 검색 상태 초기화 ─────────────────────────────
     def _reset_search_state(self):
         """
         검색 관련 상태를 모두 초기화합니다.
@@ -285,7 +266,6 @@ class LogViewerDialog(QDialog):
         self._btn_prev.setEnabled(False)
         self._btn_next.setEnabled(False)
 
-    # ── 실시간 개수 집계 ─────────────────────────────
     def _update_match_count(self):
         """
         textChanged 수신 — 확정된 텍스트(영문·숫자·조합 완료) 기준으로 검색합니다.
@@ -351,7 +331,6 @@ class LogViewerDialog(QDialog):
             self._viewer.setTextCursor(cursor)
             self._do_find(forward=True)
 
-    # ── 다음 / 이전 찾기 ─────────────────────────────
     def _search_next(self):
         self._do_find(forward=True)
 
@@ -414,7 +393,6 @@ class LogViewerDialog(QDialog):
             self._search_count_lbl.setText("0 / 0")
             self._set_search_count_style(is_error=True)
 
-    # ── 키보드 이벤트: Enter / Shift+Enter 처리 ──────
     def keyPressEvent(self, event):
         """
         Enter / Shift+Enter 를 검색 탐색에 사용합니다.
@@ -430,7 +408,6 @@ class LogViewerDialog(QDialog):
             return   # 기본 동작 억제
         super().keyPressEvent(event)
 
-    # ── 닫기 이벤트: hide()로 처리 (싱글턴 — 파괴 방지) ─────────────────
     def closeEvent(self, event):
         """× 버튼 또는 닫기 클릭 시 파괴 대신 숨김 처리합니다."""
         self.hide()

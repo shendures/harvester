@@ -54,12 +54,10 @@ def data_dir(app_name: Optional[str] = None) -> str:
 
 
 def transform_to_json(_variable):
-    # 1. 데이터 타입이 딕셔너리(dict)인 경우
     if isinstance(_variable, dict):
         print("데이터가 이미 dict 형태입니다. (Pass)")
         return _variable
 
-    # 2. 데이터 타입이 텍스트(str)인 경우
     elif isinstance(_variable, str):
         try:
             converted_data = json.loads(_variable)
@@ -68,20 +66,17 @@ def transform_to_json(_variable):
             print("오류: 입력된 텍스트가 올바른 JSON 형식이 아닙니다.")
             return None
 
-    # 3. 그 외의 데이터 타입인 경우
     else:
         print(f"지원하지 않는 타입입니다: {type(_variable)}")
         return _variable
 
 def update_empty_value(value):
-    # 값이 공백일 경우 None으로 반환
     if value == '':
         return None
     return value
 
 
 def to_forward_slash(value):
-    # 역슬래쉬(\)를 슬래쉬(/)로 변경
     return value.replace("\\", "/")
 
 
@@ -96,8 +91,6 @@ def generate_combined_urls(url_template):
     Returns:
         list: 생성된 URL 문자열 리스트.
     """
-    # 1. 페이지네이션 패턴 분석 및 URL 템플릿 처리
-
     # 패턴: ${page:시작 수:증가 숫자:끝 수} - 음수 포함
     page_pattern = r'(\$\{page:(-?\d+):(-?\d+):(-?\d+)\})'
     page_match = re.search(page_pattern, url_template)
@@ -111,7 +104,6 @@ def generate_combined_urls(url_template):
         step = int(page_match.group(3))
         end = int(page_match.group(4))
 
-        # 유효성 검사 (음수 step 처리 포함)
         if step == 0:
             print("❌ 오류: step 값은 0일 수 없습니다.")
             return []
@@ -119,19 +111,14 @@ def generate_combined_urls(url_template):
             print(f"⚠️ 경고: 페이지 범위({start} to {end}, step {step})가 유효하지 않습니다.")
             return []
 
-        # range의 stop 값 조정
         stop = end + 1 if step > 0 else end - 1
 
-        # 페이지 리스트 생성 및 템플릿 문자열 대체
         for page_num in range(start, stop, step):
             new_url = url_template.replace(full_pattern_str, str(page_num))
             page_urls.append(new_url)
 
-    # 패턴이 없으면 원본 템플릿 하나만 리스트에 담아 다음 단계로 전달
     if not page_urls:
         page_urls = [url_template]
-
-    # 2. 목록 확장 패턴 분석 및 최종 URL 생성
 
     # 패턴: ${keywords:특정 문자1,특정 문자2,...}
     # 그룹 1: ${...} 전체, 그룹 2: 내부 콤마로 구분된 문자열 (서울,인천)
@@ -139,23 +126,17 @@ def generate_combined_urls(url_template):
 
     final_urls = []
 
-    # page_urls에 담긴 모든 URL 템플릿을 순회
     for current_url_template in page_urls:
 
-        # 현재 템플릿에서 모든 목록 확장 패턴을 찾음
         list_matches = re.findall(list_pattern, current_url_template)
 
         if not list_matches:
-            # 목록 확장 패턴이 없으면 최종 리스트에 추가
             final_urls.append(current_url_template)
             continue
 
-        # 목록 확장 패턴의 모든 조합을 생성하기 위한 리스트 초기화
         substitution_data = []
 
-        # 각 패턴 (${서울,인천})을 순회하며 치환할 문자열 리스트를 준비
         for full_match, items_str in list_matches:
-            # [('서울,인천', '서울,인천'), ...]
             items_list = [item.strip() for item in items_str.split(',')]
             substitution_data.append((full_match, items_list))
 
@@ -163,11 +144,9 @@ def generate_combined_urls(url_template):
         # (예: [('서울',), ('인천',)])
         value_combinations = itertools.product(*(item[1] for item in substitution_data))
 
-        # 조합된 값들을 사용하여 최종 URL 생성
         for combo in value_combinations:
             temp_url = current_url_template
 
-            # 패턴과 값의 조합을 사용하여 URL 치환
             for i in range(len(substitution_data)):
                 # substitution_data[i][0]은 패턴 문자열 (${서울,인천})
                 # combo[i]는 치환할 값 (서울 또는 인천)
@@ -186,30 +165,23 @@ def get_target(data: Any, target: str) -> Optional[Any]:
     - target에 점(.)이 없으면, 재귀적으로 구조를 탐색하여 target 키의 첫 번째 일치 값을 반환합니다.
     """
 
-    # 1. 경로 탐색 로직 (target에 점(.)이 포함된 경우)
     if isinstance(data, dict) and isinstance(target, str) and '.' in target:
         keys = target.split('.')
         current_node = data
 
         try:
             for key in keys:
-                # 현재 노드가 딕셔너리가 아니면 경로 탐색 중단
                 if not isinstance(current_node, dict):
                     return None
 
-                # 다음 단계로 이동
                 current_node = current_node[key]
 
-            # 최종적으로 찾은 값 반환
             return current_node
         except KeyError:
-            # 경로 중 어느 하나라도 키가 없는 경우
             return None
         except Exception:
-            # 기타 예외 처리 (예: None에 접근 시도 등)
             return None
 
-    # 2. 원본 재귀 탐색 로직 (target이 단일 키인 경우)
     results = []
 
     def _search(node):
@@ -217,7 +189,7 @@ def get_target(data: Any, target: str) -> Optional[Any]:
             for key, value in node.items():
                 if key == target:
                     results.append(value)
-                _search(value)  # 계속해서 value 내부를 탐색
+                _search(value)
         elif isinstance(node, list):
             for item in node:
                 _search(item)

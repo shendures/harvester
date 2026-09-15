@@ -38,7 +38,7 @@ def _build_sql_url(db_info: dict) -> str:
     """
     SQL 계열(PostgreSQL / MySQL) 연결 URL을 안전하게 조립합니다.
 
-    [수정] 패스워드에 포함된 특수문자를 urllib.parse.quote_plus로 인코딩.
+    패스워드에 포함된 특수문자를 urllib.parse.quote_plus로 인코딩합니다.
     기존 코드에서 _check_db_table_exists, read_db_data, save_db 각각
     raw 패스워드를 직접 URL에 삽입하던 문제를 이 헬퍼 한 곳에서 처리합니다.
     """
@@ -189,7 +189,6 @@ def _check_db_connect_info(db_info: dict) -> tuple[bool, str]:
 
         # ── 2. PostgreSQL / MySQL ─────────────────────────
         else:
-            # [수정] _build_sql_url 헬퍼로 패스워드 인코딩 통일
             tmp_url = _build_sql_url(db_info)
             connect_args = {"connect_timeout": 3}
             schema = db_info.get("schema", "").strip()
@@ -257,12 +256,6 @@ def _check_db_table_exists(db_info: dict) -> bool:
 
     Returns:
         bool: 존재하면 True, 없거나 연결 실패 시 False
-
-    [수정]
-    - MongoDB   : client를 finally에서 항상 close() (기존: 누수)
-    - SQL 계열  : engine을 finally에서 항상 dispose() (기존: 누수)
-    - 패스워드  : _build_sql_url 헬퍼로 특수문자 인코딩 (기존: raw 삽입)
-    - 오류 처리 : try/except 추가 — 연결 실패 시 unhandled exception 방지 (기존: 없음)
     """
     db_env = db_info.get("db_env", "")
 
@@ -276,13 +269,12 @@ def _check_db_table_exists(db_info: dict) -> bool:
                 collections = client[db_info["database"]].list_collection_names()
                 return db_info["save_data_nm"] in collections
             finally:
-                # [수정] 기존 코드는 finally 없어 커넥션 누수 발생
+                # finally에서 항상 close()해 커넥션 누수를 방지합니다.
                 if client is not None:
                     client.close()
 
         # ── PostgreSQL / MySQL ────────────────────────────
         else:
-            # [수정] _build_sql_url 헬퍼로 패스워드 인코딩 통일 (기존: raw 삽입)
             tmp_url    = _build_sql_url(db_info)
             tmp_engine = None
             try:
@@ -290,7 +282,7 @@ def _check_db_table_exists(db_info: dict) -> bool:
                 schema = db_info.get("schema") if db_env == "PostgreSQL" else None
                 return inspect(tmp_engine).has_table(db_info["save_data_nm"], schema=schema)
             finally:
-                # [수정] 기존 코드는 finally 없어 엔진 누수 발생
+                # finally에서 항상 dispose()해 엔진 누수를 방지합니다.
                 if tmp_engine is not None:
                     tmp_engine.dispose()
 
@@ -309,11 +301,6 @@ def read_db_data(db_info: dict, query: str) -> list[dict]:
 
     Returns:
         list[dict]: 조회된 데이터 결과 리스트 (오류 시 빈 리스트)
-
-    [수정]
-    - PostgreSQL : engine을 finally에서 항상 dispose() (기존: 누수)
-    - MongoDB    : client.close()를 finally로 이동 (기존: 예외 시 누수)
-    - 패스워드   : _build_sql_url / _build_mongo_uri 헬퍼로 인코딩 통일
     """
     db_env      = db_info.get("db_env", "")
     result_data = []
@@ -332,7 +319,6 @@ def read_db_data(db_info: dict, query: str) -> list[dict]:
 
         # ── 3. MongoDB ────────────────────────────────────
         elif db_env == "MongoDB":
-            # [수정] _build_mongo_uri 헬퍼로 패스워드 인코딩 통일
             client = None
             try:
                 client = MongoClient(_build_mongo_uri(db_info), serverSelectionTimeoutMS=5000)
@@ -341,7 +327,7 @@ def read_db_data(db_info: dict, query: str) -> list[dict]:
                     doc.pop("_id", None)
                     result_data.append(doc)
             finally:
-                # [수정] 기존 코드는 try 블록 내 client.close() → 예외 시 누수
+                # 예외 발생 시에도 항상 close()되도록 finally에서 처리합니다.
                 if client is not None:
                     client.close()
 
@@ -366,15 +352,8 @@ def save_db(db_info: dict, data: list[dict], mode: str = "append") -> None:
     Raises:
         ValueError  : data가 비어 있을 때
         RuntimeError: DB 저장 중 오류 발생 시 (원인 메시지 포함)
-
-    [수정]
-    - data 빈 리스트 사전 검증 추가 (기존: data[0] → IndexError)
-    - MongoDB    : client.close()를 finally로 이동 (기존: 누수)
-    - PostgreSQL : engine.dispose()를 finally로 추가 (기존: 누수)
-    - MySQL      : 기존 finally 유지 (정상)
-    - 패스워드   : _build_sql_url 헬퍼로 인코딩 통일 (기존: raw 삽입)
     """
-    # [수정] data 빈 리스트 사전 검증 — 기존은 data[0]에서 IndexError 발생
+    # 빈 리스트를 그대로 두면 이후 data[0] 접근에서 IndexError가 발생하므로 사전 검증합니다.
     if not data:
         raise ValueError("[save_db] 저장할 데이터가 없습니다 (data가 빈 리스트).")
 
@@ -382,7 +361,6 @@ def save_db(db_info: dict, data: list[dict], mode: str = "append") -> None:
 
     # ── MongoDB ──────────────────────────────────────────
     if db_env == "MongoDB":
-        # [수정] _build_mongo_uri 헬퍼로 패스워드 인코딩 통일
         client = None
         try:
             client    = MongoClient(_build_mongo_uri(db_info))
@@ -396,7 +374,7 @@ def save_db(db_info: dict, data: list[dict], mode: str = "append") -> None:
         except Exception as e:
             raise RuntimeError(f"MongoDB DB 저장 중 오류 발생: {e}") from e
         finally:
-            # [수정] 기존 코드는 client.close() 없어 커넥션 누수 발생
+            # finally에서 항상 close()해 커넥션 누수를 방지합니다.
             if client is not None:
                 client.close()
 

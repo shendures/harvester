@@ -21,7 +21,6 @@ class XmlExtractorSpider(BaseExtractorSpider):
             xmltojson = xmltodict.parse(response.text)
             result = engine.get_result(self.request_info, utility.get_target(xmltojson, root), _items)
 
-            # 데이터 처리
             loader = engine.set_item_loader(response, self.request_info, result)
 
             yield loader.load_item()

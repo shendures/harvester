@@ -26,7 +26,6 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
     def _build(self):
         bl = build_scroll_body(self)
 
-        # ── Reset ──────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.reset_btn = build_reset_button(
@@ -50,13 +49,11 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         row2 = QHBoxLayout()
         row2.setSpacing(10)
 
-        # Status ranked list
         sw, sl = parts.card_widget("상태 코드 분포")
         self.status_chart = RankedBarChart()
         sl.addWidget(self.status_chart)
         row2.addWidget(sw, 1)
 
-        # Response time heat strip
         rw2, rl2 = parts.card_widget("응답 시간 분포 (s)")
         self.resp_chart = HeatStripChart(color=BLUE)
         rl2.addWidget(self.resp_chart)

@@ -17,9 +17,6 @@ import queue as _queue
 logger = logging.getLogger(__name__)
 
 
-# ══════════════════════════════════════════════════════
-#  QUEUE WRITER  (자식 프로세스 stdout/stderr → Queue)
-# ══════════════════════════════════════════════════════
 class QueueWriter:
     """
     자식 프로세스의 sys.stdout / sys.stderr 를 multiprocessing.Queue 로
@@ -39,9 +36,6 @@ class QueueWriter:
         pass  # CrawlerProcess 내부에서 flush()를 호출할 수 있으므로 빈 구현 유지
 
 
-# ══════════════════════════════════════════════════════
-#  CRAWLER WORKER THREAD
-# ══════════════════════════════════════════════════════
 class MultiprocessWorker(QThread):
     """
     별도의 서브 프로세스를 실행하고 모니터링하여 Scrapy를 구동하는 작업 스레드.
@@ -71,7 +65,6 @@ class MultiprocessWorker(QThread):
         self._started_at: datetime | None = None
         self.store     = DataStore()
 
-    # ── 외부에서 중단 요청 ────────────────────────────
     def stop(self) -> None:
         """
         수집 중단 요청.
@@ -80,7 +73,6 @@ class MultiprocessWorker(QThread):
         """
         self._running = False
 
-    # ── 메인 실행 루프 ────────────────────────────────
     def run(self) -> None:
 
         # [수정] _started_at을 run() 진입 즉시 초기화
@@ -97,7 +89,6 @@ class MultiprocessWorker(QThread):
             url_list       = set(generated_urls)
             total          = len(url_list)
 
-            # [DEBUG] url_list 생성 결과 확인
             if total == 0:
                 logger.warning("[DEBUG][run] generate_combined_urls() 반환값이 비어 있음 — callback_url: %s", callback_url)
                 self.log_message.emit("warn", f"수집 대상 URL이 생성되지 않았습니다. URL 설정을 확인해주세요. (대상: {callback_url})")
@@ -181,7 +172,6 @@ class MultiprocessWorker(QThread):
         finally:
             self._emit_finished(callback_url, total)
 
-    # ── 내부 헬퍼 ─────────────────────────────────────
     def _handle_line(
         self,
         line: str,
@@ -210,7 +200,6 @@ class MultiprocessWorker(QThread):
             logger.warning("[MultiprocessWorker] RESULT_INFO JSON 파싱 실패: %s | 원본: %s", e, clean_line[:120])
             return
 
-        # resp_info 키 존재 확인
         resp_info = result_info.get("resp_info")
         if not isinstance(resp_info, dict):
             logger.warning(
@@ -401,9 +390,6 @@ class MultiprocessWorker(QThread):
         self.finished.emit(self.task, summary)
 
 
-# ══════════════════════════════════════════════════════
-#  SCRAPY 설정
-# ══════════════════════════════════════════════════════
 def set_scrapy_settings(settings_dict: dict):
     """
     Scrapy 프로젝트 설정에 수집 파라미터를 적용하고 반환합니다.
@@ -454,9 +440,6 @@ def set_scrapy_settings(settings_dict: dict):
     return settings
 
 
-# ══════════════════════════════════════════════════════
-#  자식 프로세스 진입점
-# ══════════════════════════════════════════════════════
 def run_spider(request_info: dict, queue: multiprocessing.Queue) -> bool:
     """
     multiprocessing.Process의 target으로 호출되는 Scrapy 실행 진입점.

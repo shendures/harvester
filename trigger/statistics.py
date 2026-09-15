@@ -15,7 +15,6 @@ from .common import (
 class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
 
-    # ── data ───────────────────────────────────
     def reload(self):
         """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
         3초 주기 타이머는 세션 이력 테이블이 빠진 _refresh_summary()만 호출한다
@@ -32,11 +31,11 @@ class StatisticsPageTriggers:
         rows = store.get_url_maps()
         sessions = store.get_sessions()
 
-        total = len(rows)  # URL_LIST
-        ok = sum(1 for r in rows if str(r["status_code"]) == "200")  # URL_LIST 중 RESPONSE = 200인 것
+        total = len(rows)
+        ok = sum(1 for r in rows if str(r["status_code"]) == "200")
         rate = f"{ok / total * 100:.1f}%" if total else "0%"
         times = [r["pure_latency"] for r in rows if
-                 isinstance(r["pure_latency"], float)]  # URL_LIST의 각각 URL의 순수 레이턴시
+                 isinstance(r["pure_latency"], float)]
         avg_time_val = sum(times) / len(times) if times else 0.0
         avg_t = f"{avg_time_val:.2f}s" if times else "—"
 
@@ -45,7 +44,6 @@ class StatisticsPageTriggers:
         self.kpi_avg_t.update_value(avg_t)
         self.kpi_sessions.update_value(len(sessions))
 
-        # 상태 코드 분포 ( 통계 분석 - 상태 코드 분포 )
         status_cnt = defaultdict(int)
         for r in rows:
             status_cnt[str(r["status_code"])] += 1
@@ -54,7 +52,6 @@ class StatisticsPageTriggers:
         segments = [(k, v, STATUS_CODE_COLORS.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
         self.status_chart.set_data(segments)
 
-        # 응답 시간 분포 (bucket 0.2 intervals) ( 통계 분석 - 응답 시간 분포  )
         buckets = defaultdict(int)
         for t in times:
             b = round(round(t / 0.2) * 0.2, 1)
@@ -64,7 +61,6 @@ class StatisticsPageTriggers:
         values = [v for _, v in sorted_b]
         self.resp_chart.set_data(labels, values, avg_time_val, color=BLUE)
 
-        # Hourly trend (last 12 hours) ( 통계분석 - 시간대별 수집량 추이 )
         hour_ok = defaultdict(int)
         hour_err = defaultdict(int)
         now = datetime.now()
@@ -91,7 +87,6 @@ class StatisticsPageTriggers:
     def _refresh_session_table(self):
         sessions = store.get_sessions()
 
-        # Session table ( 통계 분석 - 세션 이력 )
         self.session_table.setRowCount(0)
         for idx, s in enumerate(reversed(sessions), start=1):
             r = self.session_table.rowCount()
@@ -108,7 +103,6 @@ class StatisticsPageTriggers:
                 item.setForeground(QColor(color))
                 self.session_table.setItem(r, col, item)
 
-    # ── hourly popup data ──────────────────────
     def _aggregate_hourly_all_time(self):
         """store 전체 URL 응답 기록을 날짜 구분 없이 시(0~23) 단위로 합산한다.
         reload()의 '최근 12시간' 집계와 달리 diff_h 필터 없이 ts.hour 자체를
@@ -130,7 +124,6 @@ class StatisticsPageTriggers:
         err_vals = [hour_err.get(h, 0) for h in range(24)]
         return labels, ok_vals, err_vals
 
-    # ── actions ────────────────────────────────
     def _on_reset_clicked(self):
         store.clear_url_maps()
         store.clear_sessions()

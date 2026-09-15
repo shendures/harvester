@@ -31,9 +31,6 @@ class TrayManagerTriggers:
         self.main_window.raise_()
 
 
-# ══════════════════════════════════════════════════════
-#  MainWindowSingle Mixin
-# ══════════════════════════════════════════════════════
 class MainWindowTriggersSingle:
     """MainWindowSingle의 페이지 전환·워커·종료 메서드"""
 
@@ -78,7 +75,6 @@ class MainWindowTriggersSingle:
         cfg.setdefault("job", "스케줄 실행")
 
         if self._worker and self._worker.isRunning():
-            # ── 실행 중인 작업이 있으면 대기 큐에 추가 ──
             self._pending_queue.append(cfg)
             queue_pos = len(self._pending_queue)
             self.log_manager.append_log(
@@ -267,7 +263,6 @@ class MainWindowTriggersSingle:
             self._activate_nav_page(NAV_REFINE)
             self.monitor_page.tab_widget.setCurrentIndex(0)
 
-        # ── 정상 완료 후 대기 큐 소비 ──
         self._consume_pending_queue()
 
     def closeEvent(self, event):
@@ -300,7 +295,6 @@ class MainWindowTriggersSingle:
         self.dashboard.prog_pct.setText("0%")
         self.dashboard.prog_lbl.setText("대기 중")
 
-    # ── 하단 상태바 슬롯 ─────────────────────────────
     def _update_status_bar(self, level: str, message: str):
         """last_log 시그널 수신 — 하단 상태바에 최신 로그 한 줄 표시"""
         color = LOG_LEVEL_COLORS.get(level, TEXT_SECONDARY)
@@ -313,7 +307,6 @@ class MainWindowTriggersSingle:
         self.status_msg.setText(last_line)
         self.status_msg.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px;")
 
-    # ── 전체 로그 다이얼로그 ─────────────────────────
     def _open_log_viewer(self):
         """상태바 버튼 클릭 — 이미 열려 있으면 앞으로 가져오고, 없으면 표시"""
         if self.log_manager.isVisible():
@@ -350,7 +343,6 @@ IMMEDIATE_MONITOR_JOBS = ("수동 실행", SELECT_JOB)
 class MainWindowTriggersMulti(MainWindowTriggersSingle):
     """MainWindowMulti(다중 수집 레이아웃)의 순차 수집·번들 라우팅 메서드"""
 
-    # ── 태스크 빌드 ───────────────────────────────────
     def _build_task(self, seq_no: str, job_name: str = BATCH_JOB) -> dict:
         """
         특정 블루프린트(seq_no)의 실행 태스크 dict를 구성합니다.
@@ -371,7 +363,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         task["extract"] = deepcopy(task["extract"])
         return task
 
-    # ── 순차 수집 시작 ─────────────────────────────────
     def _start_batch(self, seq_no_list: list, is_batch_all: bool = False):
         """"수집 목록" 페이지에서 체크된 블루프린트들을 순서대로 순차 실행합니다.
 
@@ -427,7 +418,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         bundle = self._get_or_create_bundle(seq_no)
         _reset_pages(bundle.dashboard, bundle.monitor_page)
 
-    # ── 스케줄 실행 (번들 라우팅) ──────────────────────
     def _reset_for_schedule(self, cfg: dict) -> None:
         """단일 버전과 동일하되, 리셋 대상을 "현재 활성 번들"이 아니라
         cfg가 지정한 seq_no의 번들로 고정합니다 — 스케줄 발동 시점에

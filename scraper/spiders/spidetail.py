@@ -28,10 +28,8 @@ class DetailExtractorSpider(BaseExtractorSpider):
                 yield engine.build_failure_item(response, self.request_info)
                 return
 
-            # 상세 페이지 요청할 정보가 있는 메인 페이지
             main_url = self.request_info["conditions"]["mainUrl"]
 
-            # 상세 페이지 요청할 정보가 있는 메인 페이지가 "HTML"
             if self.request_info["conditions"]["mainFormat"] == "html":
                 detail = self.request_info["conditions"]["items"]["detail"]
                 detail_selectors = response.xpath(detail)
@@ -40,7 +38,6 @@ class DetailExtractorSpider(BaseExtractorSpider):
                     detail_url = main_url.format(detail_kwd=str(detail_param))
                     yield engine.get_scrapy_request(detail_url, self.request_info["conditions"], callback=self.parse)
 
-            # 상세 페이지 요청할 정보가 있는 메인 페이지가 "JSON"
             elif self.request_info["conditions"]["mainFormat"] == "json":
 
                 root = self.request_info["conditions"]["items"]["detail_root"]
@@ -63,7 +60,6 @@ class DetailExtractorSpider(BaseExtractorSpider):
     def parse(self, response):
         try:
 
-            # RESPONSE STATUS 출력
             engine.get_response_status(response)
 
             if response.status != 200:
@@ -74,7 +70,6 @@ class DetailExtractorSpider(BaseExtractorSpider):
             excluded_keys = {'detail_root', 'detail', 'main_root', 'root'}
             _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key not in excluded_keys}
 
-            # 데이터 생성
             if self.request_info["conditions"]["mainFormat"] == "html":
                 selectors = response.xpath(".")
                 result = engine.get_result(self.request_info, selectors, _items)
@@ -82,7 +77,6 @@ class DetailExtractorSpider(BaseExtractorSpider):
                 selectors = utility.get_target(json.loads(response.text), self.request_info["conditions"]["items"]["main_root"])
                 result = engine.get_result(self.request_info, selectors, _items)
 
-            # 데이터 처리
             loader = engine.set_item_loader(response, self.request_info, result)
 
             yield loader.load_item()

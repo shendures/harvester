@@ -1,8 +1,3 @@
-# Define here the models for your scraped items
-#
-# See documentation in:
-# https://docs.scrapy.org/en/latest/topics/items.html
-
 import scrapy
 from scrapy.loader import ItemLoader
 from itemloaders.processors import TakeFirst
@@ -22,7 +17,6 @@ class DonasItemLoader(ItemLoader):
 
     default_item_class = DonasItem
 
-    # 기본적으로 리스트의 첫 번째 값만 반환
     default_output_processor = TakeFirst()
 
     def add_value(self, field_name, value, *processors, **kw):
@@ -38,5 +32,4 @@ class DonasItemLoader(ItemLoader):
         else:
             self.item.fields[field_name] = scrapy.Field()
 
-        # 부모 클래스의 add_value 호출
         super().add_value(field_name, value, *processors, **kw)

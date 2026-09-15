@@ -77,11 +77,11 @@ def get_schedule_settings():
 
     task_info["schedule"] = {
                                 'enabled': False,
-                                'schedule_nm': None,  # 작업명
+                                'schedule_nm': None,
                                 'interval': None,  # 매일(daily), 주간(weekly), 월간(monthly), 일일(specific)
-                                'run_at': None,  # datetime ( 다음 실행 시각 )
-                                'exec_str': None,  # 사람이 읽기 좋은 실행 주기 문자열
-                                'schedule_save_type': None  # 저장 설정
+                                'run_at': None,
+                                'exec_str': None,
+                                'schedule_save_type': None
                             }
     return task_info
 
@@ -115,11 +115,9 @@ def set_downloader_middlewares(request_info):
 
     downloader_middlewares = {}
 
-    # IP 설정
     if "proxy" in request_info.keys():
 
         if request_info["proxy"]["enabled"]:
-            # 프록시 IP
             downloader_middlewares["scraper.middlewares.RateLimitedProxyMiddleware"] = 100
 
         elif not request_info["proxy"]["enabled"]:
@@ -129,18 +127,15 @@ def set_downloader_middlewares(request_info):
         downloader_middlewares["scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware"] = 110
 
     if request_info["user_agent"]:
-        # USER-Agent 설정
         downloader_middlewares["scraper.middlewares.RandomUserAgentMiddleware"] = 400
     else:
         downloader_middlewares["scraper.middlewares.RandomUserAgentMiddleware"] = None
 
     if request_info["cookie"]:
-        # 쿠키 랜덤 설정
         downloader_middlewares["scraper.middlewares.RandomCookieMiddleware"] = 650
     else:
         downloader_middlewares["scraper.middlewares.RandomCookieMiddleware"] = None
 
-    # Latency 설정
     downloader_middlewares["scraper.middlewares.LatencyTrackingMiddleware"] = 743
 
     return downloader_middlewares

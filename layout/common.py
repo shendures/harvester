@@ -147,17 +147,14 @@ def build_status_bar(open_log_viewer_callback):
     sbl.setContentsMargins(14, 0, 14, 0)
     sbl.setSpacing(8)
 
-    # 레벨 태그 (색상 표시)
     status_level = parts.make_label("", TEXT_MUTED, 11)
     status_level.setFixedWidth(48)
     sbl.addWidget(status_level)
 
-    # 최신 로그 메시지 한 줄
     status_msg = parts.make_label("대기 중", TEXT_MUTED, 11)
     status_msg.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     sbl.addWidget(status_msg, 1)
 
-    # 전체 로그 보기 버튼
     log_view_btn = parts.outline_btn("로그 전체 보기 ▲")
     log_view_btn.clicked.connect(open_log_viewer_callback)
     sbl.addWidget(log_view_btn)

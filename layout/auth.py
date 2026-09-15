@@ -147,7 +147,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
             item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             self._cred_table.setItem(r, col, item)
 
-        # 상태 칩
         sc = st_colors.get(data["status"], TEXT_MUTED)
         bg_map = {"유효": "#052e16", "만료임박": "#451a03", "만료": "#450a0a"}
         bg = bg_map.get(data["status"], BG_HOVER)
@@ -159,7 +158,6 @@ class AuthManagerPage(QWidget, AuthManagerPageTriggers):
         sl3.addWidget(status_lbl)
         self._cred_table.setCellWidget(r, 4, sw3)
 
-        # 삭제 버튼
         del_btn = QPushButton("삭제")
         del_btn.setFixedHeight(28)
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)

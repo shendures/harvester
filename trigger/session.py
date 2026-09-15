@@ -198,9 +198,6 @@ class ProxyTestProgressDialog(QDialog):
         event.accept()
 
 
-# ══════════════════════════════════════════════════════
-#  SessionSettingsPage Mixin
-# ══════════════════════════════════════════════════════
 class SessionSettingsPageTriggers:
     """SessionSettingsPage의 프록시 추가·삭제·임포트·활성화 메서드"""
 
@@ -254,7 +251,6 @@ class SessionSettingsPageTriggers:
                     self._proxy_rows.append(data)
                     self._insert_table_row(data)
             finally:
-                # 예외 발생 시에도 반드시 복원
                 t.blockSignals(False)
                 t.setUpdatesEnabled(True)
 
@@ -394,9 +390,7 @@ class SessionSettingsPageTriggers:
             return
         row = index.row()
         menu = QMenu(self)
-        # QSS는 THEME.PROXY_CONTEXT_MENU_QSS 프로퍼티에서 관리
         menu.setStyleSheet(theme.PROXY_CONTEXT_MENU_QSS)
-        # 활성 토글 — checkState() 기준 (ItemIsUserCheckable 체크박스, col 4 "상태")
         enabled_item = self._proxy_table.item(row, 4)
         is_enabled = (
             enabled_item.checkState() == Qt.CheckState.Checked
@@ -404,7 +398,6 @@ class SessionSettingsPageTriggers:
         toggle_txt = "비활성으로 전환" if is_enabled else "활성으로 전환"
         toggle_act = menu.addAction(toggle_txt)
         menu.addSeparator()
-        # 삭제
         del_act = menu.addAction("🗑  이 행 삭제")
         del_act.setProperty("is_delete", True)
 
@@ -425,13 +418,11 @@ class SessionSettingsPageTriggers:
             return
         t.blockSignals(True)
         try:
-            # col 4 — 사용 여부 체크박스
             status_item = t.item(row, 4)
             if status_item:
                 status_item.setCheckState(
                     Qt.CheckState.Checked if enable else Qt.CheckState.Unchecked
                 )
-            # _proxy_rows 동기화
             if row < len(self._proxy_rows):
                 self._proxy_rows[row]["enabled"] = enable
         finally:
