@@ -12,10 +12,20 @@ class RankedBarChart(QWidget):
     """segments = [(label, value, color)] — 값 내림차순 가로 막대 순위 리스트.
     값 옆에 전체 대비 비율을 괄호로 함께 표시한다."""
 
+    # 라벨 열의 최소 폭 — 상태 코드(3자리) 기준값. 이보다 넓은 라벨은
+    # paintEvent에서 실제 문자열 폭을 재서 열을 넓힌다.
+    LABEL_COL_MIN_W = 46
+
     def __init__(self, segments=None, parent=None):
         super().__init__(parent)
         self.segments = segments or []
-        self.setMinimumHeight(170)
+        # statistics.py Row2 카드("상태 코드 분포") 전용 — STATUS_CODE_COLORS
+        # (trigger/common.py)가 구분하는 상태 코드 6종(200/301/404/429/500/000)이
+        # 모두 표시돼도 행당 26px 정도로 여유 있게 보이도록 6×26=156으로 잡았다.
+        # setMinimumHeight가 아니라 setFixedHeight인 이유는 이 값보다 커지면
+        # (형제 카드가 더 커서 강제로 늘어나는 등) 카드 안에 빈 공백만 남기
+        # 때문 — 집계 표 카드에도 같은 이유로 적용했다.
+        self.setFixedHeight(156)
 
     def set_data(self, segments):
         self.segments = segments
@@ -33,7 +43,13 @@ class RankedBarChart(QWidget):
         max_v = max(v for _, v, _ in rows) or 1
         n = len(rows)
         row_h = H / n
-        label_w, count_w, track_h = 46, 92, 10
+        # 한글 라벨("정상 수집" 등)은 3자리 상태 코드보다 넓어 고정 폭으로는 잘리므로,
+        # 실제 문자열 폭을 재서 최소 폭과 넓은 쪽을 쓴다
+        label_font = QFont("Consolas", 10, QFont.Weight.Bold)
+        label_fm = QFontMetrics(label_font)
+        label_w = max(self.LABEL_COL_MIN_W,
+                      max(label_fm.horizontalAdvance(str(lb)) for lb, _, _ in rows))
+        count_w, track_h = 92, 10
         track_x0, track_x1 = label_w + 8, W - count_w
 
         for i, (label, val, color) in enumerate(rows):
@@ -41,7 +57,7 @@ class RankedBarChart(QWidget):
             cy = y + row_h / 2
 
             p.setPen(QColor(TEXT_PRIMARY))
-            p.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+            p.setFont(label_font)
             p.drawText(0, int(y), label_w, int(row_h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, str(label))
 
             p.setPen(Qt.PenStyle.NoPen)
@@ -71,7 +87,11 @@ class HeatStripChart(QWidget):
         self.values = values or []
         self.avg = avg
         self.color = QColor(color)
-        self.setMinimumHeight(170)
+        # statistics.py Row2 카드("응답 시간 분포 (s)") 전용 — 옆 "상태 코드 분포"
+        # 카드와 높이를 맞추기 위해 같은 156을 쓴다. 고정 비율 밴드 하나만
+        # 그려서 어떤 높이든 자연스럽게 늘어난다. setFixedHeight를 쓰는 이유는
+        # RankedBarChart와 같다(주석 참고).
+        self.setFixedHeight(156)
 
     def set_data(self, labels, values, avg, color=None):
         self.labels = labels
