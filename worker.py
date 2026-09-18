@@ -248,12 +248,22 @@ class MultiprocessWorker(QThread):
 
         # 이하 모든 처리는 대상 URL의 최초 응답에 대해서만 실행됨
         processed_urls.add(res_url)
+
+        # 200 응답인데 예외 없이 추출 0건인지 판정 — 아래 로그 분기와 url_map이 같은
+        # 값을 공유한다. 통계 페이지가 이 응답을 "빈 응답"으로 따로 세려면 url_map에도
+        # 남아야 하는데, 기존에는 로그로만 흘러가 통계에서는 성공으로 집계됐다.
+        extracted     = resp_info.get("data") or []
+        extract_error = resp_info.get("extract_error")
+        empty_extract = status_code == 200 and not extracted and not extract_error
+
         self.store.add_url_map({
-            "req_url":      res_url,
-            "status_code":  status_code,
-            "pure_latency": resp_time,
-            "session":      len([callback_url]),
-            "timestamp":    result_info["resp_info"]["timestamp"],
+            "req_url":       res_url,
+            "status_code":   status_code,
+            "pure_latency":  resp_time,
+            "total_latency": result_info["resp_info"].get("total_latency"),
+            "session":       len([callback_url]),
+            "timestamp":     result_info["resp_info"]["timestamp"],
+            "empty_extract": empty_extract,
         })
         self._done += 1
 
@@ -262,9 +272,7 @@ class MultiprocessWorker(QThread):
         # 200인데 예외 없이 추출 데이터가 0건인 경우("warn")는 응답 자체는 정상이므로
         # errors에는 포함하지 않되, resp_info에 empty_extract를 남겨 대시보드/Raw 탭이
         # 동일한 기준으로 표시할 수 있게 한다(각 화면이 서로 다른 조건을 재구현하지 않도록).
-        extracted     = resp_info.get("data") or []
-        extract_error = resp_info.get("extract_error")
-        if status_code == 200 and not extracted and not extract_error:
+        if empty_extract:
             resp_info["empty_extract"] = True
             level = "warn"
             log_text = f"200 응답이지만 추출 데이터 0건: {res_url}"
