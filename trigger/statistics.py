@@ -5,17 +5,14 @@ import calendar
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import NamedTuple
-from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import QTableWidgetItem
 from PyQt6.QtGui import QColor
 
 from .common import (
     store, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED,
-    GREEN, RED, BLUE, AMBER, PURPLE, STATUS_CODE_COLORS,
+    GREEN, RED, BLUE, AMBER, STATUS_CODE_COLORS,
 )
-
-FAILED_URL_TOP_N = 10
 
 # 수집량 추이 카드의 기간 필터 — layout/statistics.py가 필터 메뉴를 만들 때
 # 이 튜플을 그대로 읽어간다. 기간별 구간(시작·칸 수·범위 문구)은 표시 방식에
@@ -167,14 +164,12 @@ class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
 
     def reload(self):
-        """요약(KPI·차트)과 이력/집계 테이블을 모두 갱신하는 전체 리로드.
+        """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
         3초 주기 타이머는 테이블이 빠진 _refresh_summary()만 호출한다
         (layout/statistics.py 참고) — 세션 이력은 세션 종료 시점에만 바뀌므로
-        매 틱 재구성이 불필요하고, 재구성마다 사용자가 적용한 정렬도 풀렸었다.
-        집계 테이블 3종도 같은 이유로 이쪽 경로에만 둔다."""
+        매 틱 재구성이 불필요하고, 재구성마다 사용자가 적용한 정렬도 풀렸었다."""
         self._refresh_summary()
         self._refresh_session_table()
-        self._refresh_aggregate_tables()
 
     def _refresh_summary(self):
         toolbar = getattr(self.window(), "global_toolbar", None)
@@ -185,8 +180,10 @@ class StatisticsPageTriggers:
         sessions = store.get_sessions()
 
         total = len(rows)
-        ok = sum(1 for r in rows if str(r["status_code"]) == "200")
-        rate = f"{ok / total * 100:.1f}%" if total else "0%"
+        status_cnt = defaultdict(int)
+        for r in rows:
+            status_cnt[str(r["status_code"])] += 1
+        rate = f"{status_cnt.get('200', 0) / total * 100:.1f}%" if total else "0%"
         times = [r["pure_latency"] for r in rows if
                  isinstance(r["pure_latency"], float)]
         avg_time_val = sum(times) / len(times) if times else 0.0
@@ -197,11 +194,6 @@ class StatisticsPageTriggers:
         self.kpi_avg_t.update_value(avg_t)
         self.kpi_sessions.update_value(len(sessions))
 
-        status_cnt = defaultdict(int)
-        for r in rows:
-            status_cnt[str(r["status_code"])] += 1
-        # ── 수정: STATUS_CODE_COLORS 키가 str이므로 조회 키도 str로 통일해
-        # 단일 응답 시 Gray 오류 해소 ──
         segments = [(k, v, STATUS_CODE_COLORS.get(str(k), ACCENT_LIGHT)) for k, v in sorted(status_cnt.items())]
         self.status_chart.set_data(segments)
 
@@ -303,8 +295,6 @@ class StatisticsPageTriggers:
         """url_maps를 한 번만 순회해 행 기반 집계를 모두 산출한다 — 3초마다
         호출되는데 행 수는 통계 초기화 전까지 계속 누적되므로, 지표마다 따로
         순회하지 않는다."""
-        url_fail = defaultdict(lambda: {"count": 0, "last_status": "", "last_seen": ""})
-        host = defaultdict(lambda: {"req": 0, "ok": 0, "lat_sum": 0.0, "lat_cnt": 0})
         daily_ok, daily_err = defaultdict(int), defaultdict(int)
         status_group = defaultdict(int)
         outcome = defaultdict(int)
@@ -313,28 +303,12 @@ class StatisticsPageTriggers:
         for r in rows:
             code = str(r.get("status_code", ""))
             is_ok = code == "200"
-            req_url = r.get("req_url") or ""
             timestamp = r.get("timestamp") or ""
 
             status_group[_status_group(code)] += 1
             outcome[_outcome(r, code, is_ok)] += 1
 
-            if not is_ok:
-                entry = url_fail[req_url]
-                entry["count"] += 1
-                # rows는 수집 순서대로 쌓이므로 마지막에 덮어쓴 값이 최신 기록이다
-                entry["last_status"] = code
-                entry["last_seen"] = timestamp
-
-            entry = host[urlparse(req_url).netloc or "—"]
-            entry["req"] += 1
-            entry["ok"] += 1 if is_ok else 0
-
             pure = r.get("pure_latency")
-            if isinstance(pure, float):
-                entry["lat_sum"] += pure
-                entry["lat_cnt"] += 1
-
             total_latency = r.get("total_latency")
             if isinstance(pure, float) and isinstance(total_latency, float):
                 overhead_sum += max(total_latency - pure, 0.0)
@@ -344,7 +318,6 @@ class StatisticsPageTriggers:
                 (daily_ok if is_ok else daily_err)[timestamp[:10]] += 1
 
         return {
-            "url_fail": url_fail, "host": host,
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome,
             "overhead_sum": overhead_sum, "overhead_cnt": overhead_cnt,
@@ -372,87 +345,6 @@ class StatisticsPageTriggers:
                 self.session_table.setItem(r, col, item)
 
         self.session_badge.setText(f"{len(sessions)}건")
-        self._fit_table_height(self.session_table, len(sessions))
-
-    def _fill_table(self, table, records):
-        """records = [[(값, 색), ...], ...]로 표를 다시 채운다 — 집계 표 3종 공용.
-        셀 값이 길어 잘릴 수 있는 URL/호스트를 위해 전 셀에 툴팁을 단다."""
-        table.setRowCount(0)
-        for record in records:
-            r = table.rowCount()
-            table.insertRow(r)
-            for col, (val, color) in enumerate(record):
-                item = QTableWidgetItem(val)
-                item.setForeground(QColor(color))
-                item.setToolTip(val)
-                table.setItem(r, col, item)
-
-    def _refresh_aggregate_tables(self):
-        """반복 실패 URL / 호스트별 현황 / 작업별 성능 표를 갱신한다. 표를 채운 뒤
-        카운트 배지 텍스트와 표 높이(_fit_table_height — 실제 행 수만큼만 차지)를
-        함께 갱신해, 데이터가 적을 때 카드에 빈 공백이 남지 않게 한다."""
-        agg = self._aggregate_rows(store.get_url_maps())
-
-        top_failures = sorted(agg["url_fail"].items(), key=lambda kv: kv[1]["count"], reverse=True)
-        if top_failures:
-            rows = [[(url, ACCENT_LIGHT), (str(info["count"]), RED),
-                     (info["last_status"], STATUS_CODE_COLORS.get(info["last_status"], TEXT_PRIMARY)),
-                     (info["last_seen"], TEXT_MUTED)]
-                    for url, info in top_failures[:FAILED_URL_TOP_N]]
-        else:
-            # 빈 표는 "실패 없음"과 "수집 이력 없음"이 구분되지 않아 한 줄로 알린다
-            message = "실패한 URL이 없습니다" if store.get_url_maps() else "수집 이력이 없습니다"
-            rows = [[(message, TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED)]]
-        self._fill_table(self.failed_url_table, rows)
-        self.failed_url_badge.setText(f"{len(top_failures)}건")
-        self._fit_table_height(self.failed_url_table, len(rows))
-
-        hosts = sorted(agg["host"].items(), key=lambda kv: kv[1]["req"], reverse=True)
-        if hosts:
-            host_rows = [
-                [(host, ACCENT_LIGHT), (str(info["req"]), TEXT_PRIMARY),
-                 (f"{info['ok'] / info['req'] * 100:.1f}%", GREEN if info["ok"] == info["req"] else AMBER),
-                 (f"{info['lat_sum'] / info['lat_cnt']:.2f}s" if info["lat_cnt"] else "—", BLUE)]
-                for host, info in hosts
-            ]
-        else:
-            # failed_url_table과 달리 호스트는 요청마다 항상 존재하므로 구분할
-            # "성공/실패" 케이스가 없다 — 수집 이력 자체가 없는 경우만 있다
-            host_rows = [[("수집 이력이 없습니다", TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED)]]
-        self._fill_table(self.host_table, host_rows)
-        self.host_badge.setText(f"{len(hosts)}건")
-        self._fit_table_height(self.host_table, len(host_rows))
-
-        self._refresh_job_table()
-
-    def _refresh_job_table(self):
-        """세션 이력을 블루프린트(title)별로 묶어 성능을 비교한다 — 세션 이력
-        테이블은 세션을 나열만 할 뿐 작업 단위 집계가 없었다."""
-        jobs = defaultdict(lambda: {"sessions": 0, "total": 0, "success": 0, "elapsed": 0.0, "avg_sum": 0.0})
-        for s in store.get_sessions():
-            entry = jobs[s.get("title") or s.get("job") or "—"]
-            entry["sessions"] += 1
-            entry["total"] += s.get("total", 0)
-            entry["success"] += s.get("success", 0)
-            entry["elapsed"] += s.get("elapsed", 0) or 0
-            entry["avg_sum"] += s.get("avg_time", 0) or 0
-
-        sorted_jobs = sorted(jobs.items(), key=lambda kv: kv[1]["total"], reverse=True)
-        if sorted_jobs:
-            rows = [
-                [(title, TEXT_PRIMARY), (str(i["sessions"]), TEXT_MUTED), (str(i["total"]), TEXT_PRIMARY),
-                 (f"{i['success'] / i['total'] * 100:.1f}%" if i["total"] else "—",
-                  GREEN if i["success"] == i["total"] else AMBER),
-                 (f"{i['avg_sum'] / i['sessions']:.2f}s", BLUE),
-                 (f"{i['total'] / i['elapsed']:.1f}/s" if i["elapsed"] else "—", PURPLE)]
-                for title, i in sorted_jobs
-            ]
-        else:
-            rows = [[("작업 이력이 없습니다", TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED),
-                     ("", TEXT_MUTED), ("", TEXT_MUTED), ("", TEXT_MUTED)]]
-        self._fill_table(self.job_table, rows)
-        self.job_badge.setText(f"{len(sorted_jobs)}건")
-        self._fit_table_height(self.job_table, len(rows))
 
     def _aggregate_all_time(self, period: str) -> AllTimeTrend:
         """store 전체 URL 응답 기록을 period의 전체 보기 방식으로 접어 합산한다."""

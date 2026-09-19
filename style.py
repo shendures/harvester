@@ -673,9 +673,6 @@ class _FilterHeaderView(QHeaderView):
 #  EqualSpacingTable
 #  — Initial Equal distribution · Free resize + H-scroll · Double-click auto-fit
 # ──────────────────────────────────────────────────────
-_QWIDGETSIZE_MAX = 16777215  # Qt의 QWIDGETSIZE_MAX (PyQt6에 미노출)
-
-
 class EqualSpacingTable(QTableWidget):
     """
     초기 Equal 분배 + 자유 리사이즈 테이블 (항상 viewport 폭에 정확히 맞춤)
@@ -760,7 +757,6 @@ class EqualSpacingTable(QTableWidget):
         self._row_height = row_height
         self._col_padding = col_padding
         self._hscroll_handle = hscroll_handle
-        self._preferred_height = None
 
         # True: 아직 사용자가 드래그한 적 없음 → 창 리사이즈 시 재분배
         self._is_equal_state = True
@@ -1061,22 +1057,6 @@ class EqualSpacingTable(QTableWidget):
                 self.setColumnWidth(c, w)
         finally:
             self._resizing = False
-
-    # ── 선호 높이 (카드 안에서 빈 표도 꽉 채우기) ────────
-    def set_preferred_height(self, height: int) -> None:
-        """표의 선호 높이를 지정한다 — 단독 배치에선 이 높이만 차지하고, 카드가
-        이웃 때문에 더 커지면 남는 높이를 표가 흡수해 값이 없어도 카드를 채운다."""
-        self._preferred_height = height
-        self.setMinimumHeight(height)
-        self.setMaximumHeight(_QWIDGETSIZE_MAX)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.updateGeometry()
-
-    def sizeHint(self) -> QSize:
-        hint = super().sizeHint()
-        if self._preferred_height is not None:
-            hint.setHeight(self._preferred_height)
-        return hint
 
     # ── Auto-fit (더블클릭 / 공개 API) ────────────────
     def fit_column(self, logical: int):

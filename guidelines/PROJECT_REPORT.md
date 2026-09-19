@@ -61,7 +61,7 @@ GUI 레이아웃·페이지 정의(로직 없음, 같은 이름의 `trigger/*` M
 | 파일 | 클래스/함수 | 역할 |
 |---|---|---|
 | `common.py` | — | 싱글턴(`store`/`theme`/`parts`)·Single/Multi 공유 허브 |
-| `charts.py`/`statistics.py` | `StatisticsPage` 등 | 통계 대시보드(탭 없는 단일 스크롤 화면) — KPI·상태코드·응답시간·응답결과 → 세션 이력 표 → 수집량 추이 카드(기간 필터로 시간대별/주간별/월별을 고르고 전환 버튼으로 최근 기준/현재 일자 기준을 바꿈) → 실패 URL·호스트·작업 집계 표, 초기화 버튼은 본문 맨 위 우측 |
+| `charts.py`/`statistics.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 — 본문은 독립 패널 위젯(`StatisticsPanel`), `StatisticsPage`는 이를 감싼 페이지(탭 없는 단일 스크롤 화면) — KPI·상태코드·응답시간·응답결과 → 세션 이력 표 → 수집량 추이 카드(기간 필터로 시간대별/주간별/월별을 고르고 전환 버튼으로 최근 기준/현재 일자 기준을 바꿈), 초기화 버튼은 본문 맨 위 우측 |
 | `scheduler.py`/`session.py`/`auth.py` | `SchedulerPage` 등 | 스케줄·세션(딜레이/UA/프록시)·인증 관리 |
 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | `single/` | `MainWindowSingle` 등 | 단일 수집 레이아웃 — 기준선 |
