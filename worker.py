@@ -264,6 +264,7 @@ class MultiprocessWorker(QThread):
             "session":       len([callback_url]),
             "timestamp":     result_info["resp_info"]["timestamp"],
             "empty_extract": empty_extract,
+            "seq_no":        self.task.get("seq_no"),
         })
         self._done += 1
 

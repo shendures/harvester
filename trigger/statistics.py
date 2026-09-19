@@ -1,8 +1,10 @@
 # trigger/statistics.py
 # StatisticsPage의 데이터 로드·내보내기 메서드(StatisticsPageTriggers).
 
+import calendar
 from collections import defaultdict
 from datetime import datetime, timedelta
+from typing import NamedTuple
 from urllib.parse import urlparse
 
 from PyQt6.QtWidgets import QTableWidgetItem
@@ -13,8 +15,29 @@ from .common import (
     GREEN, RED, BLUE, AMBER, PURPLE, STATUS_CODE_COLORS,
 )
 
-DAILY_TREND_DAYS = 14
 FAILED_URL_TOP_N = 10
+
+# 수집량 추이 카드의 기간 필터 — layout/statistics.py가 필터 메뉴를 만들 때
+# 이 튜플을 그대로 읽어간다. 기간별 구간(시작·칸 수·범위 문구)은 표시 방식에
+# 따라 trend_window()가 정한다. 시간대별만 1시간 칸이고 나머지는 1일 칸이다.
+TREND_HOURLY, TREND_WEEKLY, TREND_MONTHLY = "시간대별", "주간별", "월별"
+TREND_PERIODS = (TREND_HOURLY, TREND_WEEKLY, TREND_MONTHLY)
+
+# 표시 방식 — 최근 N 구간(기본) / 오늘이 속한 일·주·월 전체
+TREND_MODE_RECENT, TREND_MODE_CALENDAR = "최근 기준", "현재 일자 기준"
+
+HOURS_PER_DAY = 24
+DAYS_PER_WEEK = 7
+DAYS_IN_MONTH_MAX = 31
+WEEKDAY_LABELS = ("일", "월", "화", "수", "목", "금", "토")
+
+# 전체 보기 팝업의 칸 설명 — 기간의 한 주기(하루/한 주/한 달) 안의 칸을 전체
+# 이력에 걸쳐 접어서 합산한다. layout/statistics.py가 툴팁·팝업 제목에 그대로 쓴다.
+TREND_ALL_TIME_CAPTIONS = {
+    TREND_HOURLY: "00~24시 누적",
+    TREND_WEEKLY: "요일별 누적",
+    TREND_MONTHLY: "일자별 누적",
+}
 
 # 통계 "응답 결과 구성" 카드의 4분류 — 표시 순서와 색을 한곳에 묶는다.
 # "연결 실패"에 TEXT_MUTED를 쓰는 건 나란히 놓인 "상태 코드 분포" 카드의
@@ -53,6 +76,91 @@ def _outcome(row: dict, code: str, is_ok: bool) -> str:
     if not is_ok:
         return OUTCOME_HTTP_ERR
     return OUTCOME_EMPTY if row.get("empty_extract") else OUTCOME_OK
+
+
+class TrendWindow(NamedTuple):
+    """수집량 추이 카드가 그릴 구간 — start는 첫 칸의 시작 시각(시간대별은 시
+    단위, 그 외는 일 단위 자정), buckets는 칸 수, range_text는 카드명에 쓸 범위."""
+    start: datetime
+    buckets: int
+    range_text: str
+
+
+def _sunday_on_or_before(day: datetime) -> datetime:
+    return day - timedelta(days=(day.weekday() + 1) % DAYS_PER_WEEK)
+
+
+def _week_of_month(day: datetime) -> tuple:
+    """일요일 시작 달력 주 기준으로 day가 속한 주의 시작일(일요일)과, day가 속한
+    달의 1일이 든 주를 1주차로 셀 때의 주차를 반환한다."""
+    week_start = _sunday_on_or_before(day)
+    first_week_start = _sunday_on_or_before(day.replace(day=1))
+    return week_start, (week_start - first_week_start).days // DAYS_PER_WEEK + 1
+
+
+def _recent_window(period: str, now: datetime, today: datetime) -> TrendWindow:
+    """오늘(현재 시각)을 끝으로 하는 최근 24시간 / 7일 / 31일(월별은 한 달 최대 일수) 구간."""
+    if period == TREND_HOURLY:
+        this_hour = now.replace(minute=0, second=0, microsecond=0)
+        return TrendWindow(this_hour - timedelta(hours=HOURS_PER_DAY - 1),
+                           HOURS_PER_DAY, f"최근 {HOURS_PER_DAY}시간")
+    days = DAYS_PER_WEEK if period == TREND_WEEKLY else DAYS_IN_MONTH_MAX
+    return TrendWindow(today - timedelta(days=days - 1), days, f"최근 {days}일")
+
+
+def _calendar_window(period: str, today: datetime) -> TrendWindow:
+    """오늘이 속한 일(00~24시) / 주(일~토) / 월(1일~말일) 전체 구간."""
+    if period == TREND_HOURLY:
+        return TrendWindow(today, HOURS_PER_DAY, f"{today.month}/{today.day} 00~24시")
+    if period == TREND_WEEKLY:
+        week_start, week_no = _week_of_month(today)
+        return TrendWindow(week_start, DAYS_PER_WEEK, f"{today.month}월 {week_no}주차")
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    return TrendWindow(today.replace(day=1), days_in_month, f"{today.month}월")
+
+
+def trend_window(period: str, mode: str, now: datetime) -> TrendWindow:
+    """기간(시간대별/주간별/월별)과 표시 방식에 맞는 추이 구간을 계산한다.
+    now를 인자로 받아 시각에 의존하지 않는 순수 함수로 둔다."""
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if mode == TREND_MODE_CALENDAR:
+        return _calendar_window(period, today)
+    return _recent_window(period, now, today)
+
+
+class AllTimeTrend(NamedTuple):
+    """전체 보기 팝업이 그릴 접어서 합산한 수집량 — caption은 칸 설명(팝업 제목용)."""
+    caption: str
+    labels: list
+    ok_vals: list
+    err_vals: list
+
+
+# 기간별 (칸 라벨, 타임스탬프 → 칸 번호) — 한 주기 안에서의 위치로 접는다.
+# 요일은 일요일을 0번 칸으로 둔다(weekday()는 월요일이 0).
+_ALL_TIME_FOLDS = {
+    TREND_HOURLY: ([f"{h:02d}h" for h in range(HOURS_PER_DAY)], lambda ts: ts.hour),
+    TREND_WEEKLY: (list(WEEKDAY_LABELS), lambda ts: (ts.weekday() + 1) % DAYS_PER_WEEK),
+    TREND_MONTHLY: ([f"{d}일" for d in range(1, DAYS_IN_MONTH_MAX + 1)], lambda ts: ts.day - 1),
+}
+
+
+def aggregate_all_time(rows, period: str) -> AllTimeTrend:
+    """전체 URL 응답 기록을 기간의 한 주기(하루의 시 / 한 주의 요일 / 한 달의 일자)
+    안의 칸으로 접어 합산한다. 이력이 아무리 길어도 칸 수가 고정된다. 타임스탬프
+    형식이 잘못됐거나 timestamp/status_code가 없는 행은 건너뛴다."""
+    labels, slot_of = _ALL_TIME_FOLDS[period]
+    ok_vals, err_vals = [0] * len(labels), [0] * len(labels)
+
+    for r in rows:
+        try:
+            ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+            counts = ok_vals if str(r["status_code"]) == "200" else err_vals
+        except (ValueError, KeyError, TypeError):
+            continue
+        counts[slot_of(ts)] += 1
+
+    return AllTimeTrend(TREND_ALL_TIME_CAPTIONS[period], list(labels), ok_vals, err_vals)
 
 
 class StatisticsPageTriggers:
@@ -106,29 +214,6 @@ class StatisticsPageTriggers:
         values = [v for _, v in sorted_b]
         self.resp_chart.set_data(labels, values, avg_time_val, color=BLUE)
 
-        hour_ok = defaultdict(int)
-        hour_err = defaultdict(int)
-        now = datetime.now()
-        for r in rows:
-            try:
-                ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
-                diff_h = int((now - ts).total_seconds() // 3600)
-                if 0 <= diff_h < 12:
-                    bucket = now.hour - diff_h
-                    if str(r["status_code"]) == "200":
-                        hour_ok[bucket] += 1
-                    else:
-                        hour_err[bucket] += 1
-            except (ValueError, KeyError, TypeError):
-                pass
-        hours = [(now - timedelta(hours=11 - i)).hour for i in range(12)]
-        ok_vals = [hour_ok.get(h, 0) for h in hours]
-        err_vals = [hour_err.get(h, 0) for h in hours]
-        self.trend_chart.set_data(
-            [f"{h:02d}h" for h in hours],
-            [("성공", ok_vals, GREEN), ("실패", err_vals, RED)]
-        )
-
         agg = self._aggregate_rows(rows)
 
         # 4분류를 값이 0이어도 항상 모두 넘긴다 — RankedBarChart는 빈 리스트면
@@ -149,13 +234,55 @@ class StatisticsPageTriggers:
 
         self._refresh_quality_kpis(sessions, agg)
 
-        days = [(datetime.now() - timedelta(days=DAILY_TREND_DAYS - 1 - i)).strftime("%Y-%m-%d")
-                for i in range(DAILY_TREND_DAYS)]
-        self.daily_chart.set_data(
-            [d[5:] for d in days],
-            [("성공", [agg["daily_ok"].get(d, 0) for d in days], GREEN),
-             ("실패", [agg["daily_err"].get(d, 0) for d in days], RED)]
-        )
+        self._refresh_trend_chart(rows, agg)
+
+    def _refresh_trend_chart(self, rows, agg):
+        """선택된 기간·표시 방식(layout/statistics.py의 self.trend_period,
+        self.trend_mode)에 맞춰 수집량 추이 카드(성공/실패 막대)와 카드명을
+        다시 그린다. 매 갱신마다 현재 시각으로 구간을 잡으므로 자정이 지나면
+        시간대/주차/월이 자동으로 넘어간다."""
+        window = trend_window(self.trend_period, self.trend_mode, datetime.now())
+        if self.trend_period == TREND_HOURLY:
+            labels, ok_vals, err_vals = self._hourly_counts(rows, window.start, window.buckets)
+        else:
+            labels, ok_vals, err_vals = self._daily_counts(agg, window.start, window.buckets)
+
+        self._update_trend_title(window.range_text)
+        self.trend_chart.set_data(
+            labels, [("성공", ok_vals, GREEN), ("실패", err_vals, RED)])
+
+    @staticmethod
+    def _hourly_counts(rows, start: datetime, hours: int):
+        """[start, start+hours) 구간을 1시간 칸으로 집계해 (라벨, 성공, 오류)를
+        반환한다. 칸 번호를 start부터의 경과 시간으로 정하므로 구간이 자정을
+        넘어도 서로 다른 시각이 한 칸에 섞이지 않는다."""
+        ok_vals, err_vals = [0] * hours, [0] * hours
+        end = start + timedelta(hours=hours)
+
+        for r in rows:
+            try:
+                ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+            except (ValueError, KeyError, TypeError):
+                continue
+            if not start <= ts < end:
+                continue
+            slot = (ts - start) // timedelta(hours=1)
+            counts = ok_vals if str(r.get("status_code", "")) == "200" else err_vals
+            counts[slot] += 1
+
+        labels = [f"{(start + timedelta(hours=i)).hour:02d}h" for i in range(hours)]
+        return labels, ok_vals, err_vals
+
+    @staticmethod
+    def _daily_counts(agg, start: datetime, days: int):
+        """start부터 days일을 1일 칸으로 집계해 (라벨, 성공, 오류)를 반환한다 —
+        _aggregate_rows()가 이미 만든 daily_ok/daily_err(키 = "YYYY-MM-DD")를
+        읽기만 해서 행을 다시 순회하지 않는다."""
+        dates = [start + timedelta(days=i) for i in range(days)]
+        keys = [d.strftime("%Y-%m-%d") for d in dates]
+        return ([d.strftime("%m-%d") for d in dates],
+                [agg["daily_ok"].get(k, 0) for k in keys],
+                [agg["daily_err"].get(k, 0) for k in keys])
 
     def _refresh_quality_kpis(self, sessions, agg):
         """세션 누계로 수집 품질 지표를 갱신한다. url_count(생성된 URL 수)와
@@ -327,26 +454,9 @@ class StatisticsPageTriggers:
         self.job_badge.setText(f"{len(sorted_jobs)}건")
         self._fit_table_height(self.job_table, len(rows))
 
-    def _aggregate_hourly_all_time(self):
-        """store 전체 URL 응답 기록을 날짜 구분 없이 시(0~23) 단위로 합산한다.
-        reload()의 '최근 12시간' 집계와 달리 diff_h 필터 없이 ts.hour 자체를
-        버킷 키로 쓴다."""
-        rows = store.get_url_maps()
-        hour_ok = defaultdict(int)
-        hour_err = defaultdict(int)
-        for r in rows:
-            try:
-                ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
-                if str(r["status_code"]) == "200":
-                    hour_ok[ts.hour] += 1
-                else:
-                    hour_err[ts.hour] += 1
-            except (ValueError, KeyError, TypeError):
-                pass
-        labels = [f"{h:02d}h" for h in range(24)]
-        ok_vals = [hour_ok.get(h, 0) for h in range(24)]
-        err_vals = [hour_err.get(h, 0) for h in range(24)]
-        return labels, ok_vals, err_vals
+    def _aggregate_all_time(self, period: str) -> AllTimeTrend:
+        """store 전체 URL 응답 기록을 period의 전체 보기 방식으로 접어 합산한다."""
+        return aggregate_all_time(store.get_url_maps(), period)
 
     def _on_reset_clicked(self):
         store.clear_url_maps()

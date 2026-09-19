@@ -91,7 +91,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPage` 등 | 통계 대시보드 + 커스텀 차트 |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPage` 등 | 통계 대시보드(단일 스크롤 화면) + 커스텀 차트 |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |

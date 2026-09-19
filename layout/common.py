@@ -181,7 +181,7 @@ def build_reset_button(parts, parent, *, title: str, text: str, on_confirmed,
 
 def build_popup_dialog(parent, title: str, size: tuple, min_size: tuple) -> tuple:
     """모달리스 팝업 다이얼로그 기본 골격을 만든다(MonitorPageSingle의 Raw/비교
-    팝업, StatisticsPage의 시간대별 추이 팝업이 공유). 반환된 (dlg, lay)에
+    팝업, StatisticsPage의 수집량 추이 전체 보기 팝업이 공유). 반환된 (dlg, lay)에
     컨텐츠를 채운 뒤 dlg.show()는 호출부 책임."""
     dlg = QDialog(parent)
     dlg.setWindowTitle(title)
