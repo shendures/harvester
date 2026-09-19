@@ -83,12 +83,12 @@ def make_header_table(parent, headers: list) -> EqualSpacingTable:
     return t
 
 
-def build_stat_summary_card(parts, title: str, specs: list) -> tuple:
+def build_stat_summary_card(parts, title: str, specs: list, help_text: str | None = None) -> tuple:
     """(label, value[, color]) 튜플 리스트로 카드 안에 StatCard를 나란히 만든다.
     (card_widget, [StatCard, ...])를 반환 — 호출부가 개별 StatCard를 self.attr에
     대입한다. dashboard/monitor 페이지의 요약 카드 행(세션 통계, 수집 결과 요약,
-    정제 결과 요약 등)이 공유한다."""
-    card_w, card_l = parts.card_widget(title)
+    정제 결과 요약 등)이 공유한다. help_text를 주면 카드명 오른쪽에 도움말 아이콘을 둔다."""
+    card_w, card_l = parts.card_widget(title, help_text=help_text)
     row = QHBoxLayout()
     row.setSpacing(10)
     cards = []

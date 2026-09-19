@@ -1351,6 +1351,63 @@ class Divider(QFrame):
             self.setFixedWidth(1)
 
 
+COLLAPSIBLE_BODY_GAP = 10   # 접이식 영역 제목 줄과 본문, 본문 내부 위젯 사이 간격(px)
+HELP_ICON_SIZE = 14   # 카드명(12px) 글자 높이에 맞춘 도움말 아이콘 한 변(px)
+
+
+class HelpIcon(QLabel):
+    """카드명 오른쪽에 두는 도움말(?) 아이콘 — 마우스를 올리면 쉬운 말 설명이 뜬다."""
+
+    def __init__(self, help_text: str, parent=None):
+        super().__init__(parent)
+        theme = THEME()
+        self.setPixmap(_load_svg_icon("circle-help", theme.TEXT_MUTED, "2", HELP_ICON_SIZE).pixmap(HELP_ICON_SIZE))
+        self.setToolTip(help_text)
+        self.setAccessibleName("도움말")
+        # 크기를 고정해 제목 행(QHBoxLayout)이 세로로 늘어나 제목선을 밀어내지 않게 한다
+        self.setFixedSize(HELP_ICON_SIZE, HELP_ICON_SIZE)
+        # 카드의 셀렉터 없는 스타일시트(배경·테두리)가 이 라벨에 번지지 않게 한다.
+        # 타입 셀렉터로 좁히는 이유는 툴팁(QTipLabel)이 툴팁을 띄운 위젯의 스타일시트를
+        # 물려받기 때문 — 셀렉터가 없으면 툴팁까지 배경·테두리가 사라진다.
+        self.setStyleSheet("HelpIcon { background:transparent; border:none; }")
+
+
+class CollapsibleSection(QWidget):
+    """제목 줄(▸/▾)을 눌러 본문을 접고 펴는 영역 — 기본은 접힌 상태. 본문 위젯은
+    body_layout에 추가한다."""
+
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        theme = THEME()
+        self._title = title
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(COLLAPSIBLE_BODY_GAP)
+
+        self._toggle_btn = QPushButton()
+        self._toggle_btn.setCheckable(True)
+        self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toggle_btn.setStyleSheet(
+            f"QPushButton {{ background:transparent; color:{theme.TEXT_SECONDARY}; border:none;"
+            f" text-align:left; padding:4px 2px; font-size:13px; font-weight:bold; }}"
+            f"QPushButton:hover {{ color:{theme.TEXT_PRIMARY}; }}")
+        self._toggle_btn.toggled.connect(self._on_toggled)
+        root.addWidget(self._toggle_btn)
+
+        self.body = QWidget()
+        self.body_layout = QVBoxLayout(self.body)
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(COLLAPSIBLE_BODY_GAP)
+        root.addWidget(self.body)
+
+        self._on_toggled(False)
+
+    def _on_toggled(self, expanded: bool) -> None:
+        self.body.setVisible(expanded)
+        self._toggle_btn.setText(f"{'▾' if expanded else '▸'}  {self._title}")
+
+
 class _CardLayout(QVBoxLayout):
     """카드 전용 세로 레이아웃 — 세로로 늘어나는 본문(차트 등)이 없으면 내용을 sizeHint
     높이로 위쪽에 모아 배치해, 이웃 카드 때문에 카드가 늘어나도 제목선이 밀리지 않게 한다."""
@@ -1500,8 +1557,9 @@ class Parts:
         return lbl
 
 
-    def card_widget(self, title="", parent=None):
-        """어두운 테두리 카드. (widget, inner_layout) 반환"""
+    def card_widget(self, title="", parent=None, help_text=None):
+        """어두운 테두리 카드. (widget, inner_layout) 반환. help_text를 주면 카드명
+        오른쪽에 도움말 아이콘(HelpIcon)을 두고 그 설명을 툴팁으로 보여준다."""
         w = QWidget(parent)
         w.setStyleSheet(self.theme.PROXY_CARD_ENABLED_QSS)
         outer = _CardLayout(w)
@@ -1514,7 +1572,24 @@ class Parts:
             # 라벨까지 비례 배분되면 구분선이 아래로 밀린다. 라벨을 고정 높이로
             # 만들어 여분 공간이 본문 콘텐츠 쪽으로만 흡수되게 한다.
             lbl.setFixedHeight(lbl.sizeHint().height())
-            outer.addWidget(lbl)
+            if help_text:
+                # 제목 줄을 높이가 고정된 위젯으로 감싸 카드가 늘어날 때 세로로 함께
+                # 늘어나(제목선이 밀림) 않게 한다. 카드의 셀렉터 없는 QWidget 스타일
+                # (배경·테두리)는 이 위젯에 번지지 않도록 개체 이름으로 덮어쓴다.
+                title_bar = QWidget()
+                title_bar.setObjectName("cardTitleBar")
+                title_bar.setStyleSheet("QWidget#cardTitleBar { background:transparent; border:none; }")
+                title_bar.setFixedHeight(lbl.maximumHeight())
+                title_row = QHBoxLayout(title_bar)
+                title_row.setContentsMargins(0, 0, 0, 0)
+                # 카드명과 아이콘 사이 간격은 make_label()의 오른쪽 여백(5px)만 남긴다
+                title_row.setSpacing(0)
+                title_row.addWidget(lbl)
+                title_row.addWidget(HelpIcon(help_text), 0, Qt.AlignmentFlag.AlignVCenter)
+                title_row.addStretch()
+                outer.addWidget(title_bar)
+            else:
+                outer.addWidget(lbl)
             outer.addWidget(Divider())
         return w, outer
 
