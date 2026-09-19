@@ -1,5 +1,5 @@
 # layout/statistics.py
-# 통계 분석 페이지 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
+# 통계 분석 화면 — 본문 위젯(StatisticsPanel)과 이를 감싼 페이지(StatisticsPage).
 
 from datetime import datetime
 
@@ -20,11 +20,11 @@ from .charts import RankedBarChart, HeatStripChart, GroupedBarChart
 
 TABLE_ROW_H = 30
 TABLE_HEADER_H = 32          # EqualSpacingTable 헤더 높이 근사치
-SESSION_TABLE_ROWS = 15      # 세션 이력 — 실행마다 늘어나는 유일한 표라 넉넉하게
-JOB_TABLE_ROWS = 8           # 작업별 성능 비교 — 수집 목록 개수에 고정되는 표라 여유만 확보
-HOST_TABLE_ROWS = 8          # 호스트별 현황 — 대체로 수집 목록 개수와 비슷한 수준
-FAILED_URL_TABLE_ROWS = 10   # 반복 실패 URL — trigger/statistics.py의 FAILED_URL_TOP_N과
-                             # 반드시 같은 값을 유지(캡보다 작거나 남는 여백이 생기지 않도록)
+SESSION_TABLE_ROWS = 10      # 세션 이력 표의 고정 표시 행 수 — 넘치면 표 내부 스크롤
+SESSION_TABLE_HEADERS = [
+    "NO", "Title", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration",
+    "Start Time", "End Time", "Task Name", "Result",
+]
 
 TREND_CHART_MIN_H = 280     # 카드가 늘어날 수 있도록 하한만 둔다
 HEADER_ICON_SIZE = 14        # 수집량 추이 카드 헤더의 아이콘 버튼 — 아이콘 한 변(px)
@@ -68,49 +68,10 @@ def _header_icon_btn(icon_name: str, tooltip: str):
     return btn
 
 
-def _table_height_for_rows(row_count: int, max_rows: int) -> int:
-    """행 수(1행 이상 max_rows 이하)에 맞춘 표 높이(px)를 계산한다. 바닥을
-    1행으로 두는 이유는 빈 상태에서도 안내 메시지 한 줄은 항상 표시되기
-    때문 — _build_table_card()의 초기값과 StatisticsPage._fit_table_height()가
-    공유한다. setMinimumHeight()만으로는 EqualSpacingTable의 sizeHint()가 더 커서
-    (Expanding 정책이라 여유 공간이 있으면 그쪽이 이긴다) 행이 적어도 카드가
-    줄어들지 않길래, 호출부에서 반드시 set_preferred_height()로 적용해야 한다."""
-    visible = max(1, min(row_count, max_rows))
-    return TABLE_HEADER_H + visible * TABLE_ROW_H
+class StatisticsPanel(QWidget, StatisticsPageTriggers):
+    """통계 본문(KPI·차트·표 카드)과 자동 갱신을 함께 가진 자기완결 위젯 —
+    어떤 레이아웃에든 addWidget만 하면 표시·갱신된다."""
 
-
-def _build_table_card(parent, title: str, headers: list, visible_rows: int) -> tuple:
-    """제목 줄에 카운트 배지를 얹은 카드 안에 EqualSpacingTable을 넣어
-    (카드, 테이블, 카운트 배지)를 반환한다 — 집계 표 카드 4종(반복 실패 URL/
-    호스트별/작업별/세션 이력)이 공유한다. card_widget()은 제목 문자열만 받고
-    옆에 위젯을 얹는 기능이 없어(아래 "시간대별 수집량 추이" 헤더와 같은 이유)
-    제목 줄을 직접 구성한다. max_visible_rows는 표에 동적 프로퍼티로 저장해
-    trigger/statistics.py의 _fit_table_height() 호출 시 재사용한다."""
-    card_w, card_l = parts.card_widget("")
-
-    # 제목/배지는 고정 높이로 둬, 카드가 늘어날 때 여분 높이를 표만 흡수하게 한다.
-    header_row = QHBoxLayout()
-    title_lbl = parts.make_label(title.upper(), TEXT_SECONDARY, 12)
-    title_lbl.setStyleSheet(title_lbl.styleSheet() + " letter-spacing:1px;")
-    title_lbl.setFixedHeight(title_lbl.sizeHint().height())
-    header_row.addWidget(title_lbl)
-    header_row.addStretch()
-    badge = parts.count_badge("0건", ACCENT_LIGHT)
-    badge.setFixedHeight(badge.sizeHint().height())
-    header_row.addWidget(badge)
-    card_l.addLayout(header_row)
-    card_l.addWidget(Divider())
-
-    table = EqualSpacingTable(parent=parent, row_height=TABLE_ROW_H, col_padding=10, hscroll_handle=50)
-    table.setColumnCount(len(headers))
-    table.setHorizontalHeaderLabels(headers)
-    table.setProperty("max_visible_rows", visible_rows)
-    table.set_preferred_height(_table_height_for_rows(1, visible_rows))
-    card_l.addWidget(table)
-    return card_w, table, badge
-
-
-class StatisticsPage(QWidget, StatisticsPageTriggers):
     def __init__(self):
         super().__init__()
         self._build()
@@ -213,41 +174,39 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         bl.addLayout(row2)
 
         # ── Row 3: Session history table ──────────
-        session_card_w, self.session_table, self.session_badge = _build_table_card(
-            self, "세션 이력",
-            ["NO", "Title", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration",
-             "Start Time", "End Time", "Task Name", "Result"],
-            SESSION_TABLE_ROWS)
-        bl.addWidget(session_card_w)
+        bl.addWidget(self._build_session_card())
 
         # ── Row 4: 수집량 시계열 — 기간 필터 하나로 시/일 배율을 갈아끼운다 ──
         # stretch 1: 세션 이력 카드는 행 수만큼만 차지하므로 남는 세로 공간은 추이 카드가 흡수한다
         bl.addWidget(self._build_trend_card(), 1)
 
-        # ── Row 5: 반복 실패 URL + 호스트별 현황 ──────
-        row5 = QHBoxLayout()
-        row5.setSpacing(10)
-
-        fail_card_w, self.failed_url_table, self.failed_url_badge = _build_table_card(
-            self, "반복 실패 URL", ["URL", "Failures", "Last Status", "Last Seen"],
-            FAILED_URL_TABLE_ROWS)
-        row5.addWidget(fail_card_w, 1)
-
-        host_card_w, self.host_table, self.host_badge = _build_table_card(
-            self, "호스트별 현황", ["Host", "Requests", "Success Rate", "Avg Response"],
-            HOST_TABLE_ROWS)
-        row5.addWidget(host_card_w, 1)
-
-        bl.addLayout(row5)
-
-        # ── Row 6: 작업별 성능 비교 ──────
-        job_card_w, self.job_table, self.job_badge = _build_table_card(
-            self, "작업별 성능 비교",
-            ["Title", "Sessions", "Total Items", "Success Rate", "Avg Response", "Throughput"],
-            JOB_TABLE_ROWS)
-        bl.addWidget(job_card_w)
-
         return body_widget
+
+    def _build_session_card(self) -> QWidget:
+        """제목 줄에 카운트 배지를 얹은 세션 이력 카드를 만든다. 제목 줄을 직접
+        구성하는 건 card_widget()이 제목 옆에 위젯을 얹지 못하기 때문이다. 표 높이는
+        SESSION_TABLE_ROWS행 높이로 고정해 넘치면 표 내부 스크롤로 넘어간다."""
+        card_w, card_l = parts.card_widget("")
+
+        header_row = QHBoxLayout()
+        title_lbl = parts.make_label("세션 이력", TEXT_SECONDARY, 12)
+        title_lbl.setStyleSheet(title_lbl.styleSheet() + " letter-spacing:1px;")
+        title_lbl.setFixedHeight(title_lbl.sizeHint().height())
+        header_row.addWidget(title_lbl)
+        header_row.addStretch()
+        self.session_badge = parts.count_badge("0건", ACCENT_LIGHT)
+        self.session_badge.setFixedHeight(self.session_badge.sizeHint().height())
+        header_row.addWidget(self.session_badge)
+        card_l.addLayout(header_row)
+        card_l.addWidget(Divider())
+
+        self.session_table = EqualSpacingTable(
+            parent=self, row_height=TABLE_ROW_H, col_padding=10, hscroll_handle=50)
+        self.session_table.setColumnCount(len(SESSION_TABLE_HEADERS))
+        self.session_table.setHorizontalHeaderLabels(SESSION_TABLE_HEADERS)
+        self.session_table.setFixedHeight(TABLE_HEADER_H + SESSION_TABLE_ROWS * TABLE_ROW_H)
+        card_l.addWidget(self.session_table)
+        return card_w
 
     def _build_trend_card(self) -> QWidget:
         """기간 필터와 표시 방식 전환 버튼이 달린 수집량 추이 카드를 만든다. 제목
@@ -337,14 +296,6 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
         _refresh_trend_chart가 호출)."""
         self.trend_title_lbl.setText(_trend_title_text(self.trend_period, range_text))
 
-    def _fit_table_height(self, table: EqualSpacingTable, row_count: int) -> None:
-        """표 높이를 실제 행 수에 맞춘다 — _build_table_card()가 표에 저장해둔
-        max_visible_rows 상한까지는 행 수만큼만 차지해 빈 공백을 없애고, 상한을
-        넘으면 지금처럼 내부 스크롤로 넘어간다. trigger/statistics.py가 표를
-        채운 뒤 호출한다."""
-        max_rows = table.property("max_visible_rows")
-        table.set_preferred_height(_table_height_for_rows(row_count, max_rows))
-
     # ── 전체 보기 팝업 (전체 이력을 기간의 한 주기로 접어 합산) ──────
     def _open_trend_popup(self) -> None:
         """선택한 기간의 수집량 추이를 전체 이력 기준(00~24시 / 요일별 / 일자별
@@ -362,3 +313,19 @@ class StatisticsPage(QWidget, StatisticsPageTriggers):
 
         dlg.show()
 
+
+
+class StatisticsPage(QWidget):
+    """통계 분석 페이지 — Single/Multi 메인 창이 그대로 공유하는 얇은 껍데기(대응
+    클래스 없음). 본문은 StatisticsPanel이 담당하고, 이 클래스는 창 쪽 호출 계약인
+    reload()만 위임한다."""
+
+    def __init__(self):
+        super().__init__()
+        self.panel = StatisticsPanel()
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self.panel)
+
+    def reload(self):
+        self.panel.reload()
