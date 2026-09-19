@@ -141,6 +141,9 @@ class HeatStripChart(QWidget):
 class GroupedBarChart(QWidget):
     """x_labels + datasets(=[(label, values, color), ...])를 카테고리별 그룹 막대로 그림"""
 
+    VALUE_GAP = 4        # 막대 상단-값 라벨 사이 고정 간격(px)
+    LEGEND_GAP = 10      # 범례 항목 사이 간격(px)
+
     def __init__(self, x_labels=None, datasets=None, parent=None):
         super().__init__(parent)
         self.x_labels = x_labels or []
@@ -161,25 +164,16 @@ class GroupedBarChart(QWidget):
 
         value_font = QFont("Consolas", 7)
         value_fm = QFontMetrics(value_font)
-        value_gap = 4  # 막대 상단-값 라벨 사이 고정 간격(px)
 
         pad_l, pad_r, pad_b = 8, 8, 20
-        pad_t = 22 + value_gap + value_fm.height()  # 기존 범례 여백 + 값 라벨 공간
+        pad_t = 22 + self.VALUE_GAP + value_fm.height()  # 범례 여백 + 값 라벨 공간
         chart_w = W - pad_l - pad_r
         chart_h = H - pad_t - pad_b
 
         all_vals = [v for _, vals, _ in self.datasets for v in vals]
         max_v = max(all_vals, default=0) or 1
 
-        lx = pad_l
-        for label, _, color in self.datasets:
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(color))
-            p.drawRoundedRect(int(lx), 4, 8, 8, 2, 2)
-            p.setPen(QColor(TEXT_SECONDARY))
-            p.setFont(QFont("Consolas", 8))
-            p.drawText(int(lx) + 12, 2, 60, 12, Qt.AlignmentFlag.AlignVCenter, str(label))
-            lx += 12 + 8 + len(label) * 7 + 6
+        self._draw_legend(p, pad_l)
 
         p.setPen(QPen(QColor(BORDER), 1, Qt.PenStyle.DotLine))
         for i in range(1, 5):
@@ -204,17 +198,20 @@ class GroupedBarChart(QWidget):
                 p.setBrush(QColor(color))
                 p.drawRoundedRect(int(x), int(y), int(bar_w), int(max(bh, 1.5)), 2, 2)
 
-                # 값 라벨 — 막대 상단에서 value_gap만큼 띄운 자리에 계열 색상으로 표시
+                # 값 라벨 — 막대 상단에서 VALUE_GAP만큼 띄운 자리에 계열 색상으로 표시.
+                # 막대 슬롯보다 넓은 라벨은 옆 막대 라벨과 겹치므로 생략한다(칸이
+                # 많은 월별 뷰의 네 자리 값에서만 발동).
                 text = str(v)
                 text_w = value_fm.horizontalAdvance(text)
-                label_x = x + bar_w / 2 - text_w / 2
-                label_y = y - value_gap - value_fm.height()
-                p.setPen(QColor(color))
-                p.setFont(value_font)
-                p.drawText(int(label_x), int(label_y), text_w, value_fm.height(),
-                           Qt.AlignmentFlag.AlignCenter, text)
+                if text_w <= bar_w + bar_gap:
+                    label_x = x + bar_w / 2 - text_w / 2
+                    label_y = y - self.VALUE_GAP - value_fm.height()
+                    p.setPen(QColor(color))
+                    p.setFont(value_font)
+                    p.drawText(int(label_x), int(label_y), text_w, value_fm.height(),
+                               Qt.AlignmentFlag.AlignCenter, text)
 
-            # 시간대 라벨 — 12개가 좁은 폭에 들어가도록 눈에 보일 정도로만 작게(7pt)
+            # 구간 라벨 — 칸이 많아도 들어가도록 눈에 보일 정도로만 작게(7pt)
             p.setPen(QColor(TEXT_MUTED))
             p.setFont(QFont("Consolas", 7))
             p.drawText(int(pad_l + i * group_w), int(pad_t + chart_h + 4), int(group_w), 14,
@@ -223,3 +220,26 @@ class GroupedBarChart(QWidget):
         p.setPen(QColor(BORDER))
         p.drawLine(int(pad_l), int(pad_t + chart_h), int(W - pad_r), int(pad_t + chart_h))
         p.end()
+
+    def _draw_legend(self, p, pad_l: int) -> None:
+        """차트 상단 범례를 왼쪽부터 이어 그린다. 항목 폭은 QFontMetrics로
+        실측해야 한글 라벨에서 다음 항목과 겹치지 않는다."""
+        font = QFont("Consolas", 8)
+        fm = QFontMetrics(font)
+        swatch_w, text_offset = 8, 12
+
+        lx = pad_l
+        for label, _, color in self.datasets:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(color))
+            p.drawRoundedRect(int(lx), 4, swatch_w, swatch_w, 2, 2)
+            lx = self._draw_legend_text(p, font, fm, lx + text_offset, label)
+
+    def _draw_legend_text(self, p, font, fm, x: float, label) -> float:
+        """범례 라벨을 x에 그리고 다음 항목이 시작할 x를 반환한다."""
+        text = str(label)
+        text_w = fm.horizontalAdvance(text)
+        p.setPen(QColor(TEXT_SECONDARY))
+        p.setFont(font)
+        p.drawText(int(x), 2, text_w, 12, Qt.AlignmentFlag.AlignVCenter, text)
+        return x + text_w + self.LEGEND_GAP
