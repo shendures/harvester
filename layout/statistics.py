@@ -14,7 +14,7 @@ from trigger.statistics import (
     STATUS_CODE_MEANINGS, speed_secs, trend_window, diagnose, diagnosis_tooltip, Diagnosis,
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
 )
-from style import EqualSpacingTable, Divider, CollapsibleSection, _load_svg_icon
+from style import EqualSpacingTable, Divider, _load_svg_icon
 from .common import (
     parts, theme, build_scroll_body, build_stat_summary_card, build_reset_button, build_popup_dialog,
     ACCENT_LIGHT, GREEN, BLUE, PURPLE, RED, AMBER, TEXT_PRIMARY, TEXT_SECONDARY, BG_SECONDARY, BORDER,
@@ -53,18 +53,13 @@ PROCESS_CARD_HELP = (
     "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
     "꺼낸 데이터가 얼마나 빠짐없이 채워졌는지, 페이지마다 몇 건씩 나오는지를 봅니다." + CARD_HELP_HINT
 )
-DATA_CARD_HELP = (
-    "수집한 데이터의 양과 데이터를 못 가져온 페이지 현황입니다.\n"
-    "응답 결과 구성 카드와 겹치는 숫자를 상세하게 모아 둔 카드입니다." + CARD_HELP_HINT
-)
-DETAIL_CARD_HELP = "수집 속도와 요청 처리 현황을 보는 보조 지표입니다." + CARD_HELP_HINT
 
 REQUEST_KPI_TIPS = (
     "초기화 이후 사이트에 요청해서 응답을 받은 페이지 수입니다. (누적)",
     "받은 응답 중 사이트가 정상적으로 답한(200) 비율입니다.\n"
     "페이지가 열렸다는 뜻일 뿐, 데이터를 가져왔는지는\n'응답 결과 구성'의 '정상 수집'에서 확인하세요.",
     "요청을 보내고 페이지가 도착하기까지 걸린 평균 시간입니다.\n길수록 사이트가 느리거나 혼잡하다는 뜻입니다.",
-    "사이트에 아예 연결하지 못한 횟수입니다.\n인터넷 연결, 프록시 설정, 사이트 점검 여부를 확인하세요.",
+    "1초에 평균 몇 페이지를 처리했는지입니다.",
 )
 PROCESS_KPI_TIPS = (
     "꺼낸 모든 항목 칸 중 값이 채워진 칸의 비율입니다.\n"
@@ -72,25 +67,10 @@ PROCESS_KPI_TIPS = (
     "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
     "꺼낸 데이터(행) 중 모든 항목이 채워진 행의 비율입니다.\n"
     "필드 채움률이 높아도 이 값이 낮으면 항목이 여러 행에 흩어져 비어 있는 것입니다.",
-    "데이터를 가져온 페이지 1개에서 나온 건수의 중앙값입니다(평균보다 튀는 값에 덜 흔들립니다).\n"
+    "데이터를 가져온 페이지 1개에서 나온 건수입니다. 앞 숫자는 중앙값(튀는 값에 덜 흔들림), 괄호 안은 평균입니다.\n"
     "페이지마다 비슷하게 나와야 정상이며, 평소보다 크게 줄면 사이트 구조가 바뀐 것일 수 있습니다.",
     "데이터를 가져온 페이지 중 가장 적게 나온 건수와 가장 많이 나온 건수입니다.\n"
     "범위가 지나치게 넓으면 일부 페이지에서만 추출이 잘 안 되고 있을 수 있습니다.",
-)
-DATA_KPI_TIPS = (
-    "페이지에서 실제로 가져온 데이터(행)의 총 건수입니다.\n"
-    "건수 기록을 시작한 이후 수집분부터 집계되며,\n이전 기록만 있으면 '—'로 표시됩니다.",
-    "받은 페이지 중 실제로 데이터를 가져온 페이지의 비율입니다.\n"
-    "위 '응답 결과 구성'의 '정상 수집'과 같은 기준입니다.",
-    "데이터를 가져온 페이지 1개당 평균 수집 건수입니다.",
-    "앞 숫자: 빈 응답 (페이지는 열렸지만 찾을 데이터가 없음)\n"
-    "뒤 숫자: 추출 오류 (데이터를 꺼내는 규칙 자체가 실패)\n"
-    "둘 다 수집 설정을 점검해야 하는 신호입니다.",
-)
-DETAIL_KPI_TIPS = (
-    "1초에 평균 몇 페이지를 처리했는지입니다.",
-    "보내기로 한 요청 중 응답을 받은 비율입니다.",
-    "받은 응답 중 요청 목록과 맞지 않아 버려진 비율입니다.",
 )
 STATUS_MEANINGS_PER_LINE = 3
 
@@ -176,7 +156,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
     def __init__(self):
         super().__init__()
-        self._reset_session_counters()
         self._build()
         # auto-refresh every 3 s — 세션 이력 테이블은 세션 종료 시에만 바뀌므로
         # 제외하고 KPI/차트만 갱신한다(trigger/statistics.py의 reload() 참고)
@@ -192,8 +171,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         root.addWidget(self._build_body(), 1)
 
     def _build_body(self) -> QWidget:
-        """통계 본문 — KPI 카드, 응답 카드 3종, 수집량 추이, 세션 이력, 접이식 상세 정보를
-        한 화면에 쌓는다."""
+        """통계 본문 — KPI 카드, 응답 카드 3종, 수집량 추이, 세션 이력을 한 화면에 쌓는다."""
         body_widget = QWidget()
         bl = build_scroll_body(body_widget)
 
@@ -211,15 +189,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         reset_row.addWidget(self.reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         bl.addLayout(reset_row)
 
-        # ── 세션 통계: 현재 수집 세션의 실시간 집계 (워커 new_row로 갱신) ──
-        live_card_w, live_cards = build_stat_summary_card(
-            parts, "세션 통계",
-            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
-        )
-        self.live_completed, self.live_errors, self.live_items, self.live_avg_latency = live_cards
-        live_card_w.setFixedHeight(live_card_w.sizeHint().height())
-        bl.addWidget(live_card_w)
-
         # ── Row 1: 요청·응답(좌) / 수집 데이터(우) KPI 카드를 5:5로 배치 ──
         # 두 카드 모두 setFixedHeight(sizeHint)로 고정하는 이유는 row1에는 다른
         # 두 행(Row2/Row3)만큼 세로 공간이 필요 없는데도, bl에 addStretch()가
@@ -230,10 +199,10 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         req_card_w, req_cards = build_stat_summary_card(
             parts, "요청·응답",
-            [("확인한 페이지 수", "0"), ("응답 성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("연결 실패", "0", RED)],
+            [("확인한 페이지 수", "0"), ("응답 성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("처리량", "—", AMBER)],
             help_text=REQUEST_CARD_HELP,
         )
-        self.kpi_total, self.kpi_resp_rate, self.kpi_avg_t, self.kpi_conn_fail = req_cards
+        self.kpi_total, self.kpi_resp_rate, self.kpi_avg_t, self.kpi_throughput = req_cards
         _apply_tooltips(req_cards, REQUEST_KPI_TIPS)
         req_card_w.setFixedHeight(req_card_w.sizeHint().height())
         row1.addWidget(req_card_w, 1)
@@ -241,10 +210,10 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         process_card_w, process_cards = build_stat_summary_card(
             parts, "데이터 처리",
             [("필드 채움률", "—", GREEN), ("완전한 행 비율", "—", BLUE),
-             ("페이지당 중앙값", "—", ACCENT_LIGHT), ("수집량 범위", "—", PURPLE)],
+             ("페이지당 건수", "—", ACCENT_LIGHT), ("수집량 범위", "—", PURPLE)],
             help_text=PROCESS_CARD_HELP,
         )
-        self.kpi_fill_rate, self.kpi_complete_rate, self.kpi_page_median, self.kpi_item_range = process_cards
+        self.kpi_fill_rate, self.kpi_complete_rate, self.kpi_page_items, self.kpi_item_range = process_cards
         _apply_tooltips(process_cards, PROCESS_KPI_TIPS)
         process_card_w.setFixedHeight(process_card_w.sizeHint().height())
         row1.addWidget(process_card_w, 1)
@@ -287,35 +256,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         # ── Row 4: Session history table ──────────
         bl.addWidget(self._build_session_card())
 
-        # ── 상세 정보(접이식): 보조 지표 ──────
-        bl.addWidget(self._build_detail_section())
-
         return body_widget
-
-    def _build_detail_section(self) -> QWidget:
-        """접이식 "상세 정보" 영역 — 수집 데이터 요약과 수집 속도·요청 처리 현황을 보는
-        보조 지표 카드를 담는다. 기본은 접힌 상태이고, 숨겨진 동안에도 값은 3초 타이머로 계속 갱신된다."""
-        section = CollapsibleSection("상세 정보")
-
-        data_card_w, data_cards = build_stat_summary_card(
-            parts, "수집 데이터 요약",
-            [("수집한 데이터", "—", ACCENT_LIGHT), ("데이터 수집 성공률", "0%", GREEN),
-             ("페이지당 평균", "—", BLUE), ("빈 응답 / 추출 오류", "0 / 0", AMBER)],
-            help_text=DATA_CARD_HELP,
-        )
-        self.kpi_items, self.kpi_data_rate, self.kpi_items_per_page, self.kpi_empty_pages = data_cards
-        _apply_tooltips(data_cards, DATA_KPI_TIPS)
-        section.body_layout.addWidget(data_card_w)
-
-        detail_card_w, detail_cards = build_stat_summary_card(
-            parts, "상세 지표",
-            [("처리량", "—", BLUE), ("요청 대비 응답률", "—", GREEN), ("스킵률", "—", AMBER)],
-            help_text=DETAIL_CARD_HELP,
-        )
-        self.kpi_throughput, self.kpi_achieve, self.kpi_skip = detail_cards
-        _apply_tooltips(detail_cards, DETAIL_KPI_TIPS)
-        section.body_layout.addWidget(detail_card_w)
-        return section
 
     def _build_diagnosis_banner(self) -> QWidget:
         """수집 상태(정상/주의/문제/대기)와 원인·조치 문장을 보여주는 배너를 만든다.
@@ -537,9 +478,3 @@ class StatisticsPage(QWidget):
 
     def reload(self):
         self.panel.reload()
-
-    def add_row(self, row: dict):
-        self.panel.add_session_row(row)
-
-    def reset_session_stats(self):
-        self.panel.reset_session_stats()

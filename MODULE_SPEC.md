@@ -91,12 +91,12 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 본문(수집 상태 진단 배너 + 세션 통계 카드 + 단일 스크롤 화면 + 접이식 상세 정보, 독립 패널 위젯) + 이를 감싼 페이지, 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 본문(수집 상태 진단 배너 + 단일 스크롤 화면, 독립 패널 위젯) + 이를 감싼 페이지, 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
 | single | `common.py` | `ActiveBlueprintMixin` | 활성 블루프린트 조회(Multi 확장 지점) |
-| single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 실시간 모니터링(세션 통계 카드는 통계 분석 페이지로 이동) |
+| single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 |
 | single | `monitor.py` | `MonitorPageSingle` | 원본/정제규칙/정제결과/비교 4탭 |
 | multi | `main_window.py` | `MainWindowMulti` | 블루프린트별 페이지 번들 지연 생성·관리 |
 | multi | `sidebar.py`/`toolbar.py` | `*Multi(*Single)` | 표시 항목 재정의(인증관리 제거 등) |
@@ -116,13 +116,13 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 |---|---|---|
 | `common.py` | (다수 함수) | 공용 허브 — task 설정 적용, 블루프린트 검증(`engine`), 추출/DB 설정 UI 빌더 |
 | `auth.py` | `AuthManagerPageTriggers` | 자격증명 추가/삭제/내보내기 |
-| `dashboard.py` | `DashboardPageTriggers` | 실시간 행 추가, CSV 내보내기 |
+| `dashboard.py` | `DashboardPageTriggers` | 실시간 행 추가, 세션 현황, CSV 내보내기 |
 | `log_viewer.py` | `LogViewerDialog` | 로그 뷰어(레벨 필터 + 키워드 검색) |
 | `main_window.py` | `MainWindowTriggersSingle/Multi` | **오케스트레이션 핵심** — 워커 실행, 완료 후 정제·저장·스케줄 재무장 총괄 |
 | `monitor.py` | `MonitorPageTriggers` | 정제 실행(`preprocess.DataRefiner`), 파일/DB 저장(`db_conn.save_db`) |
 | `scheduler.py` | `SchedulerPageTriggers` | 스케줄 등록/수정, QTimer 카운트다운, `schedules.json` 영속화 |
 | `session.py` | `SessionSettingsPageTriggers` | 프록시 추가/삭제/Import, 병렬 헬스체크 |
-| `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 현재 세션 통계 실시간 집계(`add_session_row`), 수집 상태 진단 판정(`diagnose`) |
+| `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 수집 상태 진단 판정(`diagnose`) |
 | `toolbar.py` | `GlobalToolbarTriggers` | 시작/중지 흐름, 수집설정 영속화 후 실행 요청 |
 
 **의존**: `style.py`, `conf.py`, `worker.py`(main_window만), `engine.py`·`db_conn.py`·`preprocess.py`(common/monitor 등), `customized_settings.py`·`utility.py`(monitor·scheduler).
@@ -132,7 +132,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 
 앱의 다크 테마 QSS와 재사용 위젯을 정의하는 유일한 소스입니다(비즈니스 로직
 없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
-`build_refine_rule_rows`(정제 규칙 UI, monitor·scheduler 공유), `HelpIcon`(카드명 옆 도움말 아이콘)·`CollapsibleSection`(접이식 영역) 등을 제공합니다.
+`build_refine_rule_rows`(정제 규칙 UI, monitor·scheduler 공유), `HelpIcon`(카드명 옆 도움말 아이콘) 등을 제공합니다.
 
 **의존**: `utility.py`만(아이콘 경로) · **피의존**: `layout/*` 대부분, `trigger/*` 다수, `main.py`.
 

@@ -1368,7 +1368,6 @@ class Divider(QFrame):
             self.setFixedWidth(1)
 
 
-COLLAPSIBLE_BODY_GAP = 10   # 접이식 영역 제목 줄과 본문, 본문 내부 위젯 사이 간격(px)
 HELP_ICON_SIZE = 14   # 카드명(12px) 글자 높이에 맞춘 도움말 아이콘 한 변(px)
 
 
@@ -1387,42 +1386,6 @@ class HelpIcon(QLabel):
         # 타입 셀렉터로 좁히는 이유는 툴팁(QTipLabel)이 툴팁을 띄운 위젯의 스타일시트를
         # 물려받기 때문 — 셀렉터가 없으면 툴팁까지 배경·테두리가 사라진다.
         self.setStyleSheet("HelpIcon { background:transparent; border:none; }")
-
-
-class CollapsibleSection(QWidget):
-    """제목 줄(▸/▾)을 눌러 본문을 접고 펴는 영역 — 기본은 접힌 상태. 본문 위젯은
-    body_layout에 추가한다."""
-
-    def __init__(self, title: str, parent=None):
-        super().__init__(parent)
-        theme = THEME()
-        self._title = title
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(COLLAPSIBLE_BODY_GAP)
-
-        self._toggle_btn = QPushButton()
-        self._toggle_btn.setCheckable(True)
-        self._toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._toggle_btn.setStyleSheet(
-            f"QPushButton {{ background:transparent; color:{theme.TEXT_SECONDARY}; border:none;"
-            f" text-align:left; padding:4px 2px; font-size:13px; font-weight:bold; }}"
-            f"QPushButton:hover {{ color:{theme.TEXT_PRIMARY}; }}")
-        self._toggle_btn.toggled.connect(self._on_toggled)
-        root.addWidget(self._toggle_btn)
-
-        self.body = QWidget()
-        self.body_layout = QVBoxLayout(self.body)
-        self.body_layout.setContentsMargins(0, 0, 0, 0)
-        self.body_layout.setSpacing(COLLAPSIBLE_BODY_GAP)
-        root.addWidget(self.body)
-
-        self._on_toggled(False)
-
-    def _on_toggled(self, expanded: bool) -> None:
-        self.body.setVisible(expanded)
-        self._toggle_btn.setText(f"{'▾' if expanded else '▸'}  {self._title}")
 
 
 class _CardLayout(QVBoxLayout):
