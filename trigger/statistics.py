@@ -91,6 +91,12 @@ BLOCKED_STATUS_CODES = ("403", "429")
 # 상태 코드 분포 카드에는 넣지 않고 "응답 결과 구성"의 연결 실패로 집계한다
 NO_STATUS_CODE = "000"
 
+# 상태 코드 분포에서 표에 없는 코드를 한 행으로 합쳐 표시하는 이름 — 코드 종류가 몇 개든 행 수를
+# 최대 7행으로 묶어 카드 고정 높이 안에서 글자가 겹치지 않게 한다. 툴팁에는 기타에 든 코드를 최대
+# OTHER_CODES_TOOLTIP_MAX개까지 적는다.
+STATUS_OTHER_LABEL = "기타"
+OTHER_CODES_TOOLTIP_MAX = 8
+
 # 상태 코드 분포 도움말 툴팁에 적는 코드별 쉬운 말 — 막대 라벨에는 코드만 표시한다
 STATUS_CODE_MEANINGS = {
     "200": "정상", "301": "이동", "403": "접근 거부", "404": "페이지 없음",
@@ -148,12 +154,34 @@ def diagnosis_tooltip() -> str:
     ])
 
 
+def _other_status_counts(status_cnt: dict) -> dict:
+    """표(STATUS_CODE_MEANINGS)에 없는 코드별 건수 — 연결 실패("000")는 응답 결과 구성에서
+    다루므로 제외한다."""
+    return {code: n for code, n in status_cnt.items()
+            if code not in STATUS_CODE_MEANINGS and code != NO_STATUS_CODE}
+
+
 def _status_segments(status_cnt: dict) -> list:
-    """상태 코드 분포 막대 목록 — 기본 코드(STATUS_CODE_MEANINGS)는 0건이어도 항상 넣고,
-    표에 없는 코드는 실제로 수집됐을 때만 더한다. 연결 실패("000")는 응답 결과 구성에서
-    다루므로 제외하고, 코드 번호 오름차순으로 고정해 갱신돼도 막대 위치가 바뀌지 않게 한다."""
-    codes = sorted((set(STATUS_CODE_MEANINGS) | set(status_cnt)) - {NO_STATUS_CODE})
-    return [(code, status_cnt.get(code, 0), STATUS_CODE_COLORS.get(code, ACCENT_LIGHT)) for code in codes]
+    """상태 코드 분포 막대 목록 — 기본 코드(STATUS_CODE_MEANINGS)는 0건이어도 항상 코드
+    번호 오름차순으로 넣어 갱신돼도 막대 위치가 바뀌지 않게 하고, 표에 없는 코드는 건수를
+    합쳐 "기타" 한 행으로 끝에 붙인다(없으면 행을 만들지 않는다)."""
+    segments = [(code, status_cnt.get(code, 0), STATUS_CODE_COLORS.get(code, ACCENT_LIGHT))
+                for code in sorted(STATUS_CODE_MEANINGS)]
+    other_total = sum(_other_status_counts(status_cnt).values())
+    if other_total:
+        segments.append((STATUS_OTHER_LABEL, other_total, ACCENT_LIGHT))
+    return segments
+
+
+def _other_codes_text(status_cnt: dict) -> str:
+    """"기타" 막대 툴팁 — 기타에 합쳐진 코드를 건수 내림차순으로 적는다. 없으면 빈 문자열."""
+    others = sorted(_other_status_counts(status_cnt).items(), key=lambda kv: (-kv[1], kv[0]))
+    if not others:
+        return ""
+    listed = " · ".join(f"{code} {n}건" for code, n in others[:OTHER_CODES_TOOLTIP_MAX])
+    rest = len(others) - OTHER_CODES_TOOLTIP_MAX
+    suffix = f" 외 {rest}종" if rest > 0 else ""
+    return f"{STATUS_OTHER_LABEL}에 포함된 코드: {listed}{suffix}"
 
 
 def _percent(part: int, whole: int) -> str:
@@ -313,6 +341,7 @@ class StatisticsPageTriggers:
         self._refresh_data_kpis(total, agg)
 
         self.status_chart.set_data(_status_segments(status_cnt))
+        self.status_chart.setToolTip(_other_codes_text(status_cnt))
 
         # 4분류를 값이 0이어도 항상 모두 넘긴다 — RankedBarChart는 빈 리스트면
         # 카드를 통째로 비우므로, 수집 이력이 없을 때도 골격이 보이게 한다

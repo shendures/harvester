@@ -89,6 +89,7 @@ STATUS_CHART_TIP = (
     "사이트가 응답과 함께 보내는 결과 번호(상태 코드)별 개수입니다.\n"
     + _status_meaning_lines() + "\n"
     "자주 보는 코드는 0건이어도 항상 표시됩니다.\n"
+    "표에 없는 코드는 '기타'로 합쳐 표시하며, 기타 막대에 마우스를 올리면 세부 코드를 볼 수 있습니다.\n"
     "연결에 실패한 응답은 번호가 없어 여기에 없고, '응답 결과 구성'에서 확인할 수 있습니다."
 )
 SPEED_CHART_TIP = (
@@ -223,7 +224,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         bl.addLayout(row1)
 
         # ── Row 2: 응답 관련 카드 3종을 한 줄에 ──────
-        # 세 카드 모두 기본 고정 높이(156) 차트라 래퍼를 sizeHint에 고정하면 높이가 맞는다
+        # 세 카드 모두 기본 고정 높이 차트라 래퍼를 sizeHint에 고정하면 높이가 맞는다
         row2 = QHBoxLayout()
         row2.setSpacing(10)
 
