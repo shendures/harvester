@@ -185,6 +185,7 @@
 | 2026-09-21 | `<커밋 예정>` | 세션 이력 표 컬럼을 원래 형태로 원복(요청 상세 팝업은 유지) | 요청 URL별 내용은 행 더블클릭 팝업에서 확인 가능해져 표에서 Body·Method 컬럼과 URL 접기 표기가 불필요 | Body·Method 컬럼 제거, Total Items 컬럼과 템플릿 URL 표시 복원, 미사용 `_format_request_cells`·`_first_and_rest` 삭제(worker의 `requests`·`method` 저장은 유지) | `py_compile` 통과, 행 값·색상·헤더 개수(12) 일치 확인 — GUI 실행 검증 미실시 |
 | 2026-09-21 | `<커밋 예정>` | 테이블 ↑/↓ 키 행 전환 지원 | "수집 목록"·"수집 대상" 테이블은 NoSelection이라 행 전환이 `itemClicked`에만 연결돼 방향키를 눌러도 보는 행이 안 바뀜(모니터 Raw/정제 결과 탭은 `currentItemChanged`로 이미 대응, 대시보드 모니터링 표는 클릭 시 모달이 떠 제외) | `EqualSpacingTable.keyPressEvent`가 ↑/↓로 current 행이 바뀌면 `rowKeyNavigated(item)` emit, 두 목록 테이블이 기존 `_on_item_clicked`에 연결 | offscreen 스크립트로 ↓↓↓↑ 시 [1, 2, 1] emit(경계 무발생) 확인 |
 | 2026-09-21 | `<커밋 예정>` | "세션 통계" 카드를 대시보드에서 통계 분석 페이지 상단으로 이동 | 세션 통계(요청 완료/오류/총 수집 항목/평균 응답)가 대시보드에 있어 통계 분석 화면과 분리됨 | 대시보드에서 카드·집계 제거, `StatisticsPanel`의 진단 배너 아래로 이동(`add_session_row`가 워커 `new_row`로 실시간 갱신, `_launch_worker`에서 시작 시 초기화) | offscreen 스모크(집계·초기화·대시보드 생성) 확인, GUI 실수집은 미확인 |
+| 2026-09-21 | `<커밋 예정>` | 공용 테이블에서 클릭한 셀 포커스 테두리 제거(행 전체 강조만 유지) | `EqualSpacingTable`은 SelectRows라 행 전체가 음영 처리되지만 클릭한 셀에만 점선 포커스 사각형이 남아 셀 하나가 눌린 것처럼 보임 | `_init_table()`에서 기존 `NoFocusDelegate`를 기본 델리게이트로 적용 | offscreen 스모크(델리게이트 적용·페이지 생성) 확인, GUI 클릭 표시는 미확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 

@@ -131,7 +131,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 ### 3.4 테마·공용 위젯 — `style.py`
 
 앱의 다크 테마 QSS와 재사용 위젯을 정의하는 유일한 소스입니다(비즈니스 로직
-없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
+없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
 `build_refine_rule_rows`(정제 규칙 UI, monitor·scheduler 공유), `HelpIcon`(카드명 옆 도움말 아이콘)·`CollapsibleSection`(접이식 영역) 등을 제공합니다.
 
 **의존**: `utility.py`만(아이콘 경로) · **피의존**: `layout/*` 대부분, `trigger/*` 다수, `main.py`.

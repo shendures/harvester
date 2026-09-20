@@ -494,8 +494,8 @@ class StatCard(QWidget):
 class NoFocusDelegate(QStyledItemDelegate):
     """셀이 '현재 셀'이 되어도 점선 포커스 사각형을 그리지 않는 델리게이트.
 
-    체크박스만 보여야 하는 컬럼(다중 수집의 수집 목록 선택 컬럼, 단일 수집의
-    프록시 목록 활성 컬럼 등)에 setItemDelegateForColumn()으로 적용한다.
+    EqualSpacingTable의 기본 델리게이트로 적용돼 클릭한 셀 하나가 아닌 행 전체만
+    강조되게 하고, 체크박스 컬럼(수집 목록 선택·프록시 활성)에도 쓴다.
     """
 
     def paint(self, painter, option, index):
@@ -799,6 +799,7 @@ class EqualSpacingTable(QTableWidget):
         self.setWordWrap(False)
         self.setShowGrid(False)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setItemDelegate(NoFocusDelegate(self))
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.verticalHeader().setDefaultSectionSize(self._row_height)
 
