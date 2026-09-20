@@ -458,19 +458,16 @@ class StatisticsPageTriggers:
         self.kpi_throughput.update_value(f"{total / elapsed:.1f}/s" if elapsed else "—")
 
     def _refresh_process_kpis(self, agg: dict) -> None:
-        """데이터 처리 카드를 갱신한다 — 응답 이후 추출된 데이터의 품질(필드 채움률·완전한
-        행 비율)과 페이지당 수집량(중앙값·범위). 이 필드를 기록하기 시작한 이후의 응답이
-        없으면 해당 지표는 "—"로 둔다. 페이지당 수집량은 데이터를 가져온 페이지("정상
-        수집")만 대상으로 해 빈 응답이 중앙값·최소값을 0으로 끌어내리지 않게 한다."""
-        cells = agg["field_cells"]
-        self.kpi_fill_rate.update_value(f"{(cells - agg['empty_cells']) / cells * 100:.1f}%" if cells else "—")
-        field_items = agg["field_items"]
-        self.kpi_complete_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
-
+        """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값·최소/최대)과 유효 데이터
+        비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
+        수집")만 대상으로 해 빈 응답이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
+        필드 채움 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
-        self.kpi_page_items.update_value(
-            f"{_count_text(_median(pages))}건 (평균 {sum(pages) / len(pages):.1f})" if pages else "—")
+        self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
         self.kpi_item_range.update_value(f"{min(pages):,} ~ {max(pages):,}건" if pages else "—")
+
+        field_items = agg["field_items"]
+        self.kpi_valid_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
 
     def _aggregate_rows(self, rows):
         """url_maps를 한 번만 순회해 행 기반 집계를 모두 산출한다 — 3초마다
@@ -482,7 +479,7 @@ class StatisticsPageTriggers:
         speed = defaultdict(int)
         blocked = 0
         page_items = []
-        field_cells = empty_cells = complete_rows = field_items = 0
+        complete_rows = field_items = 0
 
         for r in rows:
             code = str(r.get("status_code", ""))
@@ -503,10 +500,7 @@ class StatisticsPageTriggers:
                 page_items.append(item_count)
 
             # 필드 채움 기록(worker.count_field_fill)이 있는 응답만 — 없는 과거 기록은 건너뛴다
-            cells = r.get("field_cells")
-            if isinstance(cells, int):
-                field_cells += cells
-                empty_cells += r.get("empty_cells", 0)
+            if isinstance(r.get("field_cells"), int):
                 complete_rows += r.get("complete_rows", 0)
                 field_items += item_count if isinstance(item_count, int) else 0
 
@@ -516,8 +510,7 @@ class StatisticsPageTriggers:
         return {
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
-            "page_items": page_items, "field_cells": field_cells, "empty_cells": empty_cells,
-            "complete_rows": complete_rows, "field_items": field_items,
+            "page_items": page_items, "complete_rows": complete_rows, "field_items": field_items,
         }
 
     def _refresh_session_table(self):

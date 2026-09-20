@@ -51,7 +51,7 @@ REQUEST_CARD_HELP = (
 )
 PROCESS_CARD_HELP = (
     "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
-    "꺼낸 데이터가 얼마나 빠짐없이 채워졌는지, 페이지마다 몇 건씩 나오는지를 봅니다." + CARD_HELP_HINT
+    "페이지마다 몇 건씩 나오는지, 꺼낸 데이터가 얼마나 온전한지를 봅니다." + CARD_HELP_HINT
 )
 
 REQUEST_KPI_TIPS = (
@@ -62,15 +62,13 @@ REQUEST_KPI_TIPS = (
     "1초에 평균 몇 페이지를 처리했는지입니다.",
 )
 PROCESS_KPI_TIPS = (
-    "꺼낸 모든 항목 칸 중 값이 채워진 칸의 비율입니다.\n"
-    "낮으면 추출 규칙이 일부 항목을 못 찾고 있다는 신호이니 수집 설정을 점검하세요.\n"
-    "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
-    "꺼낸 데이터(행) 중 모든 항목이 채워진 행의 비율입니다.\n"
-    "필드 채움률이 높아도 이 값이 낮으면 항목이 여러 행에 흩어져 비어 있는 것입니다.",
-    "데이터를 가져온 페이지 1개에서 나온 건수입니다. 앞 숫자는 중앙값(튀는 값에 덜 흔들림), 괄호 안은 평균입니다.\n"
+    "데이터를 가져온 페이지 1개당 나온 건수의 중앙값입니다. 평균과 달리 튀는 값에 덜 흔들립니다.\n"
     "페이지마다 비슷하게 나와야 정상이며, 평소보다 크게 줄면 사이트 구조가 바뀐 것일 수 있습니다.",
     "데이터를 가져온 페이지 중 가장 적게 나온 건수와 가장 많이 나온 건수입니다.\n"
     "범위가 지나치게 넓으면 일부 페이지에서만 추출이 잘 안 되고 있을 수 있습니다.",
+    "꺼낸 데이터(행) 중 모든 항목이 채워진(빈 값이 없는) 행의 비율입니다.\n"
+    "낮으면 추출 규칙이 일부 항목을 못 찾고 있다는 신호이니 수집 설정을 점검하세요.\n"
+    "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
 )
 STATUS_MEANINGS_PER_LINE = 3
 
@@ -209,11 +207,11 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         process_card_w, process_cards = build_stat_summary_card(
             parts, "데이터 처리",
-            [("필드 채움률", "—", GREEN), ("완전한 행 비율", "—", BLUE),
-             ("페이지당 건수", "—", ACCENT_LIGHT), ("수집량 범위", "—", PURPLE)],
+            [("페이지당 중앙값", "—", ACCENT_LIGHT), ("최소·최대 수집량", "—", PURPLE),
+             ("유효 데이터 비율", "—", GREEN)],
             help_text=PROCESS_CARD_HELP,
         )
-        self.kpi_fill_rate, self.kpi_complete_rate, self.kpi_page_items, self.kpi_item_range = process_cards
+        self.kpi_page_median, self.kpi_item_range, self.kpi_valid_rate = process_cards
         _apply_tooltips(process_cards, PROCESS_KPI_TIPS)
         process_card_w.setFixedHeight(process_card_w.sizeHint().height())
         row1.addWidget(process_card_w, 1)
