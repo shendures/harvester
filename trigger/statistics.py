@@ -184,6 +184,18 @@ def _other_codes_text(status_cnt: dict) -> str:
     return f"{STATUS_OTHER_LABEL}에 포함된 코드: {listed}{suffix}"
 
 
+def _median(values: list) -> float:
+    """정렬해서 가운데 값(짝수 개면 가운데 두 값의 평균)을 돌려준다 — 값이 하나 이상이어야 한다."""
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _count_text(value: float) -> str:
+    """건수를 천 단위 쉼표와 함께 — 정수면 소수점 없이, 짝수 개 중앙값처럼 .5면 소수 첫째 자리까지."""
+    return f"{int(value):,}" if value == int(value) else f"{value:,.1f}"
+
+
 def _percent(part: int, whole: int) -> str:
     """part/whole을 소수 첫째 자리 백분율 문자열로 — whole이 0이면 "0%"."""
     return f"{part / whole * 100:.1f}%" if whole else "0%"
@@ -339,6 +351,7 @@ class StatisticsPageTriggers:
         self.kpi_conn_fail.update_value(agg["status_group"].get(NO_STATUS_CODE, 0))
 
         self._refresh_data_kpis(total, agg)
+        self._refresh_process_kpis(agg)
 
         self.status_chart.set_data(_status_segments(status_cnt))
         self.status_chart.setToolTip(_other_codes_text(status_cnt))
@@ -425,6 +438,20 @@ class StatisticsPageTriggers:
         self.kpi_achieve.update_value(f"{total / url_count * 100:.1f}%" if url_count else "—")
         self.kpi_skip.update_value(f"{skipped / responded * 100:.1f}%" if responded else "—")
 
+    def _refresh_process_kpis(self, agg: dict) -> None:
+        """데이터 처리 카드를 갱신한다 — 응답 이후 추출된 데이터의 품질(필드 채움률·완전한
+        행 비율)과 페이지당 수집량(중앙값·범위). 이 필드를 기록하기 시작한 이후의 응답이
+        없으면 해당 지표는 "—"로 둔다. 페이지당 수집량은 데이터를 가져온 페이지("정상
+        수집")만 대상으로 해 빈 응답이 중앙값·최소값을 0으로 끌어내리지 않게 한다."""
+        cells = agg["field_cells"]
+        self.kpi_fill_rate.update_value(f"{(cells - agg['empty_cells']) / cells * 100:.1f}%" if cells else "—")
+        field_items = agg["field_items"]
+        self.kpi_complete_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
+
+        pages = agg["page_items"]
+        self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
+        self.kpi_item_range.update_value(f"{min(pages):,} ~ {max(pages):,}건" if pages else "—")
+
     def _refresh_data_kpis(self, total: int, agg: dict) -> None:
         """수집 데이터 카드를 갱신한다. 성공 기준은 응답 결과 구성 카드·진단 배너와
         같은 "정상 수집"이다. 데이터 건수(item_count)는 이 필드를 기록하기 시작한
@@ -457,6 +484,8 @@ class StatisticsPageTriggers:
         blocked = 0
         extract_err = 0
         item_sum, counted_pages, counted_ok_pages = 0, 0, 0
+        page_items = []
+        field_cells = empty_cells = complete_rows = field_items = 0
 
         for r in rows:
             code = str(r.get("status_code", ""))
@@ -478,6 +507,16 @@ class StatisticsPageTriggers:
                 item_sum += item_count
                 counted_pages += 1
                 counted_ok_pages += row_outcome == OUTCOME_OK
+                if row_outcome == OUTCOME_OK:
+                    page_items.append(item_count)
+
+            # 필드 채움 기록(worker.count_field_fill)이 있는 응답만 — 없는 과거 기록은 건너뛴다
+            cells = r.get("field_cells")
+            if isinstance(cells, int):
+                field_cells += cells
+                empty_cells += r.get("empty_cells", 0)
+                complete_rows += r.get("complete_rows", 0)
+                field_items += item_count if isinstance(item_count, int) else 0
 
             if timestamp:
                 (daily_ok if is_ok else daily_err)[timestamp[:10]] += 1
@@ -487,6 +526,8 @@ class StatisticsPageTriggers:
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
             "extract_err": extract_err, "item_sum": item_sum,
             "counted_pages": counted_pages, "counted_ok_pages": counted_ok_pages,
+            "page_items": page_items, "field_cells": field_cells, "empty_cells": empty_cells,
+            "complete_rows": complete_rows, "field_items": field_items,
         }
 
     def _refresh_session_table(self):

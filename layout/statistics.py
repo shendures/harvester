@@ -15,7 +15,7 @@ from trigger.statistics import (
 from style import EqualSpacingTable, Divider, CollapsibleSection, _load_svg_icon
 from .common import (
     parts, theme, build_scroll_body, build_stat_summary_card, build_reset_button, build_popup_dialog,
-    ACCENT_LIGHT, GREEN, BLUE, RED, AMBER, TEXT_PRIMARY, TEXT_SECONDARY, BG_SECONDARY, BORDER,
+    ACCENT_LIGHT, GREEN, BLUE, PURPLE, RED, AMBER, TEXT_PRIMARY, TEXT_SECONDARY, BG_SECONDARY, BORDER,
 )
 from .charts import RankedBarChart, GroupedBarChart
 
@@ -46,24 +46,39 @@ REQUEST_CARD_HELP = (
     "사이트에 요청을 보내고 응답을 받는 과정의 통계입니다.\n"
     "페이지가 열렸는지, 얼마나 빨랐는지, 연결이 끊겼는지를 봅니다." + CARD_HELP_HINT
 )
+PROCESS_CARD_HELP = (
+    "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
+    "꺼낸 데이터가 얼마나 빠짐없이 채워졌는지, 페이지마다 몇 건씩 나오는지를 봅니다." + CARD_HELP_HINT
+)
 DATA_CARD_HELP = (
-    "받은 페이지에서 실제로 가져온 데이터의 통계입니다.\n"
-    "데이터가 몇 건 모였는지, 데이터를 못 가져온 페이지가 얼마나 되는지를 봅니다." + CARD_HELP_HINT
+    "수집한 데이터의 양과 데이터를 못 가져온 페이지 현황입니다.\n"
+    "응답 결과 구성 카드와 겹치는 숫자를 상세하게 모아 둔 카드입니다." + CARD_HELP_HINT
 )
 DETAIL_CARD_HELP = "수집 속도와 요청 처리 현황을 보는 보조 지표입니다." + CARD_HELP_HINT
 
 REQUEST_KPI_TIPS = (
     "초기화 이후 사이트에 요청해서 응답을 받은 페이지 수입니다. (누적)",
     "받은 응답 중 사이트가 정상적으로 답한(200) 비율입니다.\n"
-    "페이지가 열렸다는 뜻일 뿐, 데이터를 가져왔는지는\n오른쪽 '데이터 수집 성공률'에서 확인하세요.",
+    "페이지가 열렸다는 뜻일 뿐, 데이터를 가져왔는지는\n'응답 결과 구성'의 '정상 수집'에서 확인하세요.",
     "요청을 보내고 페이지가 도착하기까지 걸린 평균 시간입니다.\n길수록 사이트가 느리거나 혼잡하다는 뜻입니다.",
     "사이트에 아예 연결하지 못한 횟수입니다.\n인터넷 연결, 프록시 설정, 사이트 점검 여부를 확인하세요.",
+)
+PROCESS_KPI_TIPS = (
+    "꺼낸 모든 항목 칸 중 값이 채워진 칸의 비율입니다.\n"
+    "낮으면 추출 규칙이 일부 항목을 못 찾고 있다는 신호이니 수집 설정을 점검하세요.\n"
+    "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
+    "꺼낸 데이터(행) 중 모든 항목이 채워진 행의 비율입니다.\n"
+    "필드 채움률이 높아도 이 값이 낮으면 항목이 여러 행에 흩어져 비어 있는 것입니다.",
+    "데이터를 가져온 페이지 1개에서 나온 건수의 중앙값입니다(평균보다 튀는 값에 덜 흔들립니다).\n"
+    "페이지마다 비슷하게 나와야 정상이며, 평소보다 크게 줄면 사이트 구조가 바뀐 것일 수 있습니다.",
+    "데이터를 가져온 페이지 중 가장 적게 나온 건수와 가장 많이 나온 건수입니다.\n"
+    "범위가 지나치게 넓으면 일부 페이지에서만 추출이 잘 안 되고 있을 수 있습니다.",
 )
 DATA_KPI_TIPS = (
     "페이지에서 실제로 가져온 데이터(행)의 총 건수입니다.\n"
     "건수 기록을 시작한 이후 수집분부터 집계되며,\n이전 기록만 있으면 '—'로 표시됩니다.",
     "받은 페이지 중 실제로 데이터를 가져온 페이지의 비율입니다.\n"
-    "아래 '응답 결과 구성'의 '정상 수집'과 같은 기준입니다.",
+    "위 '응답 결과 구성'의 '정상 수집'과 같은 기준입니다.",
     "데이터를 가져온 페이지 1개당 평균 수집 건수입니다.",
     "앞 숫자: 빈 응답 (페이지는 열렸지만 찾을 데이터가 없음)\n"
     "뒤 숫자: 추출 오류 (데이터를 꺼내는 규칙 자체가 실패)\n"
@@ -210,16 +225,16 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         req_card_w.setFixedHeight(req_card_w.sizeHint().height())
         row1.addWidget(req_card_w, 1)
 
-        data_card_w, data_cards = build_stat_summary_card(
-            parts, "수집 데이터",
-            [("수집한 데이터", "—", ACCENT_LIGHT), ("데이터 수집 성공률", "0%", GREEN),
-             ("페이지당 평균", "—", BLUE), ("빈 응답 / 추출 오류", "0 / 0", AMBER)],
-            help_text=DATA_CARD_HELP,
+        process_card_w, process_cards = build_stat_summary_card(
+            parts, "데이터 처리",
+            [("필드 채움률", "—", GREEN), ("완전한 행 비율", "—", BLUE),
+             ("페이지당 중앙값", "—", ACCENT_LIGHT), ("수집량 범위", "—", PURPLE)],
+            help_text=PROCESS_CARD_HELP,
         )
-        self.kpi_items, self.kpi_data_rate, self.kpi_items_per_page, self.kpi_empty_pages = data_cards
-        _apply_tooltips(data_cards, DATA_KPI_TIPS)
-        data_card_w.setFixedHeight(data_card_w.sizeHint().height())
-        row1.addWidget(data_card_w, 1)
+        self.kpi_fill_rate, self.kpi_complete_rate, self.kpi_page_median, self.kpi_item_range = process_cards
+        _apply_tooltips(process_cards, PROCESS_KPI_TIPS)
+        process_card_w.setFixedHeight(process_card_w.sizeHint().height())
+        row1.addWidget(process_card_w, 1)
 
         bl.addLayout(row1)
 
@@ -265,9 +280,19 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         return body_widget
 
     def _build_detail_section(self) -> QWidget:
-        """접이식 "상세 정보" 영역 — 수집 속도·요청 처리 현황을 보는 보조 지표 카드를
-        담는다. 기본은 접힌 상태이고, 숨겨진 동안에도 값은 3초 타이머로 계속 갱신된다."""
+        """접이식 "상세 정보" 영역 — 수집 데이터 요약과 수집 속도·요청 처리 현황을 보는
+        보조 지표 카드를 담는다. 기본은 접힌 상태이고, 숨겨진 동안에도 값은 3초 타이머로 계속 갱신된다."""
         section = CollapsibleSection("상세 정보")
+
+        data_card_w, data_cards = build_stat_summary_card(
+            parts, "수집 데이터 요약",
+            [("수집한 데이터", "—", ACCENT_LIGHT), ("데이터 수집 성공률", "0%", GREEN),
+             ("페이지당 평균", "—", BLUE), ("빈 응답 / 추출 오류", "0 / 0", AMBER)],
+            help_text=DATA_CARD_HELP,
+        )
+        self.kpi_items, self.kpi_data_rate, self.kpi_items_per_page, self.kpi_empty_pages = data_cards
+        _apply_tooltips(data_cards, DATA_KPI_TIPS)
+        section.body_layout.addWidget(data_card_w)
 
         detail_card_w, detail_cards = build_stat_summary_card(
             parts, "상세 지표",
