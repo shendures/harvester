@@ -12,9 +12,9 @@ from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
 from style import EqualSpacingTable, apply_render_safety_limits
 from ..common import (
-    parts, build_scroll_body, build_stat_summary_card,
+    parts, build_scroll_body,
     BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
-    TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
+    TEXT_PRIMARY, TEXT_MUTED, BORDER,
 )
 from .common import ActiveBlueprintMixin
 
@@ -37,9 +37,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.step_circles = []
         self.step_labels = []
         self._running = False
-        self._session_error_count = 0
-        self._session_latency_sum = 0.0
-        self._session_latency_count = 0
         self._build()
 
     def _build(self):
@@ -140,12 +137,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.progress_card_widget = progress_wrap
         self._place_progress_card(bl)
 
-        stw, (self.s_total, self.s_err, self.s_pages, self.s_speed) = build_stat_summary_card(
-            parts, "세션 통계",
-            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
-        )
-        bl.addWidget(stw)
-
         # 수집 모니터링 테이블 (MonitorPageSingle에서 이동)
         mon_tcw, mon_tc = parts.card_widget("수집 모니터링")
         mon_tcw.setMinimumHeight(300)
@@ -179,8 +170,8 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
     def _place_progress_card(self, bl: QVBoxLayout) -> None:
         """"대기중 상태바" 행(self.progress_card_widget — 마진 없는 래퍼 안에 실제
         카드 pb_card가 들어있음)을 배치한다. 기본은 다른 카드들과 같은 세로
-        스택에 그대로 넣는다(단일 레이아웃 — "작업 진행 상태" 바로 다음, "세션
-        통계" 바로 앞) — 이 경우 래퍼의 마진이 0이므로 bl 자체의 좌우 14px 마진이
+        스택에 그대로 넣는다(단일 레이아웃 — "작업 진행 상태" 바로 다음, "수집
+        모니터링" 바로 앞) — 이 경우 래퍼의 마진이 0이므로 bl 자체의 좌우 14px 마진이
         그대로 적용된다. DashboardPageMulti는 이 훅을 오버라이드해 bl에 넣는 대신
         래퍼의 마진을 직접 14px로 보정한다 — main_window가 progress_card_widget을
         "작업 진행 상태"보다 더 위쪽의 별도 스택(bl과 무관한 여백 0인 컨테이너)에
@@ -259,14 +250,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
             self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
 
     def _reset_dashboard(self):
-        self.s_total.update_value(0)
-        self.s_err.update_value(0)
-        self.s_pages.update_value(0)
-        self.s_speed.update_value("—")
-        self._session_error_count = 0
-        self._session_latency_sum = 0.0
-        self._session_latency_count = 0
-
         self.monitor_table.setRowCount(0)
         self.mon_row_count_lbl.setText("0 rows")
 

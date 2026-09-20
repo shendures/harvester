@@ -3,7 +3,7 @@ import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTableWidget,
+    QLabel, QPushButton, QTableWidget, QTableWidgetItem,
     QFrame, QCheckBox, QLineEdit,
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
@@ -494,8 +494,8 @@ class StatCard(QWidget):
 class NoFocusDelegate(QStyledItemDelegate):
     """셀이 '현재 셀'이 되어도 점선 포커스 사각형을 그리지 않는 델리게이트.
 
-    체크박스만 보여야 하는 컬럼(다중 수집의 수집 목록 선택 컬럼, 단일 수집의
-    프록시 목록 활성 컬럼 등)에 setItemDelegateForColumn()으로 적용한다.
+    EqualSpacingTable의 기본 델리게이트로 적용돼 클릭한 셀 하나가 아닌 행 전체만
+    강조되게 하고, 체크박스 컬럼(수집 목록 선택·프록시 활성)에도 쓴다.
     """
 
     def paint(self, painter, option, index):
@@ -744,6 +744,7 @@ class EqualSpacingTable(QTableWidget):
 
     columnFiltersChanged = pyqtSignal()
     sortStateChanged = pyqtSignal(int, object)  # (logical_column, Qt.SortOrder 또는 None)
+    rowKeyNavigated = pyqtSignal(QTableWidgetItem)  # ↑/↓로 current 행이 바뀐 뒤, 그 행의 아이템
 
     def __init__(
             self,
@@ -798,6 +799,7 @@ class EqualSpacingTable(QTableWidget):
         self.setWordWrap(False)
         self.setShowGrid(False)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setItemDelegate(NoFocusDelegate(self))
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.verticalHeader().setDefaultSectionSize(self._row_height)
 
@@ -1294,6 +1296,21 @@ class EqualSpacingTable(QTableWidget):
         menu.exec(pos)
 
     # ── Qt 이벤트 오버라이드 ──────────────────────────
+    def keyPressEvent(self, event):
+        """↑/↓로 current 행이 바뀌면 rowKeyNavigated를 emit한다 — NoSelection
+        테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도 같은 핸들러를
+        재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        previous_row = self.currentRow()
+        super().keyPressEvent(event)
+        if event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            return
+        row = self.currentRow()
+        if row == previous_row:
+            return
+        item = self.item(row, max(self.currentColumn(), 0)) or self.item(row, 0)
+        if item is not None:
+            self.rowKeyNavigated.emit(item)
+
     def resizeEvent(self, event):
         """
         창 크기 변경 시:

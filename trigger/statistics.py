@@ -2,12 +2,14 @@
 # StatisticsPage의 데이터 로드·내보내기 메서드(StatisticsPageTriggers).
 
 import calendar
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
 from PyQt6.QtWidgets import QTableWidgetItem
 from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt
 
 from .common import (
     store, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED,
@@ -23,6 +25,10 @@ TREND_PERIODS = (TREND_HOURLY, TREND_WEEKLY, TREND_MONTHLY)
 # 표시 방식 — 최근 N 구간(기본) / 오늘이 속한 일·주·월 전체
 TREND_MODE_RECENT, TREND_MODE_CALENDAR = "최근 기준", "현재 일자 기준"
 
+NO_BODY_TEXT = "-"
+# 요청 상세 표의 결과 문구 — worker가 기록한 outcome(로그 레벨)을 표시 문구로 옮긴다
+REQUEST_RESULTS = {"ok": "성공", "warn": "빈 응답", "err": "실패"}
+REQUEST_RESULT_MISSED, REQUEST_RESULT_UNKNOWN = "미수집", "-"
 HOURS_PER_DAY = 24
 DAYS_PER_WEEK = 7
 DAYS_IN_MONTH_MAX = 31
@@ -314,8 +320,68 @@ def aggregate_all_time(rows, period: str) -> AllTimeTrend:
     return AllTimeTrend(TREND_ALL_TIME_CAPTIONS[period], list(labels), ok_vals, err_vals)
 
 
+def _session_requests(session: dict) -> list[dict]:
+    """세션 레코드의 요청 목록을 {url, body, ...} dict로 정규화한다. requests가 없는
+    과거 기록은 템플릿 url 1건으로 대체하며, 결과 필드(outcome 등)는 비워 둔다."""
+    return session.get("requests") or [{"url": session.get("url", ""), "body": None}]
+
+
+def session_request_rows(session: dict) -> list[list[str]]:
+    """요청 상세 표의 행(NO, URL, Body, Method, Status, Response, Requested At, Result)."""
+    method = session.get("method", "GET")
+    rows = []
+    for no, r in enumerate(_session_requests(session), start=1):
+        body = NO_BODY_TEXT if r["body"] is None else json.dumps(r["body"], ensure_ascii=False)
+        latency = r.get("latency")
+        response = f"{latency}s" if isinstance(latency, (int, float)) else NO_BODY_TEXT
+        # outcome 키가 아예 없으면 결과를 기록하지 않던 과거 기록(미상), None이면 응답 미수신
+        result = REQUEST_RESULT_UNKNOWN if "outcome" not in r else REQUEST_RESULTS.get(r["outcome"], REQUEST_RESULT_MISSED)
+        rows.append([
+            str(no), r["url"], body, method,
+            str(r["status_code"]) if r.get("status_code") is not None else NO_BODY_TEXT,
+            response, r.get("timestamp") or NO_BODY_TEXT, result,
+        ])
+    return rows
+
+
 class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
+
+    def _reset_session_counters(self):
+        self._session_rows = 0
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
+
+    def add_session_row(self, row: dict):
+        """워커 new_row 시그널 수신 → 현재 세션 집계(오류 수/지연시간 합)에 누적해 세션 통계 카드 갱신"""
+        if not row or "resp_info" not in row:
+            return
+        resp_info = row["resp_info"]
+        self._session_rows += 1
+        if str(resp_info.get("status", "")).strip() != "200":
+            self._session_error_count += 1
+        try:
+            self._session_latency_sum += float(resp_info.get("pure_latency", ""))
+            self._session_latency_count += 1
+        except (ValueError, TypeError):
+            pass
+        self._refresh_session_stats()
+
+    def reset_session_stats(self):
+        self._reset_session_counters()
+        self._refresh_session_stats()
+
+    def _refresh_session_stats(self):
+        errors = self._session_error_count
+        avg_latency = (
+            f"{self._session_latency_sum / self._session_latency_count:.2f}s"
+            if self._session_latency_count else "—"
+        )
+        self.live_completed.update_value(self._session_rows - errors)
+        self.live_errors.update_value(errors)
+        self.live_items.update_value(self._session_rows)
+        self.live_avg_latency.update_value(avg_latency)
 
     def reload(self):
         """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
@@ -549,6 +615,8 @@ class StatisticsPageTriggers:
             for col, (val, color) in enumerate(zip(vals, colors)):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, s)  # 더블클릭 시 요청 상세를 열 세션 레코드
                 self.session_table.setItem(r, col, item)
 
         self.session_badge.setText(f"{len(sessions)}건")
