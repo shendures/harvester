@@ -347,42 +347,6 @@ def session_request_rows(session: dict) -> list[list[str]]:
 class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
 
-    def _reset_session_counters(self):
-        self._session_rows = 0
-        self._session_error_count = 0
-        self._session_latency_sum = 0.0
-        self._session_latency_count = 0
-
-    def add_session_row(self, row: dict):
-        """워커 new_row 시그널 수신 → 현재 세션 집계(오류 수/지연시간 합)에 누적해 세션 통계 카드 갱신"""
-        if not row or "resp_info" not in row:
-            return
-        resp_info = row["resp_info"]
-        self._session_rows += 1
-        if str(resp_info.get("status", "")).strip() != "200":
-            self._session_error_count += 1
-        try:
-            self._session_latency_sum += float(resp_info.get("pure_latency", ""))
-            self._session_latency_count += 1
-        except (ValueError, TypeError):
-            pass
-        self._refresh_session_stats()
-
-    def reset_session_stats(self):
-        self._reset_session_counters()
-        self._refresh_session_stats()
-
-    def _refresh_session_stats(self):
-        errors = self._session_error_count
-        avg_latency = (
-            f"{self._session_latency_sum / self._session_latency_count:.2f}s"
-            if self._session_latency_count else "—"
-        )
-        self.live_completed.update_value(self._session_rows - errors)
-        self.live_errors.update_value(errors)
-        self.live_items.update_value(self._session_rows)
-        self.live_avg_latency.update_value(avg_latency)
-
     def reload(self):
         """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
         3초 주기 타이머는 테이블이 빠진 _refresh_summary()만 호출한다
@@ -414,9 +378,7 @@ class StatisticsPageTriggers:
         self.kpi_total.update_value(total)
         self.kpi_resp_rate.update_value(_percent(status_cnt.get("200", 0), total))
         self.kpi_avg_t.update_value(avg_t)
-        self.kpi_conn_fail.update_value(agg["status_group"].get(NO_STATUS_CODE, 0))
 
-        self._refresh_data_kpis(total, agg)
         self._refresh_process_kpis(agg)
 
         self.status_chart.set_data(_status_segments(status_cnt))
@@ -429,7 +391,7 @@ class StatisticsPageTriggers:
         self.speed_chart.set_data(
             [(label, agg["speed"].get(label, 0), color) for label, color in SPEED_SEGMENTS])
 
-        self._refresh_quality_kpis(sessions)
+        self._refresh_throughput_kpi(sessions)
 
         self._update_diagnosis(diagnose(total, agg))
 
@@ -489,20 +451,11 @@ class StatisticsPageTriggers:
                 [agg["daily_ok"].get(k, 0) for k in keys],
                 [agg["daily_err"].get(k, 0) for k in keys])
 
-    def _refresh_quality_kpis(self, sessions):
-        """세션 누계로 상세 지표(처리량·요청 대비 응답률·스킵률)를 갱신한다 — 이 카드는
-        상세 정보 영역이 생기기 전까지 숨겨 둔다(layout/statistics.py). url_count(생성된 URL 수)와
-        skipped(URL 불일치로 버려진 응답 수)는 저장만 되고 어디에도 노출되지
-        않던 값으로, 수집이 조용히 0건으로 끝나는 상황을 드러내는 지표다."""
+    def _refresh_throughput_kpi(self, sessions):
+        """세션 누계(응답 수 ÷ 소요 시간)로 처리량 KPI를 갱신한다."""
         total = sum(s.get("total", 0) for s in sessions)
         elapsed = sum(s.get("elapsed", 0) or 0 for s in sessions)
-        url_count = sum(s.get("url_count", 0) for s in sessions)
-        skipped = sum(s.get("skipped", 0) for s in sessions)
-        responded = total + skipped
-
         self.kpi_throughput.update_value(f"{total / elapsed:.1f}/s" if elapsed else "—")
-        self.kpi_achieve.update_value(f"{total / url_count * 100:.1f}%" if url_count else "—")
-        self.kpi_skip.update_value(f"{skipped / responded * 100:.1f}%" if responded else "—")
 
     def _refresh_process_kpis(self, agg: dict) -> None:
         """데이터 처리 카드를 갱신한다 — 응답 이후 추출된 데이터의 품질(필드 채움률·완전한
@@ -515,29 +468,9 @@ class StatisticsPageTriggers:
         self.kpi_complete_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
 
         pages = agg["page_items"]
-        self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
+        self.kpi_page_items.update_value(
+            f"{_count_text(_median(pages))}건 (평균 {sum(pages) / len(pages):.1f})" if pages else "—")
         self.kpi_item_range.update_value(f"{min(pages):,} ~ {max(pages):,}건" if pages else "—")
-
-    def _refresh_data_kpis(self, total: int, agg: dict) -> None:
-        """수집 데이터 카드를 갱신한다. 성공 기준은 응답 결과 구성 카드·진단 배너와
-        같은 "정상 수집"이다. 데이터 건수(item_count)는 이 필드를 기록하기 시작한
-        이후의 응답에만 있어, 해당 응답이 하나도 없으면 "—"로 둔다."""
-        outcome = agg["outcome"]
-        ok_pages = outcome.get(OUTCOME_OK, 0)
-        self.kpi_data_rate.update_value(_percent(ok_pages, total))
-        # 빈 응답 분류에는 추출 오류가 포함되므로, 두 값이 겹치지 않게 빼서 보여준다
-        extract_err = agg["extract_err"]
-        self.kpi_empty_pages.update_value(
-            f"{outcome.get(OUTCOME_EMPTY, 0) - extract_err} / {extract_err}")
-
-        if not agg["counted_pages"]:
-            self.kpi_items.update_value("—")
-            self.kpi_items_per_page.update_value("—")
-            return
-        self.kpi_items.update_value(f"{agg['item_sum']:,}건")
-        counted_ok = agg["counted_ok_pages"]
-        self.kpi_items_per_page.update_value(
-            f"{agg['item_sum'] / counted_ok:.1f}건" if counted_ok else "0건")
 
     def _aggregate_rows(self, rows):
         """url_maps를 한 번만 순회해 행 기반 집계를 모두 산출한다 — 3초마다
@@ -548,8 +481,6 @@ class StatisticsPageTriggers:
         outcome = defaultdict(int)
         speed = defaultdict(int)
         blocked = 0
-        extract_err = 0
-        item_sum, counted_pages, counted_ok_pages = 0, 0, 0
         page_items = []
         field_cells = empty_cells = complete_rows = field_items = 0
 
@@ -562,19 +493,14 @@ class StatisticsPageTriggers:
             row_outcome = _outcome(r, code, is_ok)
             outcome[row_outcome] += 1
             blocked += code in BLOCKED_STATUS_CODES
-            extract_err += row_outcome == OUTCOME_EMPTY and bool(r.get("extract_error"))
 
             latency = r.get("pure_latency")
             if isinstance(latency, float):
                 speed[_speed_bucket(latency)] += 1
 
             item_count = r.get("item_count")
-            if isinstance(item_count, int):
-                item_sum += item_count
-                counted_pages += 1
-                counted_ok_pages += row_outcome == OUTCOME_OK
-                if row_outcome == OUTCOME_OK:
-                    page_items.append(item_count)
+            if isinstance(item_count, int) and row_outcome == OUTCOME_OK:
+                page_items.append(item_count)
 
             # 필드 채움 기록(worker.count_field_fill)이 있는 응답만 — 없는 과거 기록은 건너뛴다
             cells = r.get("field_cells")
@@ -590,8 +516,6 @@ class StatisticsPageTriggers:
         return {
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
-            "extract_err": extract_err, "item_sum": item_sum,
-            "counted_pages": counted_pages, "counted_ok_pages": counted_ok_pages,
             "page_items": page_items, "field_cells": field_cells, "empty_cells": empty_cells,
             "complete_rows": complete_rows, "field_items": field_items,
         }

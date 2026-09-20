@@ -92,7 +92,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
         self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
         # "대시보드"(구 NAV_MONITOR 페이지)를 "수집 목록" 위/아래에 통합한다 — 카드
-        # 순서를 "대기중 상태바 → 작업 진행 상태 → 수집 목록 → 세션 통계 → 수집
+        # 순서를 "대기중 상태바 → 작업 진행 상태 → 수집 목록 → 세션 현황 → 수집
         # 모니터링"으로 맞추기 위해 progress_slot(대기중 상태바)·step_slot(작업 진행
         # 상태)을 이 순서로 위에, dashboard_slot(나머지 카드)을 아래에 붙인다. 세
         # 슬롯의 소유권은 그대로 이 클래스가 갖고(_get_or_create_bundle이 계속
