@@ -176,6 +176,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
     def __init__(self):
         super().__init__()
+        self._reset_session_counters()
         self._build()
         # auto-refresh every 3 s — 세션 이력 테이블은 세션 종료 시에만 바뀌므로
         # 제외하고 KPI/차트만 갱신한다(trigger/statistics.py의 reload() 참고)
@@ -209,6 +210,15 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         reset_row.addWidget(self._build_diagnosis_banner(), 1)
         reset_row.addWidget(self.reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         bl.addLayout(reset_row)
+
+        # ── 세션 통계: 현재 수집 세션의 실시간 집계 (워커 new_row로 갱신) ──
+        live_card_w, live_cards = build_stat_summary_card(
+            parts, "세션 통계",
+            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
+        )
+        self.live_completed, self.live_errors, self.live_items, self.live_avg_latency = live_cards
+        live_card_w.setFixedHeight(live_card_w.sizeHint().height())
+        bl.addWidget(live_card_w)
 
         # ── Row 1: 요청·응답(좌) / 수집 데이터(우) KPI 카드를 5:5로 배치 ──
         # 두 카드 모두 setFixedHeight(sizeHint)로 고정하는 이유는 row1에는 다른
@@ -527,3 +537,9 @@ class StatisticsPage(QWidget):
 
     def reload(self):
         self.panel.reload()
+
+    def add_row(self, row: dict):
+        self.panel.add_session_row(row)
+
+    def reset_session_stats(self):
+        self.panel.reset_session_stats()

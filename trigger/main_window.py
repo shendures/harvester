@@ -101,6 +101,8 @@ class MainWindowTriggersSingle:
         _stop_worker_if_running(self._worker)
 
         self._worker = MultiprocessWorker(cfg, job_name)
+        self.stats_page.reset_session_stats()
+        self._worker.new_row.connect(self.stats_page.add_row)
         self._worker.new_row.connect(self.dashboard.add_row)
         self._worker.new_row.connect(self.monitor_page._add_realtime_row)
         self._worker.progress.connect(self.update_progress)
@@ -441,6 +443,8 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         dash, mon = bundle.dashboard, bundle.monitor_page
 
         self._worker = MultiprocessWorker(cfg, job_name)
+        self.stats_page.reset_session_stats()
+        self._worker.new_row.connect(self.stats_page.add_row)
         self._worker.new_row.connect(dash.add_row)
         self._worker.new_row.connect(mon._add_realtime_row)
         self._worker.progress.connect(

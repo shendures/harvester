@@ -347,6 +347,42 @@ def session_request_rows(session: dict) -> list[list[str]]:
 class StatisticsPageTriggers:
     """StatisticsPage의 데이터 로드·내보내기 메서드"""
 
+    def _reset_session_counters(self):
+        self._session_rows = 0
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
+
+    def add_session_row(self, row: dict):
+        """워커 new_row 시그널 수신 → 현재 세션 집계(오류 수/지연시간 합)에 누적해 세션 통계 카드 갱신"""
+        if not row or "resp_info" not in row:
+            return
+        resp_info = row["resp_info"]
+        self._session_rows += 1
+        if str(resp_info.get("status", "")).strip() != "200":
+            self._session_error_count += 1
+        try:
+            self._session_latency_sum += float(resp_info.get("pure_latency", ""))
+            self._session_latency_count += 1
+        except (ValueError, TypeError):
+            pass
+        self._refresh_session_stats()
+
+    def reset_session_stats(self):
+        self._reset_session_counters()
+        self._refresh_session_stats()
+
+    def _refresh_session_stats(self):
+        errors = self._session_error_count
+        avg_latency = (
+            f"{self._session_latency_sum / self._session_latency_count:.2f}s"
+            if self._session_latency_count else "—"
+        )
+        self.live_completed.update_value(self._session_rows - errors)
+        self.live_errors.update_value(errors)
+        self.live_items.update_value(self._session_rows)
+        self.live_avg_latency.update_value(avg_latency)
+
     def reload(self):
         """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
         3초 주기 타이머는 테이블이 빠진 _refresh_summary()만 호출한다
