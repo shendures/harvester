@@ -3,14 +3,16 @@
 
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QMenu
+from PyQt6.QtWidgets import QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QMenu, QTableWidgetItem
 from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtGui import QColor
 
 from trigger import StatisticsPageTriggers
 from trigger.statistics import (
     TREND_HOURLY, TREND_PERIODS, TREND_MODE_RECENT, TREND_MODE_CALENDAR,
     TREND_ALL_TIME_CAPTIONS, DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
     STATUS_CODE_MEANINGS, speed_secs, trend_window, diagnose, diagnosis_tooltip, Diagnosis,
+    session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
 )
 from style import EqualSpacingTable, Divider, CollapsibleSection, _load_svg_icon
 from .common import (
@@ -22,6 +24,7 @@ from .charts import RankedBarChart, GroupedBarChart
 TABLE_ROW_H = 30
 TABLE_HEADER_H = 32          # EqualSpacingTable 헤더 높이 근사치
 SESSION_TABLE_ROWS = 10      # 세션 이력 표의 고정 표시 행 수 — 넘치면 표 내부 스크롤
+REQUEST_TABLE_HEADERS = ["NO", "URL", "Body", "Method", "Status", "Response", "Requested At", "Result"]
 SESSION_TABLE_HEADERS = [
     "NO", "Title", "URL", "Total Items", "Success", "Errors", "Avg Response", "Duration",
     "Start Time", "End Time", "Task Name", "Result",
@@ -366,6 +369,8 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         self.session_table.setColumnCount(len(SESSION_TABLE_HEADERS))
         self.session_table.setHorizontalHeaderLabels(SESSION_TABLE_HEADERS)
         self.session_table.setFixedHeight(TABLE_HEADER_H + SESSION_TABLE_ROWS * TABLE_ROW_H)
+        self.session_table.setToolTip("행을 더블클릭하면 요청 URL별 상세를 볼 수 있습니다.")
+        self.session_table.cellDoubleClicked.connect(self._open_session_requests)
         card_l.addWidget(self.session_table)
         return card_w
 
@@ -460,6 +465,34 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         """카드명을 현재 기간명과 범위 문구로 갱신한다(trigger/statistics.py의
         _refresh_trend_chart가 호출)."""
         self.trend_title_lbl.setText(_trend_title_text(self.trend_period, range_text))
+
+    # ── 세션 요청 상세 팝업 (요청 1건 = 1행) ──────
+    def _open_session_requests(self, row: int, _col: int) -> None:
+        """더블클릭한 세션의 요청 URL별 결과를 새 창 표로 보여준다."""
+        session = self.session_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        title = f"요청 상세 — {session.get('title') or session.get('job', '')} ({session['started']})"
+        dlg, lay = build_popup_dialog(self, title, (1100, 520), (700, 320))
+
+        card_w, card_l = parts.card_widget(title)
+        table = EqualSpacingTable(parent=dlg, row_height=TABLE_ROW_H, col_padding=10, hscroll_handle=50)
+        table.setColumnCount(len(REQUEST_TABLE_HEADERS))
+        table.setHorizontalHeaderLabels(REQUEST_TABLE_HEADERS)
+        result_colors = {
+            REQUEST_RESULTS["ok"]: GREEN, REQUEST_RESULTS["warn"]: AMBER,
+            REQUEST_RESULTS["err"]: RED, REQUEST_RESULT_MISSED: RED,
+        }
+        for values in session_request_rows(session):
+            r = table.rowCount()
+            table.insertRow(r)
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                is_result_col = col == len(values) - 1
+                item.setForeground(QColor(result_colors.get(value, TEXT_PRIMARY) if is_result_col else TEXT_PRIMARY))
+                item.setToolTip(value)
+                table.setItem(r, col, item)
+        card_l.addWidget(table)
+        lay.addWidget(card_w)
+        dlg.show()
 
     # ── 전체 보기 팝업 (전체 이력을 기간의 한 주기로 접어 합산) ──────
     def _open_trend_popup(self) -> None:

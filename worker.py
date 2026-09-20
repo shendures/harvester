@@ -76,6 +76,7 @@ class MultiprocessWorker(QThread):
         self._done     = 0
         self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
         self._resp_times: list[float] = []
+        self._request_results: dict[str, dict] = {}   # 요청 URL → 응답 결과(세션 이력의 요청 상세용)
         self.total        = None
         self._started_at: datetime | None = None
         self.store     = DataStore()
@@ -99,9 +100,12 @@ class MultiprocessWorker(QThread):
         delay        = self.task["delay"]
 
         # ── URL 리스트 생성 ───────────────────────────
+        method       = (self.task.get("conditions") or {}).get("method") or "GET"
+        requested_urls: list[str] = []
         try:
             generated_urls = utility.generate_combined_urls(callback_url)
             url_list       = set(generated_urls)
+            requested_urls = list(dict.fromkeys(generated_urls))  # 생성 순서 유지 + 중복 제거
             total          = len(url_list)
 
             if total == 0:
@@ -185,7 +189,7 @@ class MultiprocessWorker(QThread):
             self.log_message.emit("err", err_msg)
 
         finally:
-            self._emit_finished(callback_url, total)
+            self._emit_finished(callback_url, total, method, requested_urls)
 
     def _handle_line(
         self,
@@ -307,6 +311,10 @@ class MultiprocessWorker(QThread):
             log_text = str(reason)
 
         self.log_message.emit(level, log_text)
+        self._request_results[res_url] = {
+            "status_code": status_code, "latency": resp_time,
+            "timestamp": result_info["resp_info"]["timestamp"], "outcome": level,
+        }
 
         self.store.add_row(result_info)
         self.new_row.emit(result_info)
@@ -378,7 +386,18 @@ class MultiprocessWorker(QThread):
             except Exception:
                 pass
 
-    def _emit_finished(self, callback_url: str, url_count: int) -> None:
+    def _build_request_record(self, url: str, method: str) -> dict:
+        """요청 1건의 {url, body}에 응답 결과를 합친다. 응답을 받지 못한 요청은 결과 필드가 None."""
+        result = self._request_results.get(url, {})
+        return {
+            **_to_request_record(url, method),
+            "status_code": result.get("status_code"), "latency": result.get("latency"),
+            "timestamp": result.get("timestamp"), "outcome": result.get("outcome"),
+        }
+
+    def _emit_finished(
+        self, callback_url: str, url_count: int, method: str, requested_urls: list[str],
+    ) -> None:
         """
         finally 블록에서 호출 — 세션 요약을 DataStore에 기록하고
         finished 시그널을 emit합니다.
@@ -403,6 +422,8 @@ class MultiprocessWorker(QThread):
             "job":         self.job_name,
             "title":       self.task.get("title", ""),
             "url":         callback_url,
+            "method":      method,
+            "requests":    [self._build_request_record(u, method) for u in requested_urls],
             "total":       self._done,
             "errors":      self._errors,
             "success":     self._done - self._errors,
@@ -418,6 +439,17 @@ class MultiprocessWorker(QThread):
         self.store.add_session(summary)
         self.store.save_stats_history()
         self.finished.emit(self.task, summary)
+
+
+def _to_request_record(url: str, method: str) -> dict:
+    """요청 URL을 {url, body}로 분리한다. POST는 '<엔드포인트>?<JSON 바디>'를 나누고, 그 외·파싱 실패는 body=None."""
+    if method == "POST":
+        try:
+            endpoint, body = engine.get_json_form(url)
+            return {"url": endpoint, "body": body}
+        except ValueError:  # JSONDecodeError 포함 — 요청 생성 단계에서 어차피 실패하는 URL
+            pass
+    return {"url": url, "body": None}
 
 
 def set_scrapy_settings(settings_dict: dict):
