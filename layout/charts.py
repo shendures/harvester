@@ -1,8 +1,8 @@
 # layout/charts.py
-# StatisticsPage 전용 미니 차트 위젯 (RankedBarChart/HeatStripChart/GroupedBarChart).
+# StatisticsPage 전용 미니 차트 위젯 (RankedBarChart/GroupedBarChart).
 
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 
 from .common import BORDER, TEXT_MUTED, TEXT_SECONDARY, TEXT_PRIMARY, BG_PRIMARY
@@ -16,20 +16,66 @@ class RankedBarChart(QWidget):
     # paintEvent에서 실제 문자열 폭을 재서 열을 넓힌다.
     LABEL_COL_MIN_W = 46
 
-    def __init__(self, segments=None, parent=None):
+    ROW_H = 26           # 행당 높이 — 라벨(15px)·막대가 여유 있게 보이는 기존 설계값
+    MAX_ROWS = 7         # 상태 코드 기본 6종 + "기타" 한 행
+    DEFAULT_HEIGHT = ROW_H * MAX_ROWS
+    COUNT_COL_W = 92     # 값(비율) 열의 최소 폭 — 더 긴 값 문자열은 실측해서 넓힌다
+    TRACK_H = 10         # 막대 두께
+    MIN_TRACK_W = 60     # 막대 트랙이 알아볼 수 있는 최소 폭
+    LABEL_GAP = 8        # 라벨 열과 트랙 사이 간격
+    COUNT_GAP = 6        # 트랙과 값 열 사이 간격
+
+    def __init__(self, segments=None, parent=None, *, keep_order=False):
+        """높이를 DEFAULT_HEIGHT(최대 7행이 행당 26px로 보이는 값)로 고정한다 — 고정하는
+        이유는 이 값보다 커지면(형제 카드가 더 커서 강제로 늘어나는 등) 카드 안에 빈 공백만
+        남기 때문이다. 행 수가 늘면 행 높이가 DEFAULT_HEIGHT÷행 수로 줄어 12행(15.2px)이 글자
+        높이(15px)의 한계라, 호출부가 행 수를 묶어 넘겨야 한다(상태 코드 분포는 "기타" 행으로
+        최대 7행). keep_order=True면 값 내림차순 정렬 대신 넘겨준 순서를 그대로 쓴다 — 응답
+        속도 구간처럼 순서 자체가 의미인 카드용."""
         super().__init__(parent)
         self.segments = segments or []
-        # statistics.py Row2 카드("상태 코드 분포") 전용 — STATUS_CODE_COLORS
-        # (trigger/common.py)가 구분하는 상태 코드 6종(200/301/404/429/500/000)이
-        # 모두 표시돼도 행당 26px 정도로 여유 있게 보이도록 6×26=156으로 잡았다.
-        # setMinimumHeight가 아니라 setFixedHeight인 이유는 이 값보다 커지면
-        # (형제 카드가 더 커서 강제로 늘어나는 등) 카드 안에 빈 공백만 남기
-        # 때문 — 집계 표 카드에도 같은 이유로 적용했다.
-        self.setFixedHeight(156)
+        self._keep_order = keep_order
+        self.setFixedHeight(self.DEFAULT_HEIGHT)
 
     def set_data(self, segments):
         self.segments = segments
+        self.updateGeometry()
         self.update()
+
+    @staticmethod
+    def _label_font() -> QFont:
+        # 모듈 import 시점에는 QApplication이 없을 수 있어 사용할 때 만든다
+        return QFont("Consolas", 10, QFont.Weight.Bold)
+
+    @staticmethod
+    def _count_font() -> QFont:
+        return QFont("Consolas", 9)
+
+    @staticmethod
+    def _count_texts(rows) -> list:
+        """행마다 "건수 (비율%)" 문자열 — 그리기와 폭 측정이 같은 문자열을 쓴다."""
+        total = sum(v for _, v, _ in rows) or 1
+        return [f"{val} ({val / total * 100:.1f}%)" for _, val, _ in rows]
+
+    def _count_col_width(self, rows) -> int:
+        """값 열 폭 — 건수가 커지면(예: 1,234건 이상) 고정 폭으로는 오른쪽이 잘리므로
+        가장 긴 값 문자열을 실측해 기본 폭과 넓은 쪽을 쓴다."""
+        count_fm = QFontMetrics(self._count_font())
+        widest = max((count_fm.horizontalAdvance(t) for t in self._count_texts(rows)), default=0)
+        return max(self.COUNT_COL_W, widest + self.COUNT_GAP)
+
+    def _label_col_width(self, rows) -> int:
+        """라벨 열 폭 — 한글 라벨("정상 수집" 등)은 3자리 상태 코드보다 넓어 고정 폭으로는
+        잘리므로, 실제 문자열 폭을 재서 최소 폭과 넓은 쪽을 쓴다."""
+        label_fm = QFontMetrics(self._label_font())
+        return max(self.LABEL_COL_MIN_W,
+                   max((label_fm.horizontalAdvance(str(lb)) for lb, _, _ in rows), default=0))
+
+    def minimumSizeHint(self) -> QSize:
+        """라벨·값 열이 겹치지 않고 막대가 보이는 최소 폭 — 카드가 이보다 좁아지지 않게 한다."""
+        width = (self._label_col_width(self.segments) + self.LABEL_GAP
+                 + self.MIN_TRACK_W + self._count_col_width(self.segments))
+        return QSize(width, super().minimumSizeHint().height())
 
     def paintEvent(self, e):
         if not self.segments:
@@ -38,19 +84,15 @@ class RankedBarChart(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
 
-        rows = sorted(self.segments, key=lambda s: s[1], reverse=True)
-        total = sum(v for _, v, _ in rows) or 1
+        rows = self.segments if self._keep_order else sorted(self.segments, key=lambda s: s[1], reverse=True)
         max_v = max(v for _, v, _ in rows) or 1
         n = len(rows)
         row_h = H / n
-        # 한글 라벨("정상 수집" 등)은 3자리 상태 코드보다 넓어 고정 폭으로는 잘리므로,
-        # 실제 문자열 폭을 재서 최소 폭과 넓은 쪽을 쓴다
-        label_font = QFont("Consolas", 10, QFont.Weight.Bold)
-        label_fm = QFontMetrics(label_font)
-        label_w = max(self.LABEL_COL_MIN_W,
-                      max(label_fm.horizontalAdvance(str(lb)) for lb, _, _ in rows))
-        count_w, track_h = 92, 10
-        track_x0, track_x1 = label_w + 8, W - count_w
+        label_font = self._label_font()
+        label_w = self._label_col_width(rows)
+        count_w, track_h = self._count_col_width(rows), self.TRACK_H
+        count_texts = self._count_texts(rows)
+        track_x0, track_x1 = label_w + self.LABEL_GAP, W - count_w
 
         for i, (label, val, color) in enumerate(rows):
             y = i * row_h
@@ -68,72 +110,10 @@ class RankedBarChart(QWidget):
             p.setBrush(QColor(color))
             p.drawRoundedRect(int(track_x0), int(cy - track_h / 2), int(w), track_h, 3, 3)
 
-            pct = val / total * 100
             p.setPen(QColor(TEXT_SECONDARY))
-            p.setFont(QFont("Consolas", 9))
-            p.drawText(int(track_x1) + 6, int(y), count_w, int(row_h),
-                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, f"{val} ({pct:.1f}%)")
-
-        p.end()
-
-
-class HeatStripChart(QWidget):
-    """레이블 + 값 배열을 단일 색상 농도 스트립으로 그림. 제목 옆에 평균 응답 시간을
-    소수점 3자리까지 괄호로 함께 표시한다."""
-
-    def __init__(self, labels=None, values=None, avg=0.0, color=BORDER, parent=None):
-        super().__init__(parent)
-        self.labels = labels or []
-        self.values = values or []
-        self.avg = avg
-        self.color = QColor(color)
-        # statistics.py Row2 카드("응답 시간 분포 (s)") 전용 — 옆 "상태 코드 분포"
-        # 카드와 높이를 맞추기 위해 같은 156을 쓴다. 고정 비율 밴드 하나만
-        # 그려서 어떤 높이든 자연스럽게 늘어난다. setFixedHeight를 쓰는 이유는
-        # RankedBarChart와 같다(주석 참고).
-        self.setFixedHeight(156)
-
-    def set_data(self, labels, values, avg, color=None):
-        self.labels = labels
-        self.values = values
-        self.avg = avg
-        if color:
-            self.color = QColor(color)
-        self.update()
-
-    def paintEvent(self, e):
-        if not self.values:
-            return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        W, H = self.width(), self.height()
-
-        n = len(self.values)
-        max_v = max(self.values) or 1
-        pad_l, pad_r, gap = 10, 10, 3
-        strip_y, strip_h = H * 0.36, H * 0.3
-        cell_w = (W - pad_l - pad_r - gap * (n - 1)) / n
-
-        p.setPen(QColor(TEXT_MUTED))
-        p.setFont(QFont("Consolas", 8))
-        p.drawText(pad_l, int(strip_y - 22), W - pad_l - pad_r, 16, Qt.AlignmentFlag.AlignLeft,
-                   f"버킷별 밀집도 (평균 {self.avg:.3f}s)")
-
-        for i, v in enumerate(self.values):
-            t = v / max_v
-            x = pad_l + i * (cell_w + gap)
-            cell_color = QColor(self.color)
-            cell_color.setAlphaF(0.14 + t * 0.86)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(cell_color)
-            p.drawRoundedRect(int(x), int(strip_y), int(cell_w), int(strip_h), 4, 4)
-
-        for i in (0, n // 2, n - 1):
-            x = pad_l + i * (cell_w + gap) + cell_w / 2
-            p.setPen(QColor(TEXT_MUTED))
-            p.setFont(QFont("Consolas", 8))
-            p.drawText(int(x - 22), int(strip_y + strip_h + 6), 44, 16,
-                       Qt.AlignmentFlag.AlignCenter, f"{self.labels[i]}s")
+            p.setFont(self._count_font())
+            p.drawText(int(track_x1) + self.COUNT_GAP, int(y), count_w, int(row_h),
+                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, count_texts[i])
 
         p.end()
 
@@ -143,6 +123,9 @@ class GroupedBarChart(QWidget):
 
     VALUE_GAP = 4        # 막대 상단-값 라벨 사이 고정 간격(px)
     LEGEND_GAP = 10      # 범례 항목 사이 간격(px)
+    PAD_X = 8            # 좌우 여백(px)
+    LABEL_GAP = 4        # 이웃한 구간 라벨 사이 최소 간격(px)
+    LABEL_FONT_PT = 7    # 구간 라벨 — 칸이 많아도 들어가도록 눈에 보일 정도로만 작게
 
     def __init__(self, x_labels=None, datasets=None, parent=None):
         super().__init__(parent)
@@ -155,6 +138,12 @@ class GroupedBarChart(QWidget):
         self.datasets = datasets
         self.update()
 
+    def width_for_slots(self, slots: int, sample_label: str) -> int:
+        """slots칸의 구간 라벨이 서로 겹치지 않고 들어가는 최소 폭 — 칸당 폭은
+        sample_label의 실측 폭 + LABEL_GAP이라 글꼴·OS가 달라도 겹치지 않는다."""
+        label_w = QFontMetrics(QFont("Consolas", self.LABEL_FONT_PT)).horizontalAdvance(sample_label)
+        return 2 * self.PAD_X + slots * (label_w + self.LABEL_GAP)
+
     def paintEvent(self, e):
         if not self.datasets or not self.x_labels:
             return
@@ -165,7 +154,8 @@ class GroupedBarChart(QWidget):
         value_font = QFont("Consolas", 7)
         value_fm = QFontMetrics(value_font)
 
-        pad_l, pad_r, pad_b = 8, 8, 20
+        pad_l = pad_r = self.PAD_X
+        pad_b = 20
         pad_t = 22 + self.VALUE_GAP + value_fm.height()  # 범례 여백 + 값 라벨 공간
         chart_w = W - pad_l - pad_r
         chart_h = H - pad_t - pad_b
@@ -211,9 +201,9 @@ class GroupedBarChart(QWidget):
                     p.drawText(int(label_x), int(label_y), text_w, value_fm.height(),
                                Qt.AlignmentFlag.AlignCenter, text)
 
-            # 구간 라벨 — 칸이 많아도 들어가도록 눈에 보일 정도로만 작게(7pt)
+            # 구간 라벨
             p.setPen(QColor(TEXT_MUTED))
-            p.setFont(QFont("Consolas", 7))
+            p.setFont(QFont("Consolas", self.LABEL_FONT_PT))
             p.drawText(int(pad_l + i * group_w), int(pad_t + chart_h + 4), int(group_w), 14,
                        Qt.AlignmentFlag.AlignCenter, str(self.x_labels[i]))
 

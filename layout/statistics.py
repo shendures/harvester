@@ -3,20 +3,21 @@
 
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QMenu
-from PyQt6.QtCore import QTimer, QSize
+from PyQt6.QtWidgets import QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QMenu
+from PyQt6.QtCore import Qt, QTimer, QSize
 
 from trigger import StatisticsPageTriggers
 from trigger.statistics import (
     TREND_HOURLY, TREND_PERIODS, TREND_MODE_RECENT, TREND_MODE_CALENDAR,
-    TREND_ALL_TIME_CAPTIONS, trend_window,
+    TREND_ALL_TIME_CAPTIONS, DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
+    STATUS_CODE_MEANINGS, speed_secs, trend_window, diagnose, diagnosis_tooltip, Diagnosis,
 )
-from style import EqualSpacingTable, Divider, _load_svg_icon
+from style import EqualSpacingTable, Divider, CollapsibleSection, _load_svg_icon
 from .common import (
     parts, theme, build_scroll_body, build_stat_summary_card, build_reset_button, build_popup_dialog,
-    ACCENT_LIGHT, GREEN, BLUE, PURPLE, RED, AMBER, TEXT_SECONDARY,
+    ACCENT_LIGHT, GREEN, BLUE, PURPLE, RED, AMBER, TEXT_PRIMARY, TEXT_SECONDARY, BG_SECONDARY, BORDER,
 )
-from .charts import RankedBarChart, HeatStripChart, GroupedBarChart
+from .charts import RankedBarChart, GroupedBarChart
 
 TABLE_ROW_H = 30
 TABLE_HEADER_H = 32          # EqualSpacingTable 헤더 높이 근사치
@@ -29,6 +30,97 @@ SESSION_TABLE_HEADERS = [
 TREND_CHART_MIN_H = 280     # 카드가 늘어날 수 있도록 하한만 둔다
 HEADER_ICON_SIZE = 14        # 수집량 추이 카드 헤더의 아이콘 버튼 — 아이콘 한 변(px)
 HEADER_ICON_BTN_SIZE = (30, 20)
+
+DIAG_BANNER_MARGINS = (14, 10, 14, 10)   # 진단 배너 안쪽 여백(좌·상·우·하)
+DIAG_BANNER_SPACING = 12
+DIAG_ACCENT_WIDTH = 4                    # 배너 왼쪽 상태 색 강조선 두께(px)
+TREND_LABEL_SAMPLE = "00-00"  # 월별(31칸) 구간 라벨 표본 — trigger/statistics.py _daily_counts의 %m-%d 형식
+
+DIAG_LEVEL_FONT_PX = 14
+DIAG_DETAIL_FONT_PX = 13
+
+# 지표·차트 카드 툴팁 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게
+# 쉬운 말로 적는다. KPI 튜플의 순서는 build_stat_summary_card()에 넘기는 spec 순서와 같다.
+CARD_HELP_HINT = "\n각 숫자에 마우스를 올리면 자세한 설명이 나옵니다."
+REQUEST_CARD_HELP = (
+    "사이트에 요청을 보내고 응답을 받는 과정의 통계입니다.\n"
+    "페이지가 열렸는지, 얼마나 빨랐는지, 연결이 끊겼는지를 봅니다." + CARD_HELP_HINT
+)
+PROCESS_CARD_HELP = (
+    "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
+    "꺼낸 데이터가 얼마나 빠짐없이 채워졌는지, 페이지마다 몇 건씩 나오는지를 봅니다." + CARD_HELP_HINT
+)
+DATA_CARD_HELP = (
+    "수집한 데이터의 양과 데이터를 못 가져온 페이지 현황입니다.\n"
+    "응답 결과 구성 카드와 겹치는 숫자를 상세하게 모아 둔 카드입니다." + CARD_HELP_HINT
+)
+DETAIL_CARD_HELP = "수집 속도와 요청 처리 현황을 보는 보조 지표입니다." + CARD_HELP_HINT
+
+REQUEST_KPI_TIPS = (
+    "초기화 이후 사이트에 요청해서 응답을 받은 페이지 수입니다. (누적)",
+    "받은 응답 중 사이트가 정상적으로 답한(200) 비율입니다.\n"
+    "페이지가 열렸다는 뜻일 뿐, 데이터를 가져왔는지는\n'응답 결과 구성'의 '정상 수집'에서 확인하세요.",
+    "요청을 보내고 페이지가 도착하기까지 걸린 평균 시간입니다.\n길수록 사이트가 느리거나 혼잡하다는 뜻입니다.",
+    "사이트에 아예 연결하지 못한 횟수입니다.\n인터넷 연결, 프록시 설정, 사이트 점검 여부를 확인하세요.",
+)
+PROCESS_KPI_TIPS = (
+    "꺼낸 모든 항목 칸 중 값이 채워진 칸의 비율입니다.\n"
+    "낮으면 추출 규칙이 일부 항목을 못 찾고 있다는 신호이니 수집 설정을 점검하세요.\n"
+    "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
+    "꺼낸 데이터(행) 중 모든 항목이 채워진 행의 비율입니다.\n"
+    "필드 채움률이 높아도 이 값이 낮으면 항목이 여러 행에 흩어져 비어 있는 것입니다.",
+    "데이터를 가져온 페이지 1개에서 나온 건수의 중앙값입니다(평균보다 튀는 값에 덜 흔들립니다).\n"
+    "페이지마다 비슷하게 나와야 정상이며, 평소보다 크게 줄면 사이트 구조가 바뀐 것일 수 있습니다.",
+    "데이터를 가져온 페이지 중 가장 적게 나온 건수와 가장 많이 나온 건수입니다.\n"
+    "범위가 지나치게 넓으면 일부 페이지에서만 추출이 잘 안 되고 있을 수 있습니다.",
+)
+DATA_KPI_TIPS = (
+    "페이지에서 실제로 가져온 데이터(행)의 총 건수입니다.\n"
+    "건수 기록을 시작한 이후 수집분부터 집계되며,\n이전 기록만 있으면 '—'로 표시됩니다.",
+    "받은 페이지 중 실제로 데이터를 가져온 페이지의 비율입니다.\n"
+    "위 '응답 결과 구성'의 '정상 수집'과 같은 기준입니다.",
+    "데이터를 가져온 페이지 1개당 평균 수집 건수입니다.",
+    "앞 숫자: 빈 응답 (페이지는 열렸지만 찾을 데이터가 없음)\n"
+    "뒤 숫자: 추출 오류 (데이터를 꺼내는 규칙 자체가 실패)\n"
+    "둘 다 수집 설정을 점검해야 하는 신호입니다.",
+)
+DETAIL_KPI_TIPS = (
+    "1초에 평균 몇 페이지를 처리했는지입니다.",
+    "보내기로 한 요청 중 응답을 받은 비율입니다.",
+    "받은 응답 중 요청 목록과 맞지 않아 버려진 비율입니다.",
+)
+STATUS_MEANINGS_PER_LINE = 3
+
+
+def _status_meaning_lines() -> str:
+    """상태 코드 뜻 표를 툴팁 폭이 과도해지지 않게 줄마다 몇 개씩 끊어 적는다."""
+    items = [f"{code} {meaning}" for code, meaning in STATUS_CODE_MEANINGS.items()]
+    return "\n".join(
+        " · ".join(items[i:i + STATUS_MEANINGS_PER_LINE])
+        for i in range(0, len(items), STATUS_MEANINGS_PER_LINE))
+
+
+STATUS_CHART_TIP = (
+    "사이트가 응답과 함께 보내는 결과 번호(상태 코드)별 개수입니다.\n"
+    + _status_meaning_lines() + "\n"
+    "자주 보는 코드는 0건이어도 항상 표시됩니다.\n"
+    "표에 없는 코드는 '기타'로 합쳐 표시하며, 기타 막대에 마우스를 올리면 세부 코드를 볼 수 있습니다.\n"
+    "연결에 실패한 응답은 번호가 없어 여기에 없고, '응답 결과 구성'에서 확인할 수 있습니다."
+)
+SPEED_CHART_TIP = (
+    f"응답이 도착하기까지 걸린 시간을 네 구간으로 나눈 것입니다.\n"
+    f"빠름 {speed_secs(SPEED_FAST_MAX)}초 미만 · 보통 {speed_secs(SPEED_FAST_MAX)}~{speed_secs(SPEED_NORMAL_MAX)}초 · "
+    f"느림 {speed_secs(SPEED_NORMAL_MAX)}~{speed_secs(SPEED_SLOW_MAX)}초 · 매우 느림 {speed_secs(SPEED_SLOW_MAX)}초 이상\n"
+    "느린 쪽에 몰리면 사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.\n"
+    "평균값은 위 '요청·응답' 카드의 '평균 응답'에서 볼 수 있습니다."
+)
+OUTCOME_CHART_TIP = (
+    "받은 응답을 4가지로 나눈 결과입니다.\n"
+    "정상 수집: 실제로 데이터를 가져옴\n"
+    "빈 응답: 페이지는 열렸지만 데이터 없음\n"
+    "HTTP 오류: 사이트가 오류로 응답함\n"
+    "연결 실패: 사이트에 연결하지 못함"
+)
 
 
 def _trend_title_text(period: str, range_text: str) -> str:
@@ -68,6 +160,13 @@ def _header_icon_btn(icon_name: str, tooltip: str):
     return btn
 
 
+def _apply_tooltips(cards, tips) -> None:
+    """KPI 카드마다 같은 순서의 툴팁 문구를 붙인다 — 개수가 다르면 어느 카드에
+    엉뚱한 설명이 붙지 않도록 즉시 오류를 낸다."""
+    for card, tip in zip(cards, tips, strict=True):
+        card.setToolTip(tip)
+
+
 class StatisticsPanel(QWidget, StatisticsPageTriggers):
     """통계 본문(KPI·차트·표 카드)과 자동 갱신을 함께 가진 자기완결 위젯 —
     어떤 레이아웃에든 addWidget만 하면 표시·갱신된다."""
@@ -89,11 +188,12 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         root.addWidget(self._build_body(), 1)
 
     def _build_body(self) -> QWidget:
-        """통계 본문 — KPI 카드, 분포/추이 차트, 세션 이력·집계 표를 한 화면에 쌓는다."""
+        """통계 본문 — KPI 카드, 응답 카드 3종, 수집량 추이, 세션 이력, 접이식 상세 정보를
+        한 화면에 쌓는다."""
         body_widget = QWidget()
         bl = build_scroll_body(body_widget)
 
-        # 초기화 버튼은 본문 맨 위 우측 — 스크롤하면 함께 올라간다
+        # 맨 위 행: 수집 상태 진단 배너 + 초기화 버튼(우측) — 스크롤하면 함께 올라간다
         self.reset_btn = build_reset_button(
             parts, self,
             title="통계 초기화 확인",
@@ -102,85 +202,146 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
             on_confirmed=self._on_reset_clicked,
         )
         reset_row = QHBoxLayout()
-        reset_row.addStretch()
-        reset_row.addWidget(self.reset_btn)
+        reset_row.setSpacing(10)
+        reset_row.addWidget(self._build_diagnosis_banner(), 1)
+        reset_row.addWidget(self.reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         bl.addLayout(reset_row)
 
-        # ── Row 1: KPI summary card 3종을 한 줄에 나란히 배치 ──
-        # (대시보드 "세션 통계"와 동일한 카드 패턴) 카드마다 전체 폭을 세로로
-        # 나눠 쓰던 것을 row2/row3/row4와 같은 패턴으로 묶어, 가로 공백을
-        # 줄이고 세로 공간을 절약한다. 카드당 지표가 4개뿐이라 3분할 폭에서도
-        # 가장 긴 라벨("네트워크 오버헤드")이 잘리지 않는다. 세 카드 모두
-        # setFixedHeight(sizeHint)로 고정하는 이유는 row1에는 다른 두 행(Row2/
-        # Row3)만큼 세로 공간이 필요 없는데도, bl에 addStretch()가 없어 남는
-        # 공간이 형제 행에 함께 배분되면 카드 안에 빈 공백만 늘어나기 때문이다.
+        # ── Row 1: 요청·응답(좌) / 수집 데이터(우) KPI 카드를 5:5로 배치 ──
+        # 두 카드 모두 setFixedHeight(sizeHint)로 고정하는 이유는 row1에는 다른
+        # 두 행(Row2/Row3)만큼 세로 공간이 필요 없는데도, bl에 addStretch()가
+        # 없어 남는 공간이 형제 행에 함께 배분되면 카드 안에 빈 공백만 늘어나기
+        # 때문이다.
         row1 = QHBoxLayout()
         row1.setSpacing(10)
 
-        kpi_card_w, (self.kpi_total, self.kpi_success, self.kpi_avg_t, self.kpi_sessions) = build_stat_summary_card(
-            parts, "통계 요약",
-            [("총 수집 항목", "0"), ("성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("완료 세션", "0", PURPLE)],
+        req_card_w, req_cards = build_stat_summary_card(
+            parts, "요청·응답",
+            [("확인한 페이지 수", "0"), ("응답 성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("연결 실패", "0", RED)],
+            help_text=REQUEST_CARD_HELP,
         )
-        kpi_card_w.setFixedHeight(kpi_card_w.sizeHint().height())
-        row1.addWidget(kpi_card_w, 1)
+        self.kpi_total, self.kpi_resp_rate, self.kpi_avg_t, self.kpi_conn_fail = req_cards
+        _apply_tooltips(req_cards, REQUEST_KPI_TIPS)
+        req_card_w.setFixedHeight(req_card_w.sizeHint().height())
+        row1.addWidget(req_card_w, 1)
 
-        # 응답 시간은 평균만으로는 롱테일이 은폐되므로 백분위를 함께 둔다.
-        # 오버헤드 = total_latency - pure_latency(큐 대기/프록시 구간).
-        lat_card_w, (self.kpi_p50, self.kpi_p95, self.kpi_p99, self.kpi_overhead) = build_stat_summary_card(
-            parts, "응답 시간 상세",
-            [("P50", "—", BLUE), ("P95", "—", AMBER), ("P99", "—", RED), ("네트워크 오버헤드", "—", PURPLE)],
+        process_card_w, process_cards = build_stat_summary_card(
+            parts, "데이터 처리",
+            [("필드 채움률", "—", GREEN), ("완전한 행 비율", "—", BLUE),
+             ("페이지당 중앙값", "—", ACCENT_LIGHT), ("수집량 범위", "—", PURPLE)],
+            help_text=PROCESS_CARD_HELP,
         )
-        lat_card_w.setFixedHeight(lat_card_w.sizeHint().height())
-        row1.addWidget(lat_card_w, 1)
-
-        quality_card_w, (self.kpi_throughput, self.kpi_achieve, self.kpi_skip, self.kpi_conn_fail) = build_stat_summary_card(
-            parts, "수집 품질",
-            [("처리량", "—", BLUE), ("수집 달성률", "—", GREEN), ("스킵률", "—", AMBER), ("연결 실패", "0", RED)],
-        )
-        quality_card_w.setFixedHeight(quality_card_w.sizeHint().height())
-        row1.addWidget(quality_card_w, 1)
+        self.kpi_fill_rate, self.kpi_complete_rate, self.kpi_page_median, self.kpi_item_range = process_cards
+        _apply_tooltips(process_cards, PROCESS_KPI_TIPS)
+        process_card_w.setFixedHeight(process_card_w.sizeHint().height())
+        row1.addWidget(process_card_w, 1)
 
         bl.addLayout(row1)
 
-        # ── Row 2: 현재 시점 스냅샷 분포(상태 코드/응답 시간) ──────
+        # ── Row 2: 응답 관련 카드 3종을 한 줄에 ──────
+        # 세 카드 모두 기본 고정 높이 차트라 래퍼를 sizeHint에 고정하면 높이가 맞는다
         row2 = QHBoxLayout()
         row2.setSpacing(10)
 
-        # 카드 래퍼 자체도 row1의 KPI 카드와 같은 이유로 sizeHint에 고정한다
-        # (안 그러면 Row3가 커질 때 이 래퍼도 Preferred 정책 탓에 함께 늘어나
-        # 내부 고정 높이 차트 아래로 빈 공백이 생긴다)
-        sw, sl = parts.card_widget("상태 코드 분포")
-        self.status_chart = RankedBarChart()
+        sw, sl = parts.card_widget("상태 코드 분포", help_text=STATUS_CHART_TIP)
+        self.status_chart = RankedBarChart(keep_order=True)
         sl.addWidget(self.status_chart)
         sw.setFixedHeight(sw.sizeHint().height())
         row2.addWidget(sw, 1)
 
-        rw2, rl2 = parts.card_widget("응답 시간 분포 (s)")
-        self.resp_chart = HeatStripChart(color=BLUE)
-        rl2.addWidget(self.resp_chart)
-        rw2.setFixedHeight(rw2.sizeHint().height())
-        row2.addWidget(rw2, 1)
-
         # 상태 코드가 못 가르는 축 — 200 응답이라도 추출 0건이면 쓸 수 없는
-        # 응답이므로 "빈 응답"으로 따로 세어, 성공률 뒤에 가려진 수집 실패를
-        # 드러낸다. 내부 차트가 옆 두 카드와 같은 고정 높이(156)라 별도 높이
-        # 보정 없이 세 카드가 나란히 맞는다.
-        ow, ol = parts.card_widget("응답 결과 구성")
+        # 응답이므로 "빈 응답"으로 따로 세어, 상태 코드 뒤에 가려진 수집 실패를
+        # 드러낸다.
+        ow, ol = parts.card_widget("응답 결과 구성", help_text=OUTCOME_CHART_TIP)
         self.outcome_chart = RankedBarChart()
         ol.addWidget(self.outcome_chart)
         ow.setFixedHeight(ow.sizeHint().height())
         row2.addWidget(ow, 1)
 
+        # 빠름→매우 느림 순서 자체가 의미라 값 정렬을 끈다(keep_order)
+        pw, pl = parts.card_widget("응답 속도 구간", help_text=SPEED_CHART_TIP)
+        self.speed_chart = RankedBarChart(keep_order=True)
+        pl.addWidget(self.speed_chart)
+        pw.setFixedHeight(pw.sizeHint().height())
+        row2.addWidget(pw, 1)
+
         bl.addLayout(row2)
 
-        # ── Row 3: Session history table ──────────
-        bl.addWidget(self._build_session_card())
-
-        # ── Row 4: 수집량 시계열 — 기간 필터 하나로 시/일 배율을 갈아끼운다 ──
-        # stretch 1: 세션 이력 카드는 행 수만큼만 차지하므로 남는 세로 공간은 추이 카드가 흡수한다
+        # ── Row 3: 수집량 시계열 — 기간 필터 하나로 시/일 배율을 갈아끼운다 ──
+        # stretch 1: 세션 이력·Row2는 내용만큼만 차지하므로 남는 세로 공간은 추이 카드가 흡수한다
         bl.addWidget(self._build_trend_card(), 1)
 
+        # ── Row 4: Session history table ──────────
+        bl.addWidget(self._build_session_card())
+
+        # ── 상세 정보(접이식): 보조 지표 ──────
+        bl.addWidget(self._build_detail_section())
+
         return body_widget
+
+    def _build_detail_section(self) -> QWidget:
+        """접이식 "상세 정보" 영역 — 수집 데이터 요약과 수집 속도·요청 처리 현황을 보는
+        보조 지표 카드를 담는다. 기본은 접힌 상태이고, 숨겨진 동안에도 값은 3초 타이머로 계속 갱신된다."""
+        section = CollapsibleSection("상세 정보")
+
+        data_card_w, data_cards = build_stat_summary_card(
+            parts, "수집 데이터 요약",
+            [("수집한 데이터", "—", ACCENT_LIGHT), ("데이터 수집 성공률", "0%", GREEN),
+             ("페이지당 평균", "—", BLUE), ("빈 응답 / 추출 오류", "0 / 0", AMBER)],
+            help_text=DATA_CARD_HELP,
+        )
+        self.kpi_items, self.kpi_data_rate, self.kpi_items_per_page, self.kpi_empty_pages = data_cards
+        _apply_tooltips(data_cards, DATA_KPI_TIPS)
+        section.body_layout.addWidget(data_card_w)
+
+        detail_card_w, detail_cards = build_stat_summary_card(
+            parts, "상세 지표",
+            [("처리량", "—", BLUE), ("요청 대비 응답률", "—", GREEN), ("스킵률", "—", AMBER)],
+            help_text=DETAIL_CARD_HELP,
+        )
+        self.kpi_throughput, self.kpi_achieve, self.kpi_skip = detail_cards
+        _apply_tooltips(detail_cards, DETAIL_KPI_TIPS)
+        section.body_layout.addWidget(detail_card_w)
+        return section
+
+    def _build_diagnosis_banner(self) -> QWidget:
+        """수집 상태(정상/주의/문제/대기)와 원인·조치 문장을 보여주는 배너를 만든다.
+        판정은 trigger/statistics.py의 diagnose()가 하고, 이 위젯은 결과를 그리기만
+        한다(_update_diagnosis). 판정 기준은 배너 툴팁으로 안내한다."""
+        self.diagnosis_banner = QFrame()
+        self.diagnosis_banner.setObjectName("diagnosisBanner")
+        self.diagnosis_banner.setToolTip(diagnosis_tooltip())
+
+        lay = QHBoxLayout(self.diagnosis_banner)
+        lay.setContentsMargins(*DIAG_BANNER_MARGINS)
+        lay.setSpacing(DIAG_BANNER_SPACING)
+
+        self.diagnosis_level_lbl = QLabel()
+        lay.addWidget(self.diagnosis_level_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        # 문장이 길어지면 잘리지 않고 줄바꿈되도록 한다
+        self.diagnosis_detail_lbl = QLabel()
+        self.diagnosis_detail_lbl.setWordWrap(True)
+        lay.addWidget(self.diagnosis_detail_lbl, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        self._update_diagnosis(diagnose(0, {}))
+        return self.diagnosis_banner
+
+    def _update_diagnosis(self, diagnosis: Diagnosis) -> None:
+        """진단 결과를 배너에 반영한다 — 상태 색은 강조선·상태 라벨에 쓰고, 색만으로
+        전달하지 않도록 상태 이름을 글자로 함께 보여준다(trigger/statistics.py의
+        _refresh_summary가 호출)."""
+        self.diagnosis_banner.setStyleSheet(
+            f"QFrame#diagnosisBanner {{ background:{BG_SECONDARY}; border:1px solid {BORDER};"
+            f" border-left:{DIAG_ACCENT_WIDTH}px solid {diagnosis.color}; border-radius:6px; }}")
+        self.diagnosis_level_lbl.setText(f"● {diagnosis.level}")
+        self.diagnosis_level_lbl.setStyleSheet(
+            f"color:{diagnosis.color}; font-size:{DIAG_LEVEL_FONT_PX}px; font-weight:bold;"
+            " background:transparent; border:none;")
+        self.diagnosis_detail_lbl.setText(diagnosis.detail)
+        self.diagnosis_detail_lbl.setStyleSheet(
+            f"color:{TEXT_PRIMARY}; font-size:{DIAG_DETAIL_FONT_PX}px;"
+            " background:transparent; border:none;")
 
     def _build_session_card(self) -> QWidget:
         """제목 줄에 카운트 배지를 얹은 세션 이력 카드를 만든다. 제목 줄을 직접
@@ -239,6 +400,10 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         # (팝업용 popup_chart는 별개 인스턴스라 영향 없음)
         self.trend_chart = GroupedBarChart()
         self.trend_chart.setMinimumHeight(TREND_CHART_MIN_H)
+        # 월별(최대 31칸)에서도 구간 라벨이 겹치지 않는 폭 — 기간을 바꿔도 카드 폭이
+        # 변하지 않고, 창이 좁으면 페이지에 가로 스크롤이 생긴다
+        self.trend_chart.setMinimumWidth(
+            self.trend_chart.width_for_slots(DAYS_IN_MONTH_MAX, TREND_LABEL_SAMPLE))
         card_l.addWidget(self.trend_chart)
         return card_w
 

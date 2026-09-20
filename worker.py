@@ -17,6 +17,21 @@ import queue as _queue
 logger = logging.getLogger(__name__)
 
 
+def count_field_fill(records: list) -> tuple:
+    """추출된 레코드들의 (전체 필드 수, 빈 필드 수, 모든 필드가 채워진 레코드 수)를 센다 —
+    통계 페이지의 필드 채움률·완전한 행 비율용. 값이 None이거나 공백뿐인 문자열이면 빈 값이고,
+    dict가 아닌 레코드는 필드를 알 수 없어 건너뛴다."""
+    cells = empty = complete = 0
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        blanks = sum(1 for v in record.values() if v is None or (isinstance(v, str) and not v.strip()))
+        cells += len(record)
+        empty += blanks
+        complete += blanks == 0 and bool(record)
+    return cells, empty, complete
+
+
 class QueueWriter:
     """
     자식 프로세스의 sys.stdout / sys.stderr 를 multiprocessing.Queue 로
@@ -255,6 +270,7 @@ class MultiprocessWorker(QThread):
         extracted     = resp_info.get("data") or []
         extract_error = resp_info.get("extract_error")
         empty_extract = status_code == 200 and not extracted and not extract_error
+        field_cells, empty_cells, complete_rows = count_field_fill(extracted)
 
         self.store.add_url_map({
             "req_url":       res_url,
@@ -264,6 +280,11 @@ class MultiprocessWorker(QThread):
             "session":       len([callback_url]),
             "timestamp":     result_info["resp_info"]["timestamp"],
             "empty_extract": empty_extract,
+            "extract_error": bool(extract_error),
+            "item_count":    len(extracted),
+            "field_cells":   field_cells,
+            "empty_cells":   empty_cells,
+            "complete_rows": complete_rows,
             "seq_no":        self.task.get("seq_no"),
         })
         self._done += 1
