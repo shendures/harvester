@@ -183,6 +183,7 @@
 | 2026-09-20 | `<커밋 예정>` | 세션 이력 표에 Body·Method 컬럼 추가(POST 요청 기록) | POST 대상은 요청 URL이 `엔드포인트?JSON 바디` 형태라 URL 셀에 JSON이 섞이고 요청 방식도 알 수 없었음 | `requested_urls`를 요청별 `{url, body}`로 변경(POST는 `engine.get_json_form`으로 분리)하고 세션 요약에 `method` 추가, URL 오른쪽에 Body(POST=JSON·GET=`-`)·Method 컬럼 표시, 문자열 요소·필드 없는 과거 기록은 폴백 | `py_compile` 및 헬퍼 로직 스텁 검증(GET/POST/파싱 실패/구버전) — GUI 실행 검증 미실시 |
 | 2026-09-21 | `<커밋 예정>` | 세션 이력에 요청 URL별 상세(요청 1건=1행) 팝업 추가 | 세션 표는 세션 1건=1행이라 요청된 URL 하나하나의 결과를 볼 수 없었음 | 세션 요약의 `requested_urls`를 `requests`(요청별 url·body·status_code·latency·timestamp·outcome)로 확장(`worker._handle_line`이 결과 수집, 응답 없는 요청은 미수집), 세션 표는 유지하고 행 더블클릭 시 요청 상세 팝업 표시, 결과 기록이 없는 과거 기록은 Result `-` | `py_compile` 및 순수 함수 스텁 검증 — GUI 실행 검증 미실시 |
 | 2026-09-21 | `<커밋 예정>` | 세션 이력 표 컬럼을 원래 형태로 원복(요청 상세 팝업은 유지) | 요청 URL별 내용은 행 더블클릭 팝업에서 확인 가능해져 표에서 Body·Method 컬럼과 URL 접기 표기가 불필요 | Body·Method 컬럼 제거, Total Items 컬럼과 템플릿 URL 표시 복원, 미사용 `_format_request_cells`·`_first_and_rest` 삭제(worker의 `requests`·`method` 저장은 유지) | `py_compile` 통과, 행 값·색상·헤더 개수(12) 일치 확인 — GUI 실행 검증 미실시 |
+| 2026-09-21 | `<커밋 예정>` | 테이블 ↑/↓ 키 행 전환 지원 | "수집 목록"·"수집 대상" 테이블은 NoSelection이라 행 전환이 `itemClicked`에만 연결돼 방향키를 눌러도 보는 행이 안 바뀜(모니터 Raw/정제 결과 탭은 `currentItemChanged`로 이미 대응, 대시보드 모니터링 표는 클릭 시 모달이 떠 제외) | `EqualSpacingTable.keyPressEvent`가 ↑/↓로 current 행이 바뀌면 `rowKeyNavigated(item)` emit, 두 목록 테이블이 기존 `_on_item_clicked`에 연결 | offscreen 스크립트로 ↓↓↓↑ 시 [1, 2, 1] emit(경계 무발생) 확인 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 

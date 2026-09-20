@@ -49,6 +49,7 @@ class MonitorTargetListPage(QWidget):
         self.table.setColumnCount(len(self._COLUMNS))
         self.table.setHorizontalHeaderLabels(self._COLUMNS)
         self.table.itemClicked.connect(self._on_item_clicked)
+        self.table.rowKeyNavigated.connect(self._on_item_clicked)
         tc.addWidget(self.table)
 
         root.addWidget(tcw, 1)

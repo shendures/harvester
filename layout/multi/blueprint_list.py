@@ -160,6 +160,7 @@ class BlueprintListPage(QWidget):
         self.table.setColumnCount(len(self._COLUMNS))
         self.table.setHorizontalHeaderLabels(self._COLUMNS)
         self.table.itemClicked.connect(self._on_item_clicked)
+        self.table.rowKeyNavigated.connect(self._on_item_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_cell_context_menu)
         tc.addWidget(self.table)

@@ -3,7 +3,7 @@ import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTableWidget,
+    QLabel, QPushButton, QTableWidget, QTableWidgetItem,
     QFrame, QCheckBox, QLineEdit,
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
@@ -744,6 +744,7 @@ class EqualSpacingTable(QTableWidget):
 
     columnFiltersChanged = pyqtSignal()
     sortStateChanged = pyqtSignal(int, object)  # (logical_column, Qt.SortOrder 또는 None)
+    rowKeyNavigated = pyqtSignal(QTableWidgetItem)  # ↑/↓로 current 행이 바뀐 뒤, 그 행의 아이템
 
     def __init__(
             self,
@@ -1294,6 +1295,21 @@ class EqualSpacingTable(QTableWidget):
         menu.exec(pos)
 
     # ── Qt 이벤트 오버라이드 ──────────────────────────
+    def keyPressEvent(self, event):
+        """↑/↓로 current 행이 바뀌면 rowKeyNavigated를 emit한다 — NoSelection
+        테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도 같은 핸들러를
+        재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        previous_row = self.currentRow()
+        super().keyPressEvent(event)
+        if event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            return
+        row = self.currentRow()
+        if row == previous_row:
+            return
+        item = self.item(row, max(self.currentColumn(), 0)) or self.item(row, 0)
+        if item is not None:
+            self.rowKeyNavigated.emit(item)
+
     def resizeEvent(self, event):
         """
         창 크기 변경 시:
