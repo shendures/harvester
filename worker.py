@@ -315,13 +315,15 @@ class MultiprocessWorker(QThread):
             log_text = f"200 응답이지만 추출 데이터 0건 ( {res_url} )"
         elif status_code == 200:
             level = "ok"
-            log_text = f"{reason or status_code} ( {res_url} )"
+            log_text = f"{resp_info.get('method')} {res_url}"
         else:
             self._errors += 1
             level = "err"
             log_text = f"{reason or status_code} ( {res_url} )"
 
-        self.log_message.emit(level, log_text)
+        # 성공은 로그에서 INFO로 표시하되, 통계용 outcome(level)은 "ok"로 유지
+        log_level = "info" if level == "ok" else level
+        self.log_message.emit(log_level, log_text)
         self._request_results[res_url] = {
             "status_code": status_code, "latency": resp_time,
             "timestamp": result_info["resp_info"]["timestamp"], "outcome": level,
