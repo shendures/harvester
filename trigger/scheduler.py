@@ -8,8 +8,8 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
-    QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
-    QComboBox, QCheckBox, QWidget, QTableWidgetItem, QGridLayout, QStackedWidget,
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QComboBox, QCheckBox, QWidget, QTableWidgetItem, QStackedWidget,
     QSizePolicy, QSpinBox, QDateEdit,
 )
 from PyQt6.QtCore import Qt, QTimer, QDate
@@ -27,10 +27,10 @@ from style import (
 from .common import (
     store, parts, BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT, GREEN, PURPLE,
-    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _default_msgbox_qss, _default_dialog_qss,
-    _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
+    SCHEDULED_REFINE_RULES_DIALOG_DEFAULT, _show_message_dialog, _default_dialog_qss,
+    _build_output_file_page, _build_output_db_page,
     _warn_custom_rule_missing, _sync_custom_rule_checkbox, _handle_custom_rule_toggle,
-    _resize_dialog_to_fit, _wire_output_mode_toggle, _boxed_panel_qss,
+    _resize_dialog_to_fit, _wire_output_mode_toggle, _boxed_panel_qss, _build_dialog_button_row,
 )
 
 class SchedulerPageTriggers:
@@ -39,6 +39,9 @@ class SchedulerPageTriggers:
     # QTimer.start()는 C int(최대 2,147,483,647ms ≈ 24.8일)를 받으므로,
     # 이보다 긴 대기는 이 단위로 쪼개어 재등록한다 (월간 주기=30일 등에서 OverflowError 방지).
     _MAX_TIMER_MS = 7 * 24 * 60 * 60 * 1000
+
+    # Interval 콤보 인덱스 -> 해당 주기의 시·분·초 콤보 키 접두어(sched_info_dict의 "{접두어}_h/_m/_s")
+    _TIME_WIDGET_PREFIX = {1: "d", 2: "w", 3: "m", 4: "dat"}
 
     def _apply_schedule(self, dlg, sched_info_dict):
         """다이얼로그 위젯값을 읽어 유효성 검사 → 등록 또는 수정 수행"""
@@ -49,16 +52,6 @@ class SchedulerPageTriggers:
         iv_idx      = sched_info_dict["interval"].currentIndex()
         svtype_idx  = sched_info_dict["save_type"].currentIndex()
         out_mode    = self._sched_out_mode
-
-        _msg_qss = _default_msgbox_qss(13)
-
-        def _warn(title, text):
-            msg = QMessageBox(dlg)
-            msg.setWindowTitle(title)
-            msg.setText(text)
-            msg.setIcon(QMessageBox.Icon.Warning)
-            msg.setStyleSheet(_msg_qss)
-            msg.exec()
 
         errors = []
         if not name_val:
@@ -79,36 +72,24 @@ class SchedulerPageTriggers:
                 )
 
         if errors:
-            _warn("입력 오류", "다음 항목을 확인해 주세요:\n\n" + "\n".join(errors))
+            _show_message_dialog(dlg, "입력 오류", "다음 항목을 확인해 주세요:\n\n" + "\n".join(errors))
             return
 
         for i2, exist in enumerate(store.get_schedules()):
             if sched_task == "수정" and i2 == idx:
                 continue
             if exist.get("task_nm") == name_val:
-                _warn("입력 오류",
-                      f"• 동일한 작업명이 이미 등록되어 있습니다.\n"
-                      f"  (작업명: '{name_val}')\n  다른 작업명을 사용해 주세요.")
+                _show_message_dialog(
+                    dlg, "입력 오류",
+                    f"• 동일한 작업명이 이미 등록되어 있습니다.\n"
+                    f"  (작업명: '{name_val}')\n  다른 작업명을 사용해 주세요.")
                 return
 
-        def _hms(h_cb, m_cb, s_cb):
-            return (int(h_cb.currentText()),
-                    int(m_cb.currentText()),
-                    int(s_cb.currentText()))
-
+        # 선택된 주기의 실행 시각(시·분·초) — 중복 검사와 실행 시각 계산이 함께 쓴다
+        time_prefix = self._TIME_WIDGET_PREFIX.get(iv_idx)
         candidate = None
-        if iv_idx == 1:
-            h, m, s = _hms(sched_info_dict["d_h"], sched_info_dict["d_m"], sched_info_dict["d_s"])
-        elif iv_idx == 2:
-            h, m, s = _hms(sched_info_dict["w_h"], sched_info_dict["w_m"], sched_info_dict["w_s"])
-        elif iv_idx == 3:
-            h, m, s = _hms(sched_info_dict["m_h"], sched_info_dict["m_m"], sched_info_dict["m_s"])
-        elif iv_idx == 4:
-            h, m, s = _hms(sched_info_dict["dat_h"], sched_info_dict["dat_m"], sched_info_dict["dat_s"])
-        else:
-            h, m, s = None, None, None
-
-        if h is not None:
+        if time_prefix:
+            h, m, s = (int(sched_info_dict[f"{time_prefix}_{unit}"].currentText()) for unit in "hms")
             candidate = f"{h:02d}:{m:02d}:{s:02d}"
 
         if candidate:
@@ -118,10 +99,11 @@ class SchedulerPageTriggers:
                 exist_exec_str = exist.get("schedule", {}).get("exec_str", "")
                 exist_time = exist_exec_str.strip().split()[-1] if exist_exec_str else ""
                 if exist.get("callback_url", "") == url_val and exist_time == candidate:
-                    _warn("입력 오류",
-                          f"• 동일한 URL과 실행 시간의 작업이 이미 등록되어 있습니다.\n"
-                          f"  (작업명: '{exist.get('task_nm', '')}' / {candidate})\n"
-                          f"  URL 또는 실행 시간을 변경해 주세요.")
+                    _show_message_dialog(
+                        dlg, "입력 오류",
+                        f"• 동일한 URL과 실행 시간의 작업이 이미 등록되어 있습니다.\n"
+                        f"  (작업명: '{exist.get('task_nm', '')}' / {candidate})\n"
+                        f"  URL 또는 실행 시간을 변경해 주세요.")
                     return
 
         now    = datetime.now()
@@ -130,7 +112,6 @@ class SchedulerPageTriggers:
         run_at   = now + timedelta(hours=1)
 
         if iv_idx == 1:
-            h, m, s  = _hms(sched_info_dict["d_h"], sched_info_dict["d_m"], sched_info_dict["d_s"])
             exec_str = f"매일 {h:02d}:{m:02d}:{s:02d}"
             iv_key   = "daily"
             run_at   = now.replace(hour=h, minute=m, second=s, microsecond=0)
@@ -138,7 +119,6 @@ class SchedulerPageTriggers:
                 run_at += timedelta(days=1)
         elif iv_idx == 2:
             day      = sched_info_dict["w_day"].currentText()
-            h, m, s  = _hms(sched_info_dict["w_h"], sched_info_dict["w_m"], sched_info_dict["w_s"])
             exec_str = f"매주 {day} {h:02d}:{m:02d}:{s:02d}"
             iv_key   = "weekly"
             run_at   = now.replace(hour=h, minute=m, second=s, microsecond=0)
@@ -146,7 +126,6 @@ class SchedulerPageTriggers:
                 run_at += timedelta(days=7)
         elif iv_idx == 3:
             day      = int(sched_info_dict["m_day"].currentText())
-            h, m, s  = _hms(sched_info_dict["m_h"], sched_info_dict["m_m"], sched_info_dict["m_s"])
             exec_str = f"매월 {day}일 {h:02d}:{m:02d}:{s:02d}"
             iv_key   = "monthly"
             try:
@@ -157,16 +136,16 @@ class SchedulerPageTriggers:
                 run_at += timedelta(days=30)
         elif iv_idx == 4:
             qd       = sched_info_dict["date_edit"].date()
-            h, m, s  = _hms(sched_info_dict["dat_h"], sched_info_dict["dat_m"], sched_info_dict["dat_s"])
             exec_str = f"{qd.toString('yyyy-MM-dd')} {h:02d}:{m:02d}:{s:02d}"
             iv_key   = "date"
             run_at   = datetime(qd.year(), qd.month(), qd.day(), h, m, s)
             if run_at <= now:
-                _warn("등록 불가",
-                      f"선택한 시간이 현재 시각보다 이전입니다.\n\n"
-                      f"  설정 시간: {exec_str}\n"
-                      f"  현재 시각: {now.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                      "현재 시각 이후의 시간을 설정해 주세요.")
+                _show_message_dialog(
+                    dlg, "등록 불가",
+                    f"선택한 시간이 현재 시각보다 이전입니다.\n\n"
+                    f"  설정 시간: {exec_str}\n"
+                    f"  현재 시각: {now.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                    "현재 시각 이후의 시간을 설정해 주세요.")
                 return
 
         is_file = (out_mode == "FILE")
@@ -495,11 +474,11 @@ class SchedulerPageTriggers:
             lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1.5px;")
             return lbl
 
-        def field_row(label, widget, label_w=110):
+        def field_row(label, widget):
             row = QHBoxLayout()
             row.setSpacing(8)
             lw = parts.make_label(label, TEXT_SECONDARY, 12)
-            lw.setFixedWidth(label_w)
+            lw.setFixedWidth(110)
             row.addWidget(lw)
             row.addWidget(widget, 1)
             return row
@@ -825,11 +804,6 @@ class SchedulerPageTriggers:
 
         sched_extract_stack.addWidget(sched_file_page)  # index 0
 
-        sched_db_page = QWidget()
-        sdp = QVBoxLayout(sched_db_page)
-        sdp.setContentsMargins(14, 14, 14, 14)
-        sdp.setSpacing(8)
-
         if sched_task == "등록":
             _sched_db_info = output_info["extract"]["db"]
         else:
@@ -837,24 +811,10 @@ class SchedulerPageTriggers:
             _sched_db_info = {k: edb.get(k) or edb_dflt.get(k, "") for k in
                                ("db_env", "host", "port", "database", "schema", "user", "password", "save_data_nm")}
 
-        sgrid = QGridLayout()
-        sgrid.setSpacing(8)
-        sgrid.setColumnStretch(1, 1)
-        sdb_widgets = _build_db_settings_fields(sgrid, _sched_db_info)
+        sched_db_page, sdb_widgets = _build_output_db_page(_sched_db_info, dlg)
         _sdb_type, _sdb_host, _sdb_port = sdb_widgets["db_type"], sdb_widgets["host"], sdb_widgets["port"]
         _sdb_name, _sdb_schema          = sdb_widgets["name"], sdb_widgets["schema"]
         _sdb_user, _sdb_pw, _sdb_data   = sdb_widgets["user"], sdb_widgets["password"], sdb_widgets["save_data_nm"]
-        sdp.addLayout(sgrid)
-
-        sched_test_row = QHBoxLayout()
-        sched_test_row.setSpacing(10)
-        sched_test_btn = parts.outline_btn("TEST CONNECTION")
-        sched_test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
-        _wire_db_test_button(sched_test_btn, sched_test_result_lbl, sdb_widgets, dlg)
-        sched_test_row.addWidget(sched_test_btn)
-        sched_test_row.addWidget(sched_test_result_lbl)
-        sched_test_row.addStretch()
-        sdp.addLayout(sched_test_row)
 
         sched_extract_stack.addWidget(sched_db_page)  # index 1
         sched_extract_stack.setCurrentIndex(0 if self._sched_out_mode == "FILE" else 1)
@@ -1121,16 +1081,11 @@ class SchedulerPageTriggers:
             "db_data":      _sdb_data,
         }
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
         apply_btn  = parts.action_btn("적용")
         cancel_btn = parts.outline_btn("취소")
         apply_btn.clicked.connect(lambda: self._apply_schedule(dlg=dlg, sched_info_dict=sched_info_dict))
         cancel_btn.clicked.connect(dlg.reject)
-        btn_row.addWidget(apply_btn)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(cancel_btn)
-        root.addLayout(btn_row)
+        root.addLayout(_build_dialog_button_row(apply_btn, cancel_btn))
 
         dlg.adjustSize()
         dlg.exec()

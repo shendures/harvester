@@ -1,15 +1,15 @@
 # layout/multi/main_window.py
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
+from PyQt6.QtWidgets import QWidget, QStackedWidget
 from PyQt6.QtCore import Qt
 
 from conf import BlueprintStorage
-from trigger import LogViewerDialog, MainWindowTriggersMulti
+from trigger import MainWindowTriggersMulti
 from trigger.common import NAV_BLUEPRINT_LIST
-from ..common import build_status_bar, build_master_detail_splitter, center_window_on_screen
+from ..common import build_master_detail_splitter
+from ..window_base import MainWindowBase
 from ..scheduler import SchedulerPage
 from ..session import SessionSettingsPage
-from ..tray import TrayManager
 from .toolbar import GlobalToolbarMulti
 from .sidebar import SidebarMulti
 from .blueprint_list import BlueprintListPage, BlueprintPageBundle
@@ -17,51 +17,19 @@ from .monitor_target_list import MonitorTargetListPage
 from .statistics import StatisticsPageMulti
 
 
-class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
+class MainWindowMulti(MainWindowBase, MainWindowTriggersMulti):
+    _WINDOW_TITLE = "DataCrawler v2.0 — Multi Blueprint"
+
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("DataCrawler v2.0 — Multi Blueprint")
-        self.resize(1843, 1152)
-        self.setMinimumSize(960, 640)
-        self._worker = None
-        self._pending_queue = []   # 배치/스케줄 공용 순차 대기 큐 (FIFO)
+        # _build() 안의 _get_or_create_bundle()이 쓰므로 super().__init__() 이전에 바인딩한다.
         self._bundles: dict = {}   # seq_no -> BlueprintPageBundle (지연 생성 캐시)
-
-        self.log_manager = LogViewerDialog(parent=self)
-
-        self._build()
-        self.tray_manager = TrayManager(self)
-        self._centered_once = False
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        # 트레이에서 창을 복원할 때마다 다시 중앙으로 튀지 않도록 최초 1회만 정렬한다.
-        if not self._centered_once:
-            self._centered_once = True
-            center_window_on_screen(self)
+        super().__init__()
 
     def _build(self):
         storage = BlueprintStorage()
 
-        left_widget = QWidget()
-        self.setCentralWidget(left_widget)
-        layout = QHBoxLayout(left_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
         self.sidebar = SidebarMulti()
-        self.sidebar.page_changed.connect(self._switch_page)
-        layout.addWidget(self.sidebar)
-
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
-
         self.global_toolbar = GlobalToolbarMulti()
-        self.global_toolbar.start_requested.connect(self._start_crawl)
-        self.global_toolbar.stop_requested.connect(self._stop_crawl)
-        right_layout.addWidget(self.global_toolbar)
 
         # ── QStackedWidget: 페이지 종류별 인덱스는 단일과 동일하게 고정하고,
         #    블루프린트별 페이지는 각 슬롯(내부 QStackedWidget)에서 교체한다.
@@ -115,15 +83,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.stack.addWidget(self.session_page)         # 4 — NAV_SESSION
         self.stack.addWidget(self.blueprint_list_page)  # 5 — NAV_BLUEPRINT_LIST
 
-        right_layout.addWidget(self.stack, 1)
-
-        # ── 메인 창 최하단 상태바 (단일과 공용 build_status_bar 사용) ───
-        status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
-        right_layout.addWidget(status_bar)
-
-        self.log_manager.last_log.connect(self._update_status_bar)
-
-        layout.addWidget(right_widget, 1)
+        self._assemble_shell()
 
         # 최초 활성화 — 첫 번째 블루프린트 기준으로 기존 단일 동작을 재현
         self._activate_blueprint(storage.list_seq_nos()[0])

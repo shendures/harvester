@@ -6,7 +6,7 @@ from copy import deepcopy
 import socket
 
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMessageBox, QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
+    QApplication, QFileDialog, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -179,6 +179,29 @@ def _default_dialog_qss() -> str:
     """
 
 
+def _build_modal_dialog(parent, title: str, width: int, *, spacing: int = 0) -> tuple:
+    """모달 설정 다이얼로그의 공통 골격(제목·고정 폭·공용 QSS·여백 22/18)을 만든다.
+    (dlg, 루트 QVBoxLayout)을 반환 — 헤더/본문/버튼 행은 호출부가 채운다."""
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setFixedWidth(width)
+    dlg.setStyleSheet(_default_dialog_qss())
+    root = QVBoxLayout(dlg)
+    root.setContentsMargins(22, 18, 22, 18)
+    root.setSpacing(spacing)
+    return dlg, root
+
+
+def _build_dialog_button_row(primary_btn, cancel_btn) -> QHBoxLayout:
+    """다이얼로그 하단 [주 동작][취소] 버튼 행(우측 정렬)을 만든다."""
+    row = QHBoxLayout()
+    row.addStretch()
+    row.addWidget(primary_btn)
+    row.addSpacing(8)
+    row.addWidget(cancel_btn)
+    return row
+
+
 def _default_msgbox_qss(label_font_size: int = 12) -> str:
     """앱 전역에서 반복 사용되는 QMessageBox 스타일시트 (여러 다이얼로그에 그대로 복사돼 있던 블록)"""
     return f"""
@@ -241,7 +264,7 @@ def _show_message_dialog(parent, title: str, text: str, *, icon=QMessageBox.Icon
 
 
 def _confirm_destructive_action(parent, title: str, text: str,
-                                 informative_text: str = None, font_size: int = 13) -> bool:
+                                 informative_text: str = None) -> bool:
     """되돌릴 수 없는 작업(초기화/삭제 등) 실행 전 Yes/No로 재확인받는 공용 헬퍼 —
     _show_message_dialog()의 확인판. 기본 선택 버튼을 "아니오"로 두어 실수로
     Enter를 눌러도 실행되지 않게 한다. "예"를 선택했을 때만 True를 반환한다."""
@@ -253,7 +276,7 @@ def _confirm_destructive_action(parent, title: str, text: str,
         confirm.setInformativeText(informative_text)
     confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     confirm.setDefaultButton(QMessageBox.StandardButton.No)
-    confirm.setStyleSheet(_default_msgbox_qss(font_size))
+    confirm.setStyleSheet(_default_msgbox_qss(13))
     return confirm.exec() == QMessageBox.StandardButton.Yes
 
 
@@ -520,7 +543,7 @@ def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) 
         "delay_spin": delay_spin, "thread_spin": thread_spin,
         "timeout_spin": timeout_spin, "retry_spin": retry_spin,
         "auto_save_chk": auto_save_chk,
-        "auto_src_raw_btn": auto_src_raw_btn, "auto_src_ref_btn": auto_src_ref_btn,
+        "auto_src_ref_btn": auto_src_ref_btn,
     }
     return card, widgets
 
@@ -532,23 +555,18 @@ def _build_db_settings_fields(grid: QGridLayout, db_info: dict) -> dict:
     def _lbl(t):
         return parts.make_label(t, TEXT_SECONDARY, 11)
 
-    def _inp(txt="", ph=""):
-        e = QLineEdit(txt)
-        e.setPlaceholderText(ph)
-        return e
-
     db_type = QComboBox()
     db_type.addItems(["MySQL", "PostgreSQL", "MongoDB"])
     db_type.setCurrentText(db_info.get("db_env") or "MySQL")
     widgets = {
         "db_type": db_type,
-        "host":    _inp(txt=db_info.get("host") or ""),
-        "port":    _inp(txt=db_info.get("port") or ""),
-        "name":    _inp(db_info.get("database") or ""),
-        "schema":  _inp(db_info.get("schema") or ""),
-        "user":    _inp(db_info.get("user") or ""),
-        "password": _inp(db_info.get("password") or ""),
-        "save_data_nm": _inp(db_info.get("save_data_nm") or ""),
+        "host":    QLineEdit(db_info.get("host") or ""),
+        "port":    QLineEdit(db_info.get("port") or ""),
+        "name":    QLineEdit(db_info.get("database") or ""),
+        "schema":  QLineEdit(db_info.get("schema") or ""),
+        "user":    QLineEdit(db_info.get("user") or ""),
+        "password": QLineEdit(db_info.get("password") or ""),
+        "save_data_nm": QLineEdit(db_info.get("save_data_nm") or ""),
     }
     widgets["password"].setEchoMode(QLineEdit.EchoMode.Password)
 
@@ -655,6 +673,32 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
     return file_page, widgets, _toggle_csv_fields
 
 
+def _build_output_db_page(db_info: dict, dlg) -> tuple:
+    """출력 설정/스케줄 다이얼로그의 DB 전송 페이지(DB 필드 그리드 + TEST CONNECTION 행)를
+    만든다. (page, widgets)를 반환하며 widgets는 _build_db_settings_fields()의 딕셔너리다."""
+    page = QWidget()
+    page_layout = QVBoxLayout(page)
+    page_layout.setContentsMargins(14, 14, 14, 14)
+    page_layout.setSpacing(8)
+
+    grid = QGridLayout()
+    grid.setSpacing(8)
+    grid.setColumnStretch(1, 1)
+    widgets = _build_db_settings_fields(grid, db_info)
+    page_layout.addLayout(grid)
+
+    test_row = QHBoxLayout()
+    test_row.setSpacing(10)
+    test_btn = parts.outline_btn("TEST CONNECTION")
+    test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
+    _wire_db_test_button(test_btn, test_result_lbl, widgets, dlg)
+    test_row.addWidget(test_btn)
+    test_row.addWidget(test_result_lbl)
+    test_row.addStretch()
+    page_layout.addLayout(test_row)
+    return page, widgets
+
+
 def _resize_dialog_to_fit(dlg) -> None:
     """레이아웃 변경(스택 페이지 전환, 섹션 표시/숨김 등) 후 다이얼로그 크기를
     콘텐츠에 맞게 재계산한다. 레이아웃 변경 직후에는 dlg.sizeHint()가 아직 새
@@ -688,20 +732,11 @@ def _wire_output_mode_toggle(*, dlg, stack, file_btn, db_btn, mode_lbl,
             stack.setFixedHeight(current_page.layout().sizeHint().height())
         _resize_dialog_to_fit(dlg)
 
-    def _on_file_clicked():
-        set_mode("FILE")
-        mode_lbl.setText("로컬 파일 저장 모드")
-        db_btn.setChecked(False)
-        stack.setCurrentIndex(0)
-        stack.setMinimumHeight(0)
-        stack.setMaximumHeight(16777215)
-        _resize()
-
-    def _on_db_clicked():
-        set_mode("DB")
-        mode_lbl.setText("DB 서버 전송 모드")
-        file_btn.setChecked(False)
-        stack.setCurrentIndex(1)
+    def _select_mode(is_file: bool):
+        set_mode("FILE" if is_file else "DB")
+        mode_lbl.setText("로컬 파일 저장 모드" if is_file else "DB 서버 전송 모드")
+        (db_btn if is_file else file_btn).setChecked(False)
+        stack.setCurrentIndex(0 if is_file else 1)
         stack.setMinimumHeight(0)
         stack.setMaximumHeight(16777215)
         _resize()
@@ -711,8 +746,8 @@ def _wire_output_mode_toggle(*, dlg, stack, file_btn, db_btn, mode_lbl,
             on_fmt_changed(fmt_text)
         _resize()
 
-    file_btn.clicked.connect(_on_file_clicked)
-    db_btn.clicked.connect(_on_db_clicked)
+    file_btn.clicked.connect(lambda: _select_mode(True))
+    db_btn.clicked.connect(lambda: _select_mode(False))
     fmt_combo.currentTextChanged.connect(_on_fmt_changed)
     _on_fmt_changed(fmt_combo.currentText())
     return _resize

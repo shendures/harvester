@@ -16,7 +16,10 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from style import Divider
 
-from .common import theme, parts, TEXT_PRIMARY, TEXT_SECONDARY, _log as _log_common, _default_dialog_qss
+from .common import (
+    theme, parts, TEXT_PRIMARY, TEXT_SECONDARY, _log as _log_common, _default_dialog_qss,
+    _build_modal_dialog, _build_dialog_button_row,
+)
 
 # 이 파일의 소형 다이얼로그(연결 테스트 진행창 / 새 프록시 추가창)가 공유하는 폭 —
 # 둘 다 같은 "간단한 폼 다이얼로그" 형태라 서로 다른 값을 쓸 이유가 없다.
@@ -286,14 +289,7 @@ class SessionSettingsPageTriggers:
 
     def _add_proxy_dialog(self):
         """새 프록시 추가 Dialog를 띄운다."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("새 프록시 추가")
-        dlg.setFixedWidth(_SMALL_DIALOG_WIDTH)
-        dlg.setStyleSheet(_default_dialog_qss())
-
-        root = QVBoxLayout(dlg)
-        root.setContentsMargins(22, 18, 22, 18)
-        root.setSpacing(0)
+        dlg, root = _build_modal_dialog(self, "새 프록시 추가", _SMALL_DIALOG_WIDTH)
 
         root.addWidget(parts.make_label("새 프록시 추가", TEXT_PRIMARY, 14, True))
         root.addSpacing(10)
@@ -324,7 +320,6 @@ class SessionSettingsPageTriggers:
         root.addLayout(port_row)
         root.addSpacing(10)
 
-        btn_row = QHBoxLayout()
         ok_btn = parts.action_btn("추가")
 
         def _do_add():
@@ -341,11 +336,7 @@ class SessionSettingsPageTriggers:
         ok_btn.clicked.connect(_do_add)
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.close)
-        btn_row.addStretch()
-        btn_row.addWidget(ok_btn)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(cancel_btn)
-        root.addLayout(btn_row)
+        root.addLayout(_build_dialog_button_row(ok_btn, cancel_btn))
         dlg.exec()
 
     def _delete_row(self, row_idx):

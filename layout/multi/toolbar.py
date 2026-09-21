@@ -9,8 +9,7 @@ class GlobalToolbarMulti(GlobalToolbarSingle):
     단일과 동일한 구성이지만, method 라벨을 인스턴스 속성으로 보관해
     activate_blueprint()로 활성 블루프린트 전환 시 갱신할 수 있게 합니다.
     (_build() 본체는 GlobalToolbarSingle에서 그대로 상속받고, 이 클래스는
-    라벨/URL 값 계산과 라벨 위젯 후처리 훅 2개만 오버라이드합니다 —
-    구 layout_multi.py의 _build() 42줄 전체 복붙 오버라이드를 대체합니다.)
+    라벨/URL 값 계산과 라벨 위젯 후처리 훅 2개만 오버라이드합니다.)
     """
 
     def _toolbar_display_info(self):
