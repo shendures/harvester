@@ -126,6 +126,7 @@ class GlobalToolbarTriggers:
     def set_running(self, v: bool):
         self._running = v
         self._style_run_btn(v)
+        self.running_changed.emit(v)
 
     def _style_run_btn(self, running: bool):
         if running:

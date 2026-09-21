@@ -70,6 +70,7 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
         self.schedule_page = SchedulerPage()
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPageSingle()
+        self.global_toolbar.running_changed.connect(self.stats_page.set_collecting)
         self.session_page = SessionSettingsPage()
         self.schedule_page.session_page = self.session_page
 

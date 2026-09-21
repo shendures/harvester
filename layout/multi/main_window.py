@@ -84,6 +84,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
         self.stats_page = StatisticsPageMulti()  # 3 — 좌측 수집 대상 목록 + 블루프린트별 통계
         self.stats_page.target_list.blueprint_selected.connect(self._activate_blueprint)
+        self.global_toolbar.running_changed.connect(self.stats_page.set_collecting)
         self.session_page = SessionSettingsPage()  # 4 — 전역 단일
         self.schedule_page.session_page = self.session_page
 

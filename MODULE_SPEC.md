@@ -91,7 +91,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()` 계약), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()`/`set_collecting()` 계약, 수집 중 여부는 툴바 `running_changed` 시그널을 창이 연결해 주입), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
