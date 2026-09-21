@@ -19,7 +19,7 @@ from .dashboard import DashboardPageMulti
 from .monitor import MonitorPageMulti
 
 # 블루프린트 실행 상태 라벨 — BlueprintListPage 상태 컬럼에서 사용
-BLUEPRINT_STATUS_LABELS = {"idle": "대기", "running": "실행 중", "done": "완료"}
+BLUEPRINT_STATUS_LABELS = {"idle": "대기", "running": "수집 중"}
 
 
 class BlueprintListPage(QWidget):
