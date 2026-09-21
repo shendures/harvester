@@ -989,7 +989,8 @@ class MonitorPageTriggers:
                 # 함께 정리되어 다음 번 열람 때도 온전하다).
                 auth_scroll.setWidget(auth_body)
 
-    def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None):
+    def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None,
+                              open_save_path: bool = True):
         """
         source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
         호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
@@ -1004,6 +1005,8 @@ class MonitorPageTriggers:
             실시간 output_info와는 무관). 이 경우 "schedule_save_type"(새로 만들기/
             덮어쓰기/추가하기)에 따라 모달 없이 결정론적으로 저장합니다. None이면
             (수동 추출 버튼 등) 기존과 동일하게 self.output_info와 확인 모달을 사용합니다.
+        open_save_path: False면 "저장 후 폴더 열기" 설정과 무관하게 폴더를 열지 않습니다
+            (silent와 달리 모달/로그 동작은 바꾸지 않음 — "선택 수집" 자동 저장용).
         """
         lm = _get_log_manager(self)
 
@@ -1074,7 +1077,7 @@ class MonitorPageTriggers:
                 # 설정(extract_override)에는 이 키가 애초에 없으므로(대시보드
                 # output_info에만 존재) get()으로 안전하게 조회한다.
                 is_open_save_path = extract_cfg["file"].get("is_open_save_path", False)
-                if file_path and is_open_save_path and not silent:
+                if file_path and is_open_save_path and open_save_path and not silent:
                     if sys.platform == 'win32':
                         os.startfile(file_path)
                     elif sys.platform == 'darwin':

@@ -92,7 +92,22 @@ class MainWindowTriggersSingle:
         """스케줄 실행 시작 전 페이지 리셋 — MainWindowTriggersMulti가 번들 단위로 오버라이드한다."""
         self._reset_all_pages()
 
+    def _log_task_defined(self, task: dict) -> None:
+        """수집 작업 정의 로그 — 순차 실행의 첫 작업이면 헤더를, 이어 'i/N번째 제목'을 남긴다."""
+        meta = task.get("batch_meta") or {"index": 0, "total": 1}
+        if meta["index"] == 0:
+            self.log_manager.append_log(
+                "info", f"[{task.get('job')}] 총 {meta['total']}건 순차 실행 시작")
+        label = task.get("title") or task.get("task_nm") or task.get("seq_no")
+        self.log_manager.append_log("info", f"{meta['index'] + 1}/{meta['total']}번째 '{label}'")
+
+    def _log_collection_done(self) -> None:
+        """대기 큐에 올라간 모든 수집 작업이 끝났을 때만 수집 완료 로그를 남긴다."""
+        if not self._pending_queue:
+            self.log_manager.append_log("info", "수집 완료")
+
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        self._log_task_defined(cfg)
         is_unattended = cfg.get("job") == "스케줄 실행"
         if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
             self._abort_launch(cfg)
@@ -133,12 +148,6 @@ class MainWindowTriggersSingle:
         if not self._pending_queue:
             return
         next_cfg = self._pending_queue.pop(0)
-        remaining = len(self._pending_queue)
-        self.log_manager.append_log(
-            "info",
-            f"[스케줄] '{next_cfg.get('task_nm', next_cfg.get('job', ''))}' 대기 큐에서 실행 "
-            f"(남은 대기: {remaining}건)"
-        )
 
         self._reset_all_pages()
 
@@ -214,10 +223,9 @@ class MainWindowTriggersSingle:
             # 영영 예약되지 않고 스케줄이 조용히 멈춘다.
             self._mark_schedule_done(task, total=0)
             # 결과 없어도 대기 큐 소비는 계속 진행
+            self._log_collection_done()
             self._consume_pending_queue()
             return
-
-        self.log_manager.append_log("info", "크롤링 완료")
 
         self.monitor_page.preprocess(task)
         self.stats_page.reload()
@@ -256,6 +264,7 @@ class MainWindowTriggersSingle:
             self._activate_nav_page(NAV_REFINE)
             self.monitor_page.tab_widget.setCurrentIndex(0)
 
+        self._log_collection_done()
         self._consume_pending_queue()
 
     def closeEvent(self, event):
@@ -385,11 +394,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._pending_queue.extend(rest)
         store.clear_rows()
         self._reset_bundle_pages(first.get("seq_no"))
-        self.log_manager.append_log(
-            "info",
-            f"[{job_name}] 총 {len(tasks)}건 순차 실행 시작 — 1/{len(tasks)}번째 "
-            f"'{first.get('title') or first.get('seq_no')}'"
-        )
 
         # 단일 레이아웃의 _toggle_run→_step_to_setting과 동일한 "수집 대기(0, 위
         # _reset_bundle_pages가 이미 표시함)→수집 세팅(1)→데이터 수집(2)" 연출을
@@ -419,6 +423,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
     # ── 워커 기동 (번들 라우팅) ────────────────────────
     def _launch_worker(self, cfg: dict, job_name="실행"):
+        self._log_task_defined(cfg)
         is_unattended = cfg.get("job") in ("스케줄 실행", BATCH_JOB)
         if not _validate_blueprint_before_run(self, cfg, is_unattended=is_unattended):
             self._abort_launch(cfg)
@@ -486,23 +491,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         if not self._pending_queue:
             return
         next_cfg = self._pending_queue.pop(0)
-        remaining = len(self._pending_queue)
-
-        meta = next_cfg.get("batch_meta")
-        if meta:
-            job_name = next_cfg.get("job", BATCH_JOB)
-            self.log_manager.append_log(
-                "info",
-                f"[{job_name}] {meta['index'] + 1}/{meta['total']}번째 "
-                f"'{next_cfg.get('title') or next_cfg.get('seq_no')}' 실행 "
-                f"(남은 대기: {remaining}건)"
-            )
-        else:
-            self.log_manager.append_log(
-                "info",
-                f"[스케줄] '{next_cfg.get('task_nm', next_cfg.get('job', ''))}' 대기 큐에서 실행 "
-                f"(남은 대기: {remaining}건)"
-            )
 
         self._reset_bundle_pages(next_cfg.get("seq_no"))
         self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
@@ -562,10 +550,9 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
             self._mark_schedule_done(task, total=0)
+            self._log_collection_done()
             self._consume_pending_queue()
             return
-
-        self.log_manager.append_log("info", "크롤링 완료")
 
         mon.preprocess(task)
         self.stats_page.reload()
@@ -590,6 +577,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                     source=auto_save_source,
                     silent=is_unattended,
                     extract_override=extract_cfg if is_unattended else None,
+                    open_save_path=task.get("job") != SELECT_JOB,
                 )
         except Exception as e:
             self.log_manager.append_log("err", f"자동 저장 실패: {e}")
@@ -604,9 +592,9 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         if task.get("job") in IMMEDIATE_MONITOR_JOBS:
             self._show_monitor_for(seq_no)
         elif task.get("job") == BATCH_JOB and not self._pending_queue:
-            self.log_manager.append_log("info", "[전체 수집] 전체 순차 실행 완료")
             self._show_monitor_for(seq_no)
 
+        self._log_collection_done()
         self._consume_pending_queue()
 
     def _show_monitor_for(self, seq_no) -> None:

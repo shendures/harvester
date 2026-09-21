@@ -99,6 +99,8 @@ class MultiprocessWorker(QThread):
         threads      = self.task["threads"]
         delay        = self.task["delay"]
 
+        self.log_message.emit("info", "크롤러 초기화")
+
         # ── URL 리스트 생성 ───────────────────────────
         method       = (self.task.get("conditions") or {}).get("method") or "GET"
         requested_urls: list[str] = []
@@ -113,7 +115,7 @@ class MultiprocessWorker(QThread):
                 self.log_message.emit("warn", f"수집 대상 URL이 생성되지 않았습니다. URL 설정을 확인해주세요. (대상: {callback_url})")
             else:
                 logger.debug("[DEBUG][run] url_list 생성 완료 — 총 %d개", total)
-                self.log_message.emit("info", f"총 {total}개 URL 수집을 시작합니다.")
+                self.log_message.emit("info", f"총 {total}개 수집을 시작합니다.")
                 for u in list(url_list)[:5]:   # 최대 5개만 출력 (로그 과부하 방지)
                     logger.debug("[DEBUG][run] url_list 샘플: %s", u)
 
@@ -124,9 +126,7 @@ class MultiprocessWorker(QThread):
             url_list = set()
             total    = 0
 
-        self.log_message.emit("info", "크롤러 초기화 완료")
-        self.log_message.emit("info", f"대상: {callback_url}")
-        self.log_message.emit("info", f"스레드 {threads}개 / 딜레이 {delay}s")
+        self.log_message.emit("info", self._settings_log_line())
 
         processed_urls = set()
 
@@ -190,6 +190,17 @@ class MultiprocessWorker(QThread):
 
         finally:
             self._emit_finished(callback_url, total, method, requested_urls)
+
+    def _settings_log_line(self) -> str:
+        """수집 설정 카드의 값(Delay/Threads/Timeout/Retry/Auto Save/저장 대상)을 한 줄로 만듭니다."""
+        extract = self.task.get("extract") or {}
+        auto_save = "설정" if extract.get("auto_save") else "해제"
+        save_source = "정제" if extract.get("auto_save_source") == "refined" else "Raw"
+        return (
+            f"Delay(s) : {self.task['delay']} / Threads : {self.task['threads']} / "
+            f"Timeout(s) : {self.task.get('timeout')} / Retry : {self.task.get('retry')} / "
+            f"Auto Save {auto_save} / {save_source}"
+        )
 
     def _handle_line(
         self,
@@ -301,14 +312,14 @@ class MultiprocessWorker(QThread):
         if empty_extract:
             resp_info["empty_extract"] = True
             level = "warn"
-            log_text = f"200 응답이지만 추출 데이터 0건: {res_url}"
+            log_text = f"200 응답이지만 추출 데이터 0건 ( {res_url} )"
         elif status_code == 200:
             level = "ok"
-            log_text = str(reason)
+            log_text = f"{reason or status_code} ( {res_url} )"
         else:
             self._errors += 1
             level = "err"
-            log_text = str(reason)
+            log_text = f"{reason or status_code} ( {res_url} )"
 
         self.log_message.emit(level, log_text)
         self._request_results[res_url] = {
