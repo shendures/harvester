@@ -1147,13 +1147,13 @@ class StatisticsPageTriggers:
         return text
 
     def _refresh_process_kpis(self, agg: dict) -> None:
-        """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값·최소/최대)과 유효 데이터
-        비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
+        """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소÷최대 비율)과
+        유효 데이터 비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
         수집")만 대상으로 해 빈 응답이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
         필드 채움 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
         self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
-        self.kpi_item_range.update_value(f"{min(pages):,} ~ {max(pages):,}건" if pages else "—")
+        self.kpi_item_range.update_value(_percent(min(pages), max(pages)) if pages and max(pages) else "—")
 
         field_items = agg["field_items"]
         self.kpi_valid_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
