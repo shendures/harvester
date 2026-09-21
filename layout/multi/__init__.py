@@ -6,11 +6,12 @@ from .sidebar import SidebarMulti
 from .dashboard import DashboardPageMulti
 from .monitor import MonitorPageMulti
 from .blueprint_list import BlueprintListPage, BlueprintPageBundle, BLUEPRINT_STATUS_LABELS
+from .statistics import StatisticsPageMulti
 from .main_window import MainWindowMulti
 
 __all__ = [
     "GlobalToolbarMulti", "SidebarMulti",
     "DashboardPageMulti", "MonitorPageMulti",
     "BlueprintListPage", "BlueprintPageBundle", "BLUEPRINT_STATUS_LABELS",
-    "MainWindowMulti",
+    "StatisticsPageMulti", "MainWindowMulti",
 ]

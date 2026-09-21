@@ -421,6 +421,7 @@ class MultiprocessWorker(QThread):
         summary = {
             "job":         self.job_name,
             "title":       self.task.get("title", ""),
+            "seq_no":      self.task.get("seq_no"),
             "url":         callback_url,
             "method":      method,
             "requests":    [self._build_request_record(u, method) for u in requested_urls],

@@ -8,13 +8,13 @@ from trigger import LogViewerDialog, MainWindowTriggersMulti
 from trigger.common import NAV_BLUEPRINT_LIST
 from ..common import build_status_bar, build_master_detail_splitter, center_window_on_screen
 from ..scheduler import SchedulerPage
-from ..statistics import StatisticsPage
 from ..session import SessionSettingsPage
 from ..tray import TrayManager
 from .toolbar import GlobalToolbarMulti
 from .sidebar import SidebarMulti
 from .blueprint_list import BlueprintListPage, BlueprintPageBundle
 from .monitor_target_list import MonitorTargetListPage
+from .statistics import StatisticsPageMulti
 
 
 class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
@@ -82,7 +82,8 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         self.monitor_split.setSizes([250, 750])
         self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
-        self.stats_page = StatisticsPage()       # 3 — 전역 단일
+        self.stats_page = StatisticsPageMulti()  # 3 — 좌측 수집 대상 목록 + 블루프린트별 통계
+        self.stats_page.target_list.blueprint_selected.connect(self._activate_blueprint)
         self.session_page = SessionSettingsPage()  # 4 — 전역 단일
         self.schedule_page.session_page = self.session_page
 
@@ -158,9 +159,10 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         )
 
     def _broadcast_blueprint_status(self, seq_no, status: str) -> None:
-        """"수집 목록"과 "데이터 정제" 좌측 목록 양쪽의 상태 컬럼을 함께 갱신한다."""
+        """"수집 목록"과 "데이터 정제"·"통계 분석" 좌측 목록의 상태 컬럼을 함께 갱신한다."""
         self.blueprint_list_page.set_status(seq_no, status)
         self.monitor_nav_list.set_status(seq_no, status)
+        self.stats_page.set_status(seq_no, status)
 
     # ── 활성 블루프린트 전환 ───────────────────────────
     def _activate_blueprint(self, seq_no):
@@ -173,6 +175,7 @@ class MainWindowMulti(QMainWindow, MainWindowTriggersMulti):
         bundle = self._get_or_create_bundle(seq_no)
         BlueprintStorage().set_active(seq_no)
         self.monitor_nav_list.set_active_seq_no(seq_no)
+        self.stats_page.select_blueprint(seq_no)
 
         self.dashboard_slot.setCurrentWidget(bundle.dashboard)
         self.step_slot.setCurrentWidget(bundle.dashboard.step_card_widget)
