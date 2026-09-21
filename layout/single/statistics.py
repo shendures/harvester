@@ -10,5 +10,8 @@ class StatisticsPageSingle(StatisticsPageBase):
         self.panel = StatisticsPanel()
         super().__init__(self.panel)
 
+    def _iter_panels(self):
+        return [self.panel]
+
     def _active_panel(self):
         return self.panel

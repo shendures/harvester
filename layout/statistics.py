@@ -595,6 +595,17 @@ class StatisticsPageBase(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(body)
+        self._collecting = False
+
+    def _iter_panels(self):
+        """이 페이지가 가진 모든 StatisticsPanel."""
+        raise NotImplementedError
+
+    def set_collecting(self, collecting: bool) -> None:
+        """수집 중 여부를 모든 패널에 전달한다 — 나중에 만들어지는 패널은 저장값으로 시작한다."""
+        self._collecting = collecting
+        for panel in self._iter_panels():
+            panel.set_collecting(collecting)
 
     def _active_panel(self):
         """지금 보이는 StatisticsPanel(없으면 None)."""

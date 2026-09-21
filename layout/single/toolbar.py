@@ -17,6 +17,7 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     """
     start_requested = pyqtSignal(dict)
     stop_requested = pyqtSignal()
+    running_changed = pyqtSignal(bool)   # set_running() 호출 시 emit — 통계 패널 등이 수집 중 여부를 받는다
 
     def __init__(self, parent=None):
         super().__init__(parent)

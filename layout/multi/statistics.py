@@ -33,12 +33,16 @@ class StatisticsPageMulti(StatisticsPageBase):
         """선택 블루프린트의 패널로 전환하고 목록 강조를 맞춘다."""
         if seq_no not in self._panels:
             panel = StatisticsPanel(seq_no)
+            panel.set_collecting(self._collecting)
             self._panels[seq_no] = panel
             self._panel_slot.addWidget(panel)
         self._active_seq_no = seq_no
         self.target_list.set_active_seq_no(seq_no)
         self._panel_slot.setCurrentWidget(self._panels[seq_no])
         self._panels[seq_no].reload()
+
+    def _iter_panels(self):
+        return self._panels.values()
 
     def _active_panel(self):
         return self._panels.get(self._active_seq_no)

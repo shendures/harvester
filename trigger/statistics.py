@@ -1017,6 +1017,14 @@ class StatisticsPageTriggers:
 
     seq_no = None  # None이면 전체 블루프린트 합산, 값이 있으면 그 블루프린트의 통계만
 
+    _collecting = False  # 수집 진행 중 여부 — 창이 set_collecting()으로 넘긴다
+
+    def set_collecting(self, collecting: bool) -> None:
+        """수집 시작/종료를 즉시 반영한다 — 초기화 버튼을 잠그고 진행 중 수집을 평가에 넣는다."""
+        self._collecting = collecting
+        self.reset_btn.setEnabled(not collecting)
+        self._refresh_if_visible()
+
     def _title(self):
         """seq_no 블루프린트의 제목 — seq_no가 없는 과거 세션 기록을 제목으로 매칭할 때 쓴다."""
         blueprint = BlueprintStorage().get(self.seq_no)
@@ -1037,10 +1045,6 @@ class StatisticsPageTriggers:
         self._refresh_session_table()
 
     def _refresh_summary(self):
-        toolbar = getattr(self.window(), "global_toolbar", None)
-        running = bool(getattr(toolbar, "_running", False)) if toolbar else False
-        self.reset_btn.setEnabled(not running)
-
         rows = self._rows()
         sessions = self._sessions()
 
@@ -1075,7 +1079,7 @@ class StatisticsPageTriggers:
         throughput = self._refresh_throughput_kpi(sessions)
 
         self._reference_kpis = ((REF_AVG_LATENCY, avg_t), (REF_THROUGHPUT, throughput))
-        self._update_diagnosis(evaluate(total, agg, self._evaluation_window(rows, sessions, running)))
+        self._update_diagnosis(evaluate(total, agg, self._evaluation_window(rows, sessions, self._collecting)))
 
         self._refresh_trend_chart(rows, agg)
 
