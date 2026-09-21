@@ -91,7 +91,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()`/`set_collecting()` 계약, 수집 중 여부는 툴바 `running_changed` 시그널을 창이 연결해 주입), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거 표와 하단에 총평 문단과 이슈별 "원인. 해결 방법." 항목을 평문으로 보여주는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()`/`set_collecting()` 계약, 수집 중 여부는 툴바 `running_changed` 시그널을 창이 연결해 주입), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
@@ -157,7 +157,7 @@ Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크�
 | 함수 | 기능 |
 |---|---|
 | `get_spider(request_info)` | 스파이더 모드에 따라 5개 클래스 중 하나 반환 |
-| `validate_blueprint_conditions()` | 실행 전 필수 `conditions` 키 검증 |
+| `validate_blueprint_conditions()` | 필수 `conditions` 키 누락 항목 반환 — 수집은 막지 않고 종합 평가 팝업 하단 이슈(빈 응답)의 원인 표기에만 사용 |
 | `get_scrapy_request()` | `Request`/`FormRequest`/`JsonRequest` 생성 |
 | `set_chrome_webdriver()`, `perform_login/logout()` | Selenium 드라이버·로그인 플로우 |
 | `get_result()`/`set_item_loader()` | 데이터 추출 → `DonasItem`으로 적재 |

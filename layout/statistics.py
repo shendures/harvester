@@ -4,7 +4,7 @@
 
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QMenu, QTableWidgetItem
+from PyQt6.QtWidgets import QWidget, QFrame, QLabel, QHBoxLayout, QVBoxLayout, QSizePolicy, QMenu, QTableWidgetItem
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QColor
 
@@ -12,12 +12,11 @@ from trigger import StatisticsPageTriggers
 from trigger.statistics import (
     TREND_HOURLY, TREND_PERIODS, TREND_MODE_RECENT, TREND_MODE_CALENDAR,
     TREND_ALL_TIME_CAPTIONS, DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
-    STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_tooltip, Evaluation,
+    STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_tooltip, diagnosis_help_text, diagnosis_review, Evaluation,
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
-    DIAG_LEVEL_COLORS, RECENT_WINDOW, TREND_WORSE, regression_text, EMPTY_WINDOW,
+    DIAG_LEVEL_COLORS, EMPTY_WINDOW,
     metric_value_text, metric_interval_text, metric_criteria_text, metric_criteria_detail,
-    metric_sample_text, metric_gate_text, session_gate_text,
-    metric_pattern_text, metric_pattern_detail, small_sample_text,
+    metric_sample_text, metric_gate_text, metric_pattern_text, metric_pattern_detail,
 )
 from style import EqualSpacingTable, Divider, _load_svg_icon
 from .common import (
@@ -50,11 +49,8 @@ DIAG_NOTE_FONT_PX = 12                   # 상세 보기 팝업 하단 참고 �
 DIAG_TABLE_HEADERS = ["평가 축", "지표", "상태", "관측값", "95% 신뢰구간", "회차 패턴", "절대 기준", "표본"]
 DIAG_POPUP_SIZE = (1180, 480)       # 폭은 표 8열이 잘리지 않는 값, 높이는 내용에서 다시 잡는다
 DIAG_POPUP_MIN_SIZE = (740, 300)
+DIAG_POPUP_TITLE = "수집 현황 종합 평가"
 DIAG_POPUP_TIP = "지표별 관측값·신뢰구간·판정 기준을 새 창에서 보기"
-DIAG_REF_NOTE = ("판정에 쓰지 않는 참고 KPI — {values}. "
-                 "사이트·설정마다 정상 범위가 달라 절대 기준을 두지 않습니다.")
-DIAG_REGRESSION_SKIPPED = ("최근 악화 검정 — 최근·이전 구간 중 한쪽의 표본이 부족해 아직 비교하지 않습니다"
-                           f"(각 구간이 쌓이면 최근 {RECENT_WINDOW}건과 그 이전을 비교합니다).")
 
 # 지표·차트 카드 툴팁 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게
 # 쉬운 말로 적는다. KPI 튜플의 순서는 build_stat_summary_card()에 넘기는 spec 순서와 같다.
@@ -329,30 +325,17 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
     # ── 종합 평가 상세 보기 팝업 (지표 1개 = 1행) ──────
     def _open_diagnosis_popup(self) -> None:
         """배너 판정의 근거를 지표별로 펼쳐 보여주는 새 창을 연다. 수집량 추이 전체
-        보기와 같이 열릴 때의 평가를 한 번만 그리므로, 제목에 산출 시각을 적는다."""
+        보기와 같이 열릴 때의 평가를 한 번만 그린다(열려 있는 동안 갱신하지 않음)."""
         evaluation = self._evaluation
-        title = f"수집 현황 종합 평가 — {datetime.now():%Y-%m-%d %H:%M:%S} 기준"
-        dlg, lay = build_popup_dialog(self, title, DIAG_POPUP_SIZE, DIAG_POPUP_MIN_SIZE)
+        dlg, lay = build_popup_dialog(self, DIAG_POPUP_TITLE, DIAG_POPUP_SIZE, DIAG_POPUP_MIN_SIZE)
 
-        card_w, card_l = parts.card_widget(title, help_text=diagnosis_tooltip())
-        card_l.addWidget(self._diagnosis_summary_label(evaluation.diagnosis))
-        card_l.addWidget(Divider())
+        card_w, card_l = parts.card_widget(DIAG_POPUP_TITLE, help_text=self._diagnosis_help_text(evaluation))
         card_l.addWidget(self._build_verdict_table(dlg, evaluation.verdicts, evaluation.sessions))
-        for note in self._diagnosis_notes(evaluation):
-            card_l.addWidget(note)
+        card_l.addWidget(self._build_review_section(diagnosis_review(evaluation, self._empty_notice)))
         lay.addWidget(card_w)
-        # 표 높이가 지표 수에 따라 달라지므로 높이는 채운 뒤 내용에서 가져온다
-        dlg.resize(DIAG_POPUP_SIZE[0], dlg.sizeHint().height())
+        # 표 높이와 총평·이슈 줄 수가 달라지므로 높이는 채운 뒤, 정해진 폭에서 줄바꿈된 내용 기준으로 잡는다
+        dlg.resize(DIAG_POPUP_SIZE[0], lay.totalHeightForWidth(DIAG_POPUP_SIZE[0]))
         dlg.show()
-
-    def _diagnosis_summary_label(self, diagnosis) -> QLabel:
-        """팝업 맨 위의 등급 + 요약 문장 — 배너와 같은 내용을 같은 색으로 보여준다."""
-        lbl = QLabel(f"● {diagnosis.level}   {diagnosis.detail}")
-        lbl.setWordWrap(True)
-        lbl.setStyleSheet(
-            f"color:{diagnosis.color}; font-size:{DIAG_LEVEL_FONT_PX}px; font-weight:bold;"
-            " background:transparent; border:none;")
-        return lbl
 
     def _build_verdict_table(self, parent, verdicts: list, sessions: int) -> EqualSpacingTable:
         """지표별 판정 결과 표 — 상태는 색과 글자를 함께 써서 색만으로 전달하지 않는다."""
@@ -385,38 +368,37 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
                 table.setItem(row, col, item)
         return table
 
-    def _diagnosis_notes(self, evaluation: Evaluation) -> list:
-        """표 아래 참고 줄 — 판정에 쓰지 않는 KPI, 최근 악화 검정, 축별 수집 횟수 게이트, 회차당
-        응답이 적을 때의 검출력 한계 고지. 아직 기준에 못 미친 축이 남아 있으면 게이트 줄을
-        강조해 왜 보류인지 표 바로 아래에서 읽히게 한다."""
-        regression = evaluation.regression
-        values = " · ".join(f"{name} {value}" for name, value in self._reference_kpis) or "—"
-        gated = any(metric_gate_text(v, evaluation.sessions) for v in evaluation.verdicts)
-        notes = [self._note_label(DIAG_REF_NOTE.format(values=values)),
-                 self._note_label(self._regression_note(regression),
-                                  AMBER if regression and regression.trend == TREND_WORSE else None),
-                 self._note_label(session_gate_text(evaluation.sessions, evaluation.all_sessions),
-                                  AMBER if gated else None)]
-        if small_sample := small_sample_text(evaluation.session_size):
-            notes.append(self._note_label(small_sample))
-        return notes
+    def _diagnosis_help_text(self, evaluation: Evaluation) -> str:
+        """제목 옆 도움말 툴팁 — 평가 방식 설명과 현재 판정 상태를 쉬운 말로 모은다."""
+        return diagnosis_help_text(evaluation.sessions, evaluation.all_sessions, evaluation.regression,
+                                   evaluation.session_size, self._reference_kpis)
+
+    def _build_review_section(self, review) -> QWidget:
+        """표 아래 글 — 총평 한 단락과, 이슈가 있으면 "- 원인. 해결 방법." 항목을 만든다. 카드 스타일이
+        새 QWidget에도 테두리를 그리므로 개체 이름으로 좁혀 테두리와 배경을 없애고, 구분선 없이 위
+        여백으로만 구획한다. 항목은 대시와 본문을 나눠 줄바꿈된 줄이 본문에 맞춰 내어쓰기된다."""
+        box = QWidget()
+        box.setObjectName("diagReview")
+        box.setStyleSheet("QWidget#diagReview { background:transparent; border:none; }")
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(0, DIAG_BANNER_SPACING, 0, 0)
+        lay.addWidget(self._note_label(review.summary, TEXT_PRIMARY, DIAG_DETAIL_FONT_PX))
+        for note in review.notes:
+            row = QHBoxLayout()
+            row.setContentsMargins(DIAG_BANNER_SPACING, 0, 0, 0)
+            dash = self._note_label("-", TEXT_PRIMARY, DIAG_DETAIL_FONT_PX)
+            dash.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+            row.addWidget(dash, 0, Qt.AlignmentFlag.AlignTop)
+            row.addWidget(self._note_label(note, TEXT_PRIMARY, DIAG_DETAIL_FONT_PX), 1)
+            lay.addLayout(row)
+        lay.addStretch()
+        return box
 
     @staticmethod
-    def _regression_note(regression) -> str:
-        """최근 악화 검정 결과 한 줄 — 비교하지 못했으면 그 사유를 대신 적는다."""
-        if regression is None:
-            return DIAG_REGRESSION_SKIPPED
-        if regression.trend == TREND_WORSE:
-            return f"최근 악화 검정 — {regression_text(regression)}"
-        return (f"최근 악화 검정 — 최근 {regression.recent_n:,}건 {regression.recent_rate:.0%} vs "
-                f"이전 {regression.prior_n:,}건 {regression.prior_rate:.0%} "
-                f"(z={regression.z:.2f}) → {regression.trend}")
-
-    @staticmethod
-    def _note_label(text: str, color: str = None) -> QLabel:
+    def _note_label(text: str, color: str = None, font_px: int = DIAG_NOTE_FONT_PX) -> QLabel:
         lbl = QLabel(text)
         lbl.setWordWrap(True)
-        lbl.setStyleSheet(f"color:{color or TEXT_SECONDARY}; font-size:{DIAG_NOTE_FONT_PX}px;"
+        lbl.setStyleSheet(f"color:{color or TEXT_SECONDARY}; font-size:{font_px}px;"
                           " background:transparent; border:none;")
         return lbl
 
