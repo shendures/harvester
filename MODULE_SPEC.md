@@ -91,7 +91,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 본문(수집 상태 진단 배너 + 단일 스크롤 화면, 독립 패널 위젯) + 이를 감싼 페이지, 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯) + 이를 감싼 페이지, 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
@@ -122,7 +122,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | `monitor.py` | `MonitorPageTriggers` | 정제 실행(`preprocess.DataRefiner`), 파일/DB 저장(`db_conn.save_db`) |
 | `scheduler.py` | `SchedulerPageTriggers` | 스케줄 등록/수정, QTimer 카운트다운, `schedules.json` 영속화 |
 | `session.py` | `SessionSettingsPageTriggers` | 프록시 추가/삭제/Import, 병렬 헬스체크 |
-| `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 수집 상태 진단 판정(`diagnose`) |
+| `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 5개 카드 KPI의 신뢰구간·회차별 패턴 기반 수집 상태 평가(`evaluate`, 판정은 최근 5회 수집 창) |
 | `toolbar.py` | `GlobalToolbarTriggers` | 시작/중지 흐름, 수집설정 영속화 후 실행 요청 |
 
 **의존**: `style.py`, `conf.py`, `worker.py`(main_window만), `engine.py`·`db_conn.py`·`preprocess.py`(common/monitor 등), `customized_settings.py`·`utility.py`(monitor·scheduler).

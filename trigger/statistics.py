@@ -3,7 +3,10 @@
 
 import calendar
 import json
-from collections import defaultdict
+import math
+from bisect import bisect_right
+from collections import defaultdict, deque
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
@@ -84,13 +87,6 @@ def _speed_bucket(latency: float) -> str:
     return SPEED_VERY_SLOW
 
 
-# 수집 상태 진단 배너의 판정 기준 — 임계값은 여기서만 바꾸고, 배너 툴팁
-# (diagnosis_tooltip)이 이 상수에서 설명을 만들어 화면 문구와 어긋나지 않는다.
-DIAG_MIN_SAMPLES = 10          # 응답이 이보다 적으면 판정하지 않는다
-DIAG_CONN_FAIL_PROBLEM = 0.20  # 연결 실패 비율 — 이상이면 "문제"
-DIAG_BLOCKED_PROBLEM = 0.20    # 접근 차단(403·429) 비율 — 이상이면 "문제"
-DIAG_EMPTY_WARN = 0.30         # 빈 응답 비율 — 이상이면 "주의"
-DIAG_HTTP_ERR_WARN = 0.10      # HTTP 오류 비율 — 이상이면 "주의"
 BLOCKED_STATUS_CODES = ("403", "429")
 
 # 엔진이 상태 코드를 받지 못했을 때(연결 실패 등) 넣는 값(engine.py) — HTTP 응답이 아니라
@@ -110,6 +106,96 @@ STATUS_CODE_MEANINGS = {
 }
 
 DIAG_OK, DIAG_WARN, DIAG_PROBLEM, DIAG_PENDING = "정상", "주의", "문제", "대기"
+# 지표 단위 등급 — 신뢰구간이 임계값을 걸쳐 어느 쪽으로도 단정할 수 없는 상태
+DIAG_HOLD = "보류"
+DIAG_LEVEL_COLORS = {
+    DIAG_OK: GREEN, DIAG_WARN: AMBER, DIAG_PROBLEM: RED,
+    DIAG_PENDING: TEXT_MUTED, DIAG_HOLD: TEXT_MUTED,
+}
+# 종합 등급은 지표별 등급 중 가장 나쁜 것을 따른다 — 보류는 "아직 모름"이라 최하위
+DIAG_LEVEL_RANK = {DIAG_HOLD: 0, DIAG_OK: 1, DIAG_WARN: 2, DIAG_PROBLEM: 3}
+
+CONFIDENCE_Z = 1.96      # 95% 양측 신뢰수준의 표준정규 분위수
+CONFIDENCE_Z_STRICT = 2.576   # 99% 양측 — 크게 불안정("문제")을 줄 때 요구하는 더 강한 근거
+RECENT_WINDOW = 100      # 최근 악화 감지가 보는 최근 응답 수
+MIN_COMPARE = 30         # 최근/이전 구간 비교에 필요한 각 구간의 최소 응답 수
+BANNER_MAX_CAUSES = 2    # 배너에 이어 붙이는 원인 문장 수 — 나머지는 상세 보기에서 본다
+
+# 회차별 패턴 판정 — 여러 번 수집했을 때 결과가 회차마다 일정하면 정상, 들쭉날쭉하면 정상으로 보지 않는다.
+PATTERN_WINDOW = 5              # 배너가 판정하는 최근 수집 회차 수 — 이보다 오래된 이력은 판정에서 뺀다
+PATTERN_MIN_SESSIONS = 3        # 패턴 판정을 시작하는 데 필요한 완료된 수집 회차 수
+YIELD_NOISE_K = 6.0             # 수집량 편차가 회차 간 자체 노이즈의 몇 배를 넘어야 불안정으로 보는지
+PATTERN_SPREAD_WARN = 0.10      # 회차 간 편차가 이 이상이면 불안정("주의") — 비율은 %p 차이, 수집량은 상대 편차
+PATTERN_SPREAD_PROBLEM = 0.30   # 이 이상이면 크게 불안정("문제")
+PATTERN_TOOLTIP_MAX = 10        # 행 툴팁에 회차별 값을 적는 최대 회차 수(최근 순)
+SMALL_SESSION_RESPONSES = 30    # 회차당 응답이 이보다 적으면 한 회차의 작은 이상을 놓칠 수 있다고 알린다
+PATTERN_ADVICE = "사이트 상태나 설정이 회차마다 달라졌는지 확인하세요."
+LIVE_NOTE = "진행 중이거나 중단된 수집의 응답은 아직 회차 패턴에 편입되지 않아 절대 기준을 그대로 적용했습니다."
+ABSOLVED_NOTE = "회차마다 일정해 정상으로 보지만 값이 절대 기준을 넘습니다. 사이트의 원래 특성인지 확인하세요."
+
+# 판정에 쓰지 않고 상세 팝업에 참고값으로만 적는 KPI의 이름
+REF_AVG_LATENCY, REF_THROUGHPUT = "평균 응답", "처리량"
+
+# 평가 축 — 통계 화면의 카드 하나가 축 하나에 대응한다
+AXIS_CONNECTION = "연결 안정성"
+AXIS_RESPONSE = "응답 정상성"
+AXIS_YIELD = "수집 성과"
+AXIS_QUALITY = "데이터 품질"
+AXIS_PERFORMANCE = "응답 성능"
+
+# 축별 최소 수집 횟수 — 응답을 아무리 많이 모아도 한 번의 수집이면 독립적인 관측이 아니라서,
+# 개수 게이트와 별개로 수집 횟수를 본다. 연결·응답은 지금 당장 조치가 필요한 문제라 1회부터
+# 알리고, 추출 규칙의 구조적 품질일수록 여러 번 봐야 판단할 수 있어 더 기다린다.
+AXIS_MIN_SESSIONS = {
+    AXIS_CONNECTION: 1, AXIS_RESPONSE: 1,
+    AXIS_YIELD: 2, AXIS_PERFORMANCE: 2,
+    AXIS_QUALITY: 3,
+}
+
+
+class MetricSpec(NamedTuple):
+    """지표 하나의 판정 기준 — 임계값을 여기에서만 정의해 배너·상세 표·툴팁이 같은 값을 읽는다.
+    higher_is_better면 값이 클수록 좋은 지표라 부등호를 뒤집고, percent면 백분율로 표시한다.
+    sample_unit은 지표마다 분모가 다르기 때문에 둔다(응답 / 추출된 행 / 회차).
+    pattern_only면 절대 기준 없이 회차별 패턴으로만 판정하며, warn·problem은 회차 간 편차 기준이다."""
+    axis: str
+    name: str
+    warn: float
+    problem: float
+    higher_is_better: bool
+    percent: bool
+    sample_unit: str
+    advice: str
+    pattern_only: bool = False
+
+
+# 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
+SPEC_CONN_FAIL = MetricSpec(
+    AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
+    "사이트에 연결하지 못했습니다. 인터넷 연결이나 프록시 설정을 확인하세요.")
+SPEC_BLOCKED = MetricSpec(
+    AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, False, True, "건",
+    "사이트가 접근을 막고 있습니다. 수집 간격을 늘리거나 프록시를 사용하세요.")
+SPEC_HTTP_ERR = MetricSpec(
+    AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
+    "일부 페이지에서 오류 응답을 받았습니다. 상태 코드 분포에서 오류 종류를 확인하세요.")
+SPEC_EMPTY = MetricSpec(
+    AXIS_YIELD, "빈 응답률", 0.30, 0.60, False, True, "건",
+    "페이지는 열렸지만 데이터를 찾지 못했습니다. "
+    "사이트 구조가 바뀌었을 수 있으니 추출 설정을 확인하세요.")
+SPEC_VALID = MetricSpec(
+    AXIS_QUALITY, "유효 데이터 비율", 0.90, 0.70, True, True, "행",
+    "꺼낸 데이터에 빈 항목이 많습니다. 추출 규칙이 일부 항목을 못 찾고 있는지 확인하세요.")
+SPEC_SESSION_ITEMS = MetricSpec(
+    AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
+    "수집 회차마다 페이지당 수집량이 달라졌습니다. 사이트 구조가 바뀌었거나 일부 페이지가 빠지고 있는지 확인하세요.",
+    pattern_only=True)
+SPEC_SLOW = MetricSpec(
+    AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, False, True, "건",
+    "응답이 느린 쪽에 몰려 있습니다. 사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.")
+
+# 최근 구간과 이전 구간을 비교한 결과
+TREND_WORSE, TREND_BETTER, TREND_FLAT = "악화", "개선", "변화 없음"
 
 
 class Diagnosis(NamedTuple):
@@ -118,45 +204,578 @@ class Diagnosis(NamedTuple):
     detail: str
 
 
-def diagnose(total: int, agg: dict) -> Diagnosis:
-    """누적 응답 집계(_aggregate_rows 결과)를 정상/주의/문제로 판정하고, 원인과
-    조치를 한 문장으로 돌려준다. 위에서부터 먼저 걸리는 규칙을 채택한다."""
-    if total == 0:
-        return Diagnosis(DIAG_PENDING, TEXT_MUTED,
-                         "아직 수집 기록이 없습니다. 상단 ▶ 시작 버튼으로 수집을 실행하세요.")
-    if total < DIAG_MIN_SAMPLES:
-        return Diagnosis(DIAG_PENDING, TEXT_MUTED,
-                         f"수집 기록이 적어 판단하기 어렵습니다. (현재 {total}건)")
+class PatternResult(NamedTuple):
+    """지표 하나의 회차별 패턴 — values는 회차 순서의 값(비율 또는 페이지당 수집량), spread는
+    그 편차(비율은 최대-최소, 수집량은 (최대-최소)/평균), level은 일정 여부에 따른 등급이다."""
+    level: str
+    values: tuple
+    spread: float
 
-    outcome = agg["outcome"]
-    if outcome.get(OUTCOME_CONN_FAIL, 0) / total >= DIAG_CONN_FAIL_PROBLEM:
-        return Diagnosis(DIAG_PROBLEM, RED,
-                         "사이트에 연결하지 못했습니다. 인터넷 연결이나 프록시 설정을 확인하세요.")
-    if agg["blocked"] / total >= DIAG_BLOCKED_PROBLEM:
-        return Diagnosis(DIAG_PROBLEM, RED,
-                         "사이트가 접근을 막고 있습니다. 수집 간격을 늘리거나 프록시를 사용하세요.")
-    if outcome.get(OUTCOME_EMPTY, 0) / total >= DIAG_EMPTY_WARN:
-        return Diagnosis(DIAG_WARN, AMBER,
-                         "페이지는 열렸지만 데이터를 찾지 못했습니다. "
-                         "사이트 구조가 바뀌었을 수 있으니 추출 설정을 확인하세요.")
-    if outcome.get(OUTCOME_HTTP_ERR, 0) / total >= DIAG_HTTP_ERR_WARN:
-        return Diagnosis(DIAG_WARN, AMBER,
-                         "일부 페이지에서 오류 응답을 받았습니다. 상태 코드 분포에서 오류 종류를 확인하세요.")
-    return Diagnosis(DIAG_OK, GREEN,
-                     f"수집이 정상적으로 진행되고 있습니다. "
-                     f"페이지 {total}개 중 {outcome.get(OUTCOME_OK, 0)}개에서 데이터를 가져왔습니다.")
+
+class MetricVerdict(NamedTuple):
+    """지표 하나의 판정 결과 — 신뢰구간을 쓰지 않는 지표(페이지당 수집량)는 low/high가 None이고,
+    pattern은 회차별 패턴을 판정할 수 있을 때(완료된 수집 PATTERN_MIN_SESSIONS회 이상)만 채운다.
+    live는 진행 중이거나 중단된 수집의 응답이 절대 판정을 끌어올려 등급이 정해졌음을, absolved는
+    절대 판정은 "주의"였으나 회차 패턴이 일정해 정상으로 본 지표임을 뜻한다."""
+    spec: MetricSpec
+    level: str
+    observed: float | None
+    low: float | None
+    high: float | None
+    sample: int
+    pattern: PatternResult | None = None
+    live: bool = False
+    absolved: bool = False
+
+
+class Regression(NamedTuple):
+    """최근 구간과 그 이전 구간의 정상 수집률 비교 — z는 두 비율 차이의 검정통계량."""
+    trend: str
+    recent_rate: float
+    prior_rate: float
+    recent_n: int
+    prior_n: int
+    z: float
+
+
+class RowFacts(NamedTuple):
+    """응답 1건에서 뽑은 회차 집계용 값 — 행마다 한 번만 계산해 합산 집계와 회차별 집계가
+    같은 분류를 쓰게 한다. bucket은 응답 시간이 없으면 None, item_count는 정수가 아니면 None."""
+    code: str
+    outcome: str
+    bucket: str | None
+    item_count: int | None
+    complete_rows: int
+    field_items: int
+
+
+@dataclass
+class SessionTally:
+    """수집 1회에 귀속된 응답의 집계 — 회차별 패턴 판정의 입력이다. timed는 응답 시간이
+    기록된 응답 수로 지연 응답 비율의 분모이고, ok_pages·ok_items는 데이터를 가져온
+    페이지 수와 그 추출 건수 합이다."""
+    responses: int = 0
+    conn_fail: int = 0
+    blocked: int = 0
+    http_err: int = 0
+    empty: int = 0
+    slow: int = 0
+    timed: int = 0
+    complete_rows: int = 0
+    field_items: int = 0
+    ok_pages: int = 0
+    ok_items: int = 0
+
+    def add(self, facts: RowFacts) -> None:
+        self.responses += 1
+        self.conn_fail += facts.outcome == OUTCOME_CONN_FAIL
+        self.blocked += facts.code in BLOCKED_STATUS_CODES
+        self.http_err += facts.outcome == OUTCOME_HTTP_ERR
+        self.empty += facts.outcome == OUTCOME_EMPTY
+        if facts.bucket is not None:
+            self.timed += 1
+            self.slow += facts.bucket in (SPEED_SLOW, SPEED_VERY_SLOW)
+        self.complete_rows += facts.complete_rows
+        self.field_items += facts.field_items
+        if facts.outcome == OUTCOME_OK and facts.item_count is not None:
+            self.ok_pages += 1
+            self.ok_items += facts.item_count
+
+
+class EvalWindow(NamedTuple):
+    """배너가 판정하는 최근 수집 구간 — agg는 그 구간 응답의 집계(회차별 per_session 포함)이고,
+    responses는 구간의 응답 수, sessions는 구간 안 수집 횟수(진행 중 1회 포함), all_sessions는
+    초기화 이후 전체 수집 횟수다."""
+    agg: dict
+    responses: int
+    sessions: int
+    all_sessions: int
+
+
+EMPTY_WINDOW = EvalWindow({}, 0, 0, 0)
+
+
+class Evaluation(NamedTuple):
+    """배너에 쓸 종합 판정과 상세 보기에 쓸 지표별 근거 — sessions·all_sessions는 판정 범위
+    안내에 쓸 판정 시점의 수집 횟수로, 팝업이 열릴 때의 값을 같은 스냅샷에서 읽게 한다."""
+    diagnosis: Diagnosis
+    verdicts: list
+    regression: Regression | None
+    sessions: int
+    all_sessions: int
+    session_size: float
+
+
+def _wilson_bounds(hits: int, sample: int) -> tuple:
+    """이항 비율의 Wilson 점수 신뢰구간(95%). 표본이 적으면 구간이 넓어져 어느 쪽으로도
+    단정할 수 없게 되므로, hits/sample을 임계값과 바로 비교할 때 생기는 소표본 오판
+    (예: 2/10을 20%로 읽어 "문제"로 단정)을 막는다. sample은 1 이상이어야 한다."""
+    p = hits / sample
+    z_sq = CONFIDENCE_Z ** 2
+    denom = 1 + z_sq / sample
+    center = (p + z_sq / (2 * sample)) / denom
+    margin = CONFIDENCE_Z * math.sqrt(p * (1 - p) / sample + z_sq / (4 * sample ** 2)) / denom
+    return max(0.0, center - margin), min(1.0, center + margin)
+
+
+def _two_proportion_z(hits_a: int, n_a: int, hits_b: int, n_b: int) -> float:
+    """두 비율 차이의 z 통계량(합동 표준오차 기준) — 음수면 A쪽 비율이 더 낮다는 뜻."""
+    pooled = (hits_a + hits_b) / (n_a + n_b)
+    se = math.sqrt(pooled * (1 - pooled) * (1 / n_a + 1 / n_b))
+    return (hits_a / n_a - hits_b / n_b) / se if se else 0.0
+
+
+def _chi2_critical(df: int, z: float = CONFIDENCE_Z) -> float:
+    """자유도 df 카이제곱 분포의 상위 임계값 — Wilson–Hilferty 근사라 scipy 없이 표준
+    라이브러리만으로 구한다. z가 CONFIDENCE_Z면 단측 97.5%, CONFIDENCE_Z_STRICT면 99.5%다."""
+    scale = 2 / (9 * df)
+    return df * (1 - scale + z * math.sqrt(scale)) ** 3
+
+
+def _chi2_statistic(series: list) -> float:
+    """회차별 (건수, 표본)이 하나의 공통 비율에서 벗어난 정도 — 동질성 카이제곱 통계량이다.
+    공통 비율이 0 또는 1이면 모든 회차가 같아 검정할 것이 없으므로 0이다."""
+    pooled = sum(hits for hits, _ in series) / sum(sample for _, sample in series)
+    if pooled in (0.0, 1.0):
+        return 0.0
+    return sum((hits - sample * pooled) ** 2 / (sample * pooled * (1 - pooled))
+               for hits, sample in series)
+
+
+def _spread_level(spread: float) -> str:
+    """회차 간 편차의 크기를 등급으로 — 비율(%p 차이)과 수집량(상대 편차)이 같은 기준을 쓴다."""
+    if spread >= PATTERN_SPREAD_PROBLEM:
+        return DIAG_PROBLEM
+    return DIAG_WARN if spread >= PATTERN_SPREAD_WARN else DIAG_OK
+
+
+def _judge_pattern_rate(series: list) -> PatternResult:
+    """회차별 비율이 일정한지 판정한다. 우연 변동을 막는 통계적 유의(동질성 카이제곱)와
+    표본이 커서 무의미한 차이까지 잡아내는 것을 막는 실질 편차(PATTERN_SPREAD_WARN)를
+    모두 넘어야 불안정으로 본다. 회차당 응답이 적으면 유의하다고 나오는 순간 편차가 거의
+    항상 커서 유의수준이 그대로 "문제" 오탐이 되므로, "문제"는 더 엄격한
+    유의수준(CONFIDENCE_Z_STRICT)까지 넘을 때만 주고 못 넘으면 "주의"로 둔다."""
+    rates = tuple(hits / sample for hits, sample in series)
+    spread = max(rates) - min(rates)
+    chi2, df = _chi2_statistic(series), len(series) - 1
+    if chi2 <= _chi2_critical(df):
+        return PatternResult(DIAG_OK, rates, spread)
+    level = _spread_level(spread)
+    if level == DIAG_PROBLEM and chi2 <= _chi2_critical(df, CONFIDENCE_Z_STRICT):
+        level = DIAG_WARN
+    return PatternResult(level, rates, spread)
+
+
+def _noise_scale(values: tuple) -> float:
+    """연속한 회차 값의 차이 중 작은 쪽 절반의 평균 — 회차 간 자연 변동의 크기 추정치다. 이상
+    회차가 만드는 큰 차이를 버려야, 그 이상이 자기 자신의 노이즈 추정을 부풀려 가리지 않는다."""
+    steps = sorted(abs(b - a) for a, b in zip(values, values[1:]))
+    kept = steps[:(len(steps) + 1) // 2]
+    return sum(kept) / len(kept)
+
+
+def _judge_pattern_items(tallies: list) -> PatternResult | None:
+    """회차별 정상 수집 페이지당 평균 수집량이 일정한지 판정한다. 비율 지표처럼 통계와 실질
+    편차를 모두 넘어야 불안정으로 본다 — 편차가 회차 간 자체 노이즈(_noise_scale)의
+    YIELD_NOISE_K배를 넘는지가 통계, PATTERN_SPREAD_WARN 이상인지가 실질이다. 노이즈가 0이면
+    (회차마다 값이 같으면) 통계 조건은 저절로 충족된다. 평균이 0이면 편차가 정의되지 않아 보류."""
+    per_page = tuple(t.ok_items / t.ok_pages for t in tallies if t.ok_pages)
+    if len(per_page) < PATTERN_MIN_SESSIONS:
+        return None
+    mean = sum(per_page) / len(per_page)
+    if mean == 0:
+        return PatternResult(DIAG_HOLD, per_page, 0.0)
+    span = max(per_page) - min(per_page)
+    level = _spread_level(span / mean) if span > YIELD_NOISE_K * _noise_scale(per_page) else DIAG_OK
+    return PatternResult(level, per_page, span / mean)
+
+
+def _session_gated(spec: MetricSpec, sessions: int) -> bool:
+    """수집 횟수가 이 지표의 축 기준에 못 미쳐 아직 등급을 매기지 않을지."""
+    return sessions < AXIS_MIN_SESSIONS[spec.axis]
+
+
+def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
+    """신뢰구간이 임계값 한쪽에 온전히 놓일 때만 등급을 매기고, 걸치면 보류한다."""
+    if spec.higher_is_better:
+        if high <= spec.problem:
+            return DIAG_PROBLEM
+        if high < spec.warn:
+            return DIAG_WARN
+        return DIAG_OK if low >= spec.warn else DIAG_HOLD
+    if low >= spec.problem:
+        return DIAG_PROBLEM
+    if low >= spec.warn:
+        return DIAG_WARN
+    return DIAG_OK if high < spec.warn else DIAG_HOLD
+
+
+def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> MetricVerdict:
+    """비율 지표 하나를 Wilson 신뢰구간으로 판정한다. 표본이 0이면 보류하고, 수집 횟수가
+    모자라면 값·구간은 그대로 계산해 두고 등급만 보류한다 — 화면 위 KPI 카드가 이미 같은
+    숫자를 보여주고 있어 상세 표에서 "—"로 비면 카드와 어긋난다."""
+    if sample == 0:
+        return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
+    low, high = _wilson_bounds(hits, sample)
+    level = DIAG_HOLD if _session_gated(spec, sessions) else _ratio_level(spec, low, high)
+    return MetricVerdict(spec, level, hits / sample, low, high, sample)
+
+
+def _ratio_samples(total: int, agg: dict) -> list:
+    """(지표, 해당 건수, 분모) 목록 — 분모가 지표마다 다르다는 점이 핵심이다.
+    유효 데이터 비율은 추출된 행, 지연 응답 비율은 응답 시간이 기록된 응답이 분모라
+    전체 응답 수 하나로 표본 충분 여부를 판단할 수 없다."""
+    outcome, speed = agg["outcome"], agg["speed"]
+    return [
+        (SPEC_CONN_FAIL, outcome.get(OUTCOME_CONN_FAIL, 0), total),
+        (SPEC_BLOCKED, agg["blocked"], total),
+        (SPEC_HTTP_ERR, outcome.get(OUTCOME_HTTP_ERR, 0), total),
+        (SPEC_EMPTY, outcome.get(OUTCOME_EMPTY, 0), total),
+        (SPEC_VALID, agg["complete_rows"], agg["field_items"]),
+        (SPEC_SLOW, speed.get(SPEED_SLOW, 0) + speed.get(SPEED_VERY_SLOW, 0),
+         sum(speed.values())),
+    ]
+
+
+# 비율 지표별 회차 집계의 (건수, 표본) 필드 — _ratio_samples()의 합산 분자·분모와 같은 정의다
+SESSION_RATIO_FIELDS = {
+    SPEC_CONN_FAIL: ("conn_fail", "responses"),
+    SPEC_BLOCKED: ("blocked", "responses"),
+    SPEC_HTTP_ERR: ("http_err", "responses"),
+    SPEC_EMPTY: ("empty", "responses"),
+    SPEC_VALID: ("complete_rows", "field_items"),
+    SPEC_SLOW: ("slow", "timed"),
+}
+
+
+def _session_pattern(spec: MetricSpec, tallies: list) -> PatternResult | None:
+    """지표의 회차별 패턴 — 표본이 있는 회차가 PATTERN_MIN_SESSIONS개에 못 미치면 None."""
+    if spec.pattern_only:
+        return _judge_pattern_items(tallies)
+    hits_field, sample_field = SESSION_RATIO_FIELDS[spec]
+    series = [(getattr(t, hits_field), getattr(t, sample_field))
+              for t in tallies if getattr(t, sample_field)]
+    return _judge_pattern_rate(series) if len(series) >= PATTERN_MIN_SESSIONS else None
+
+
+def _unpatterned_floor(verdict: MetricVerdict, tallies: list) -> str:
+    """패턴 시리즈에 편입되지 않은 응답(진행 중이거나 중단된 수집)이 절대 판정을 끌어올렸다면 그
+    등급을, 아니면 보류를 돌려준다. 전체 응답 기준 절대 등급(verdict.level)이 완료된 회차만의
+    절대 등급보다 나쁠 때만 끌어올린 것으로 보므로, 완료된 이력이 일정하게 "주의"인 경우는
+    새 수집이 시작돼도 등급이 흔들리지 않는다."""
+    hits_field, sample_field = SESSION_RATIO_FIELDS[verdict.spec]
+    completed = _judge_ratio(verdict.spec,
+                             sum(getattr(t, hits_field) for t in tallies),
+                             sum(getattr(t, sample_field) for t in tallies),
+                             len(tallies)).level
+    raised = DIAG_LEVEL_RANK[verdict.level] > DIAG_LEVEL_RANK[completed]
+    return verdict.level if raised else DIAG_HOLD
+
+
+def _with_pattern(verdict: MetricVerdict, tallies: list) -> MetricVerdict:
+    """절대 판정에 회차별 패턴을 결합한다 — 일관성이 우선이라 패턴이 일정하면 절대 기준이
+    "주의"이거나 보류여도 정상으로 보되, 절대 기준이 "문제"인 값은 일정해도 문제로 둔다
+    (매번 전량 실패하는 수집이 일정하다는 이유로 정상이 되지 않게 하는 안전망). 패턴은 완료된
+    회차만 보므로, 시리즈 밖 응답이 절대 판정을 끌어올린 부분은 사면하지 않고 그대로 남긴다."""
+    pattern = _session_pattern(verdict.spec, tallies)
+    if pattern is None:
+        return verdict
+    if verdict.spec.pattern_only:
+        verdict = verdict._replace(observed=sum(pattern.values) / len(pattern.values),
+                                   sample=len(pattern.values))
+    level = DIAG_PROBLEM if verdict.level == DIAG_PROBLEM else pattern.level
+    floor = DIAG_HOLD if verdict.spec.pattern_only else _unpatterned_floor(verdict, tallies)
+    live = DIAG_LEVEL_RANK[floor] > DIAG_LEVEL_RANK[level]
+    final = floor if live else level
+    # 절대 기준을 넘었는데 패턴이 일정해 정상이 된 지표 — 등급은 정상이지만 배너와 상세 보기가 밝힌다
+    absolved = verdict.level == DIAG_WARN and DIAG_LEVEL_RANK[final] < DIAG_LEVEL_RANK[DIAG_WARN]
+    return verdict._replace(level=final, pattern=pattern, live=live, absolved=absolved)
+
+
+def _recent_split(total: int, agg: dict) -> tuple:
+    """(최근 정상 수집 수, 최근 응답 수, 이전 정상 수집 수, 이전 응답 수) — 이전 구간은
+    누계에서 최근 창을 빼서 구하므로 행을 다시 순회하지 않는다."""
+    recent = agg["recent_ok"]
+    recent_n, recent_ok = len(recent), sum(recent)
+    return recent_ok, recent_n, agg["outcome"].get(OUTCOME_OK, 0) - recent_ok, total - recent_n
+
+
+def detect_regression(recent_ok: int, recent_n: int,
+                      prior_ok: int, prior_n: int) -> Regression | None:
+    """최근 구간과 이전 구간의 정상 수집률을 2-표본 비율 z-검정으로 비교한다. 누적 전체
+    비율만 보면 과거 정상분에 묻혀 최근 악화가 드러나지 않기 때문에 따로 본다.
+    양쪽 표본이 MIN_COMPARE에 못 미치면 비교하지 않고 None."""
+    if recent_n < MIN_COMPARE or prior_n < MIN_COMPARE:
+        return None
+    z = _two_proportion_z(recent_ok, recent_n, prior_ok, prior_n)
+    if z <= -CONFIDENCE_Z:
+        trend = TREND_WORSE
+    elif z >= CONFIDENCE_Z:
+        trend = TREND_BETTER
+    else:
+        trend = TREND_FLAT
+    return Regression(trend, recent_ok / recent_n, prior_ok / prior_n, recent_n, prior_n, z)
+
+
+def regression_text(regression: Regression) -> str:
+    """최근 악화 문장 — 배너와 상세 보기가 같은 문구를 쓴다."""
+    return (f"최근 {regression.recent_n}건의 정상 수집률이 {regression.recent_rate:.0%}로 "
+            f"이전 {regression.prior_n}건({regression.prior_rate:.0%})보다 크게 낮아졌습니다. "
+            "최근 실행 설정과 대상 사이트를 확인하세요.")
+
+
+def _worst_level(verdicts: list) -> str:
+    """지표별 등급 중 가장 나쁜 것 — 전부 보류면 보류."""
+    return max((v.level for v in verdicts), key=lambda level: DIAG_LEVEL_RANK[level],
+               default=DIAG_HOLD)
+
+
+def _next_gate(verdicts: list, sessions: int) -> int | None:
+    """게이트에 걸려 보류 중인 축 가운데 가장 먼저 풀리는 기준 수집 횟수. 없으면 None."""
+    pending = [AXIS_MIN_SESSIONS[v.spec.axis] for v in verdicts
+               if _session_gated(v.spec, sessions)]
+    return min(pending) if pending else None
+
+
+def _pending_detail(verdicts: list, sessions: int, total: int) -> str:
+    """전부 보류일 때의 안내 — 수집 횟수가 모자란 건지, 응답 표본이 적은 건지 구분한다."""
+    gate = _next_gate(verdicts, sessions)
+    if gate is not None:
+        return (f"수집 {sessions}회로는 아직 판단하기 어렵습니다. "
+                f"수집 {gate}회부터 평가를 시작합니다(현재 응답 {total}건).")
+    return (f"수집 기록이 적어 아직 판단하기 어렵습니다(현재 {total}건). "
+            "응답이 더 쌓이면 자동으로 판정합니다.")
+
+
+def _is_unstable(verdict: MetricVerdict) -> bool:
+    """회차별 패턴이 일정하지 않아 등급이 매겨졌는지."""
+    return verdict.pattern is not None and verdict.pattern.level in (DIAG_WARN, DIAG_PROBLEM)
+
+
+def _cause_text(verdict: MetricVerdict) -> str:
+    """배너에 적는 원인 문장 — 패턴이 흔들렸다면 그 사실을, 아니면 지표가 나쁠 때의 조치를
+    적는다. 지표명이 모두 받침으로 끝나 조사 "이"가 어색하지 않다."""
+    if _is_unstable(verdict):
+        return f"{verdict.spec.name}이 수집 회차마다 일정하지 않습니다({_pattern_range_text(verdict)})."
+    return verdict.spec.advice
+
+
+def _absolved_text(absolved: list) -> str:
+    """일정해서 정상으로 본 지표 중 절대 기준을 넘는 값의 안내 — 지표명·값·기준을
+    BANNER_MAX_CAUSES개까지 적고 나머지는 개수로 줄인다."""
+    shown = [f"{v.spec.name} {metric_value_text(v.spec, v.observed)}"
+             f"(주의 {_threshold_text(v.spec, v.spec.warn)} {_criteria_compare(v.spec)})"
+             for v in absolved[:BANNER_MAX_CAUSES]]
+    rest = len(absolved) - BANNER_MAX_CAUSES
+    return "·".join(shown) + (f" 외 {rest}개" if rest > 0 else "")
+
+
+def _pattern_runs(verdicts: list) -> int:
+    """회차별 패턴으로 판정한 수집 회차 수 — 패턴 판정을 하지 않았으면 0."""
+    return max((len(v.pattern.values) for v in verdicts if v.pattern), default=0)
+
+
+def _banner_diagnosis(verdicts: list, regression, total: int, sessions: int) -> Diagnosis:
+    """종합 등급과 배너 문장을 만든다. 등급은 지표 중 가장 나쁜 것을 따르되, 최근 악화가
+    잡히면 최소 "주의"로 올린다 — 누적 비율은 정상이어도 지금 수집이 무너졌을 수 있다."""
+    worsened = regression is not None and regression.trend == TREND_WORSE
+    level = _worst_level(verdicts)
+    if worsened and DIAG_LEVEL_RANK[level] < DIAG_LEVEL_RANK[DIAG_WARN]:
+        level = DIAG_WARN
+
+    if level == DIAG_HOLD:
+        return Diagnosis(DIAG_PENDING, DIAG_LEVEL_COLORS[DIAG_PENDING],
+                         _pending_detail(verdicts, sessions, total))
+
+    # 원인 문장은 "이 지표가 나쁠 때"의 설명이라 정상 등급에서는 쓰지 않는다
+    shown = ([v for v in verdicts if v.level == level][:BANNER_MAX_CAUSES]
+             if level in (DIAG_WARN, DIAG_PROBLEM) else [])
+    causes = [_cause_text(v) for v in shown]
+    if any(_is_unstable(v) for v in shown):
+        causes.append(PATTERN_ADVICE)
+    if worsened:
+        causes.append(regression_text(regression))
+    if not causes:
+        runs = _pattern_runs(verdicts)
+        absolved = [v for v in verdicts if v.absolved]
+        if absolved:
+            # 일정해서 정상으로 본 것이지 값이 괜찮다는 뜻이 아니므로 "정상적으로 진행"이라 단정하지 않는다
+            causes = [f"최근 {runs}회 수집 결과는 일정하지만 절대 기준을 넘는 값이 있습니다 — "
+                      f"{_absolved_text(absolved)}. 사이트의 원래 특성인지 확인하세요."]
+        else:
+            # 회차별 패턴으로 판정했다면 확인한 근거가 페이지 수가 아니라 회차의 일정함이다
+            causes = ["수집이 정상적으로 진행되고 있습니다. "
+                      + (f"최근 {runs}회 수집 결과가 일정합니다." if runs
+                         else f"확인한 페이지 {total}개에서 이상 신호가 없습니다.")]
+        # 정상인데 아직 안 본 축이 남아 있으면 "전부 확인했다"는 오해가 생기므로 함께 밝힌다
+        gate = _next_gate(verdicts, sessions)
+        if gate is not None:
+            causes.append("아직 평가하지 않은 항목이 있습니다 — "
+                          f"수집 {gate}회부터 순차로 판정합니다(현재 {sessions}회).")
+    return Diagnosis(level, DIAG_LEVEL_COLORS[level], " ".join(causes))
+
+
+def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
+    """통계 화면 5개 카드의 KPI를 판정해 종합 평가를 만든다. 지표 판정은 최근 수집 구간(window)만
+    본다 — 초기화 이후 전체를 보면 과거의 이상이 회복 뒤에도 배너에 남기 때문이다. 지표마다
+    신뢰구간과 축별 수집 횟수로 절대 판정을 하고, 완료된 수집이 PATTERN_MIN_SESSIONS회
+    이상이면 회차별 패턴의 일정함을 결합한다. total(초기화 이후 전체 응답 수)이 0이면 집계가
+    비어 있으므로(화면 조립 시의 evaluate(0, {}, EMPTY_WINDOW)) 바로 대기로 끝낸다."""
+    sessions = window.sessions
+    if total == 0:
+        return Evaluation(
+            Diagnosis(DIAG_PENDING, DIAG_LEVEL_COLORS[DIAG_PENDING],
+                      "아직 수집 기록이 없습니다. 상단 ▶ 시작 버튼으로 수집을 실행하세요."),
+            [], None, sessions, window.all_sessions, 0.0)
+
+    verdicts = [_judge_ratio(spec, hits, sample, sessions)
+                for spec, hits, sample in _ratio_samples(window.responses, window.agg)]
+    # 절대 기준이 없는 지표라 패턴을 판정하기 전까지는 보류다
+    verdicts.append(MetricVerdict(SPEC_SESSION_ITEMS, DIAG_HOLD, None, None, None, 0))
+    tallies = window.agg["per_session"]
+    if len(tallies) >= PATTERN_MIN_SESSIONS:
+        verdicts = [_with_pattern(v, tallies) for v in verdicts]
+    session_size = sum(t.responses for t in tallies) / len(tallies) if tallies else 0.0
+    # 최근 악화는 회차 안의 변화를 보는 검정이라 창으로 자르지 않는다 — 회차당 응답이 적으면
+    # 창 안에서는 비교할 이전 구간이 없어 검정이 죽는다. 자체 표본 조건(최근 RECENT_WINDOW건 +
+    # 이전 MIN_COMPARE건)을 이미 갖고 있고, 수집 1회 중간부터 차단이 시작되는 패턴은 그
+    # 자체로 실제 신호라 수집 횟수로 막지 않는다
+    regression = detect_regression(*_recent_split(total, agg))
+    return Evaluation(_banner_diagnosis(verdicts, regression, window.responses, sessions),
+                      verdicts, regression, sessions, window.all_sessions, session_size)
+
+
+def metric_value_text(spec: MetricSpec, value: float | None) -> str:
+    """지표값 표시 문자열 — 비율은 백분율, 수집량은 천 단위 쉼표와 소수 첫째 자리의 건수."""
+    if value is None:
+        return "—"
+    return f"{value:.1%}" if spec.percent else f"{value:,.1f}건"
+
+
+def metric_interval_text(verdict: MetricVerdict) -> str:
+    """95% 신뢰구간 표시 문자열 — 표 한 칸에 들어가도록 단위는 끝에 한 번만 적는다.
+    구간을 쓰지 않는 지표는 "—"."""
+    if verdict.low is None:
+        return "—"
+    if verdict.spec.percent:
+        return f"{verdict.low * 100:.1f}~{verdict.high * 100:.1f}%"
+    return f"{verdict.low:.2f}~{verdict.high:.2f}"
+
+
+def metric_sample_text(verdict: MetricVerdict) -> str:
+    """판정에 쓴 표본 크기 — 지표마다 분모가 달라 단위를 함께 적는다."""
+    return f"{verdict.sample:,}{verdict.spec.sample_unit}"
+
+
+def _criteria_compare(spec: MetricSpec) -> str:
+    """임계값을 넘었다고 볼 방향 — 값이 클수록 좋은 지표는 부등호를 뒤집는다."""
+    return "미만" if spec.higher_is_better else "이상"
+
+
+def _threshold_text(spec: MetricSpec, value: float) -> str:
+    """임계값 표기 — 회차별 패턴 전용 지표의 기준은 수집량이 아니라 편차 비율이라 백분율로 적는다."""
+    return f"{value:.0%}" if spec.pattern_only else metric_value_text(spec, value)
+
+
+def metric_criteria_text(spec: MetricSpec) -> str:
+    """표 한 칸에 들어가는 짧은 기준 문구 — 앞이 주의, 뒤가 문제 임계값이다."""
+    if spec.pattern_only:
+        return f"편차 {_threshold_text(spec, spec.warn)} / {_threshold_text(spec, spec.problem)}"
+    return (f"{_threshold_text(spec, spec.warn)} / "
+            f"{_threshold_text(spec, spec.problem)} {_criteria_compare(spec)}")
+
+
+def metric_criteria_detail(spec: MetricSpec) -> str:
+    """툴팁용 기준 문구 — 표와 달리 어느 쪽이 주의·문제인지 글자로 밝히고, 회차별 패턴이
+    적용되는 지표는 이 기준이 어떻게 쓰이는지도 적는다."""
+    compare = _criteria_compare(spec)
+    line = (f"주의 {_threshold_text(spec, spec.warn)} {compare} · "
+            f"문제 {_threshold_text(spec, spec.problem)} {compare}")
+    if spec.pattern_only:
+        return f"회차 간 편차 기준 — {line}"
+    return (f"절대 기준 — {line}\n"
+            f"수집 {PATTERN_MIN_SESSIONS}회 이상부터는 회차별로 일정하면 정상으로 보고, "
+            "문제 기준만 안전망으로 적용합니다.")
+
+
+def _pattern_range_text(verdict: MetricVerdict) -> str:
+    """회차별 값의 최소~최대 — 배너 문장과 표 칸이 같은 표기를 쓴다."""
+    values = verdict.pattern.values
+    if verdict.spec.percent:
+        return f"{min(values) * 100:.1f}~{max(values) * 100:.1f}%"
+    return f"{min(values):,.1f}~{max(values):,.1f}건"
+
+
+def metric_pattern_text(verdict: MetricVerdict) -> str:
+    """표 한 칸에 들어가는 회차 패턴 문구 — 판정하지 않았으면 "—"."""
+    pattern = verdict.pattern
+    if pattern is None or pattern.level == DIAG_HOLD:
+        return "—"
+    if _is_unstable(verdict):
+        return f"불안정 {_pattern_range_text(verdict)}"
+    if verdict.absolved:
+        return "일정·기준 초과"
+    return "일정·진행분 반영" if verdict.live else "일정"
+
+
+def metric_pattern_detail(verdict: MetricVerdict) -> str:
+    """행 툴팁용 회차별 값 — 최근 PATTERN_TOOLTIP_MAX회까지 적고, 판정하지 않았으면 빈 문자열."""
+    pattern = verdict.pattern
+    if pattern is None:
+        return ""
+    values = pattern.values
+    first = len(values) - min(len(values), PATTERN_TOOLTIP_MAX) + 1
+    shown = " · ".join(f"{no}회 {metric_value_text(verdict.spec, value)}"
+                       for no, value in enumerate(values[-PATTERN_TOOLTIP_MAX:], start=first))
+    unit = "%p" if verdict.spec.percent else "%"
+    note = f"{LIVE_NOTE}\n" if verdict.live else f"{ABSOLVED_NOTE}\n" if verdict.absolved else ""
+    return f"{note}회차별 값 — {shown}\n회차 간 편차 {pattern.spread * 100:.1f}{unit}"
+
+
+def session_gate_text(sessions: int, all_sessions: int) -> str:
+    """판정 범위와 축별 최소 수집 횟수 안내 한 줄 — 같은 기준을 가진 축을 묶어 규칙 전체를 적는다."""
+    grouped = defaultdict(list)
+    for axis, minimum in AXIS_MIN_SESSIONS.items():
+        grouped[minimum].append(axis)
+    rules = " / ".join(f"{'·'.join(axes)} {minimum}회"
+                       for minimum, axes in sorted(grouped.items()))
+    return (f"판정 범위 — 최근 {PATTERN_WINDOW}회 수집만 봅니다(전체 {all_sessions}회 중 {sessions}회). "
+            f"{rules} 이상일 때 판정하며, 완료된 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 "
+            "회차별 패턴이 일정한지로 판정합니다.")
+
+
+def small_sample_text(session_size: float) -> str:
+    """회차당 응답이 적어 작은 이상을 놓칠 수 있다는 고지 — 응답이 충분하거나 판정한 회차가
+    없으면 빈 문자열. 이 한계는 통계 기법으로 없앨 수 없는 데이터의 한계라 알리기만 한다."""
+    if not 0 < session_size < SMALL_SESSION_RESPONSES:
+        return ""
+    return f"회차당 응답이 평균 {session_size:.0f}건으로 적어, 한 회차에만 생긴 작은 이상은 놓칠 수 있습니다."
+
+
+def metric_gate_text(verdict: MetricVerdict, sessions: int) -> str:
+    """게이트로 보류 중인 지표의 사유 한 줄 — 걸리지 않았으면 빈 문자열."""
+    if not _session_gated(verdict.spec, sessions):
+        return ""
+    return (f"수집 {AXIS_MIN_SESSIONS[verdict.spec.axis]}회 이상일 때 판정합니다"
+            f"(현재 {sessions}회).")
 
 
 def diagnosis_tooltip() -> str:
-    """진단 배너 툴팁 — 판정 기준을 초기화 이후 누적 응답 기준으로 설명한다."""
+    """진단 배너 툴팁 — 판정 방식만 짧게 안내하고, 지표별 임계값 표는 상세 보기로 넘긴다."""
     return "\n".join([
-        "초기화 이후 누적된 모든 응답을 기준으로 판정합니다.",
-        f"· 응답이 {DIAG_MIN_SAMPLES}건 미만이면 판단을 보류합니다.",
-        f"· 문제: 연결 실패 {DIAG_CONN_FAIL_PROBLEM:.0%} 이상, "
-        f"또는 접근 차단(403·429) {DIAG_BLOCKED_PROBLEM:.0%} 이상",
-        f"· 주의: 빈 응답(페이지는 열렸지만 데이터 0건) {DIAG_EMPTY_WARN:.0%} 이상, "
-        f"또는 HTTP 오류 {DIAG_HTTP_ERR_WARN:.0%} 이상",
-        "· 정상: 위 조건에 모두 해당하지 않을 때",
+        f"최근 {PATTERN_WINDOW}회 수집(진행 중 포함)의 응답을 지표별로 판정합니다 — "
+        "위 KPI 카드는 초기화 이후 누적이지만, 이 배너는 지금 상태를 봅니다.",
+        "· 각 비율은 95% 신뢰구간(Wilson)으로 판정해, 표본이 적으면 단정하지 않고 보류합니다.",
+        "· 응답이 많아도 한 번의 수집이면 관측 1회라, 축마다 최소 수집 횟수를 함께 봅니다 — "
+        + " / ".join(f"{axis} {minimum}회" for axis, minimum in AXIS_MIN_SESSIONS.items()),
+        f"· 완료된 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지로 판정합니다 — "
+        "일정하면 정상, 들쭉날쭉하면 주의, 더 강한 근거(99%)가 있으면 문제입니다. "
+        "다만 절대 기준이 '문제'인 값은 일정해도 문제입니다.",
+        "· 절대 기준이 '주의'인 값은 일정하면 정상으로 보되 배너와 상세 보기에 함께 알립니다.",
+        "· 진행 중이거나 중단된 수집의 응답은 회차 패턴에 편입되기 전까지 절대 기준으로 판정합니다.",
+        f"· 최근 {RECENT_WINDOW}건과 그 이전 구간의 정상 수집률을 비교해 악화되면 따로 알립니다.",
+        "· 종합 등급은 지표 중 가장 나쁜 등급을 따릅니다.",
+        "지표별 관측값·신뢰구간·기준은 오른쪽 상세 보기(⧉) 버튼에서 볼 수 있습니다.",
     ])
 
 
@@ -302,6 +921,54 @@ _ALL_TIME_FOLDS = {
 }
 
 
+def _row_facts(row: dict) -> RowFacts:
+    """응답 1건의 분류·집계용 값 — 합산 집계(_aggregate_rows)와 회차별 집계(_session_tallies)가
+    같은 분류를 쓰도록 한곳에서 만든다. 필드 채움 기록(worker.count_field_fill)이 없는 과거
+    응답은 채움 값을 0으로 둬 집계에서 빠지게 한다."""
+    code = str(row.get("status_code", ""))
+    latency = row.get("pure_latency")
+    item_count = row.get("item_count") if isinstance(row.get("item_count"), int) else None
+    has_fill = isinstance(row.get("field_cells"), int)
+    return RowFacts(
+        code, _outcome(row, code, code == "200"),
+        _speed_bucket(latency) if isinstance(latency, float) else None, item_count,
+        row.get("complete_rows", 0) if has_fill else 0, (item_count or 0) if has_fill else 0)
+
+
+def _recent_sessions(sessions: list, count: int) -> list:
+    """시작 시각이 유효한 수집 중 가장 최근 count개(시작 순) — 중단된 수집도 1회로 센다."""
+    dated = sorted((s for s in sessions if s.get("started", "")[:1].isdigit()),
+                   key=lambda s: s["started"])
+    return dated[len(dated) - min(count, len(dated)):]
+
+
+def _session_windows(sessions: list) -> list:
+    """완료된(중단되지 않은) 수집의 (시작, 종료) 시각을 시작 순으로 — 응답을 회차에 귀속하는 데
+    쓴다. 중단된 수집은 일부만 돌아 대표성이 없어 패턴 시리즈에서 뺀다. url_map의 session
+    필드는 항상 1이라 쓸 수 없어, 응답의 timestamp가 어느 구간에 드는지로 귀속한다."""
+    return sorted((s["started"], s["finished"]) for s in sessions
+                  if not s.get("interrupted") and s.get("started", "")[:1].isdigit())
+
+
+def _window_slot(windows: list, starts: list, timestamp: str) -> int | None:
+    """timestamp가 든 수집 구간의 번호 — 어느 구간에도 안 들면(진행 중인 수집 등) None."""
+    slot = bisect_right(starts, timestamp) - 1
+    return slot if slot >= 0 and timestamp <= windows[slot][1] else None
+
+
+def _session_tallies(rows: list, sessions: list) -> list:
+    """응답을 완료된 수집 회차별로 집계한다 — 어느 회차인지는 timestamp가 든 [시작, 종료]
+    구간으로 귀속하고, 어느 구간에도 안 드는 응답(진행 중인 수집 등)은 회차에 넣지 않는다."""
+    windows = _session_windows(sessions)
+    starts = [start for start, _ in windows]
+    tallies = [SessionTally() for _ in windows]
+    for row in rows:
+        slot = _window_slot(windows, starts, row.get("timestamp") or "")
+        if slot is not None:
+            tallies[slot].add(_row_facts(row))
+    return [t for t in tallies if t.responses]
+
+
 def aggregate_all_time(rows, period: str) -> AllTimeTrend:
     """전체 URL 응답 기록을 기간의 한 주기(하루의 시 / 한 주의 요일 / 한 달의 일자)
     안의 칸으로 접어 합산한다. 이력이 아무리 길어도 칸 수가 고정된다. 타임스탬프
@@ -391,9 +1058,10 @@ class StatisticsPageTriggers:
         self.speed_chart.set_data(
             [(label, agg["speed"].get(label, 0), color) for label, color in SPEED_SEGMENTS])
 
-        self._refresh_throughput_kpi(sessions)
+        throughput = self._refresh_throughput_kpi(sessions)
 
-        self._update_diagnosis(diagnose(total, agg))
+        self._reference_kpis = ((REF_AVG_LATENCY, avg_t), (REF_THROUGHPUT, throughput))
+        self._update_diagnosis(evaluate(total, agg, self._evaluation_window(rows, sessions, running)))
 
         self._refresh_trend_chart(rows, agg)
 
@@ -451,11 +1119,14 @@ class StatisticsPageTriggers:
                 [agg["daily_ok"].get(k, 0) for k in keys],
                 [agg["daily_err"].get(k, 0) for k in keys])
 
-    def _refresh_throughput_kpi(self, sessions):
-        """세션 누계(응답 수 ÷ 소요 시간)로 처리량 KPI를 갱신한다."""
+    def _refresh_throughput_kpi(self, sessions) -> str:
+        """세션 누계(응답 수 ÷ 소요 시간)로 처리량 KPI를 갱신하고 표시 문구를 돌려준다 —
+        종합 평가 상세 보기가 같은 값을 참고값으로 다시 계산하지 않게 한다."""
         total = sum(s.get("total", 0) for s in sessions)
         elapsed = sum(s.get("elapsed", 0) or 0 for s in sessions)
-        self.kpi_throughput.update_value(f"{total / elapsed:.1f}/s" if elapsed else "—")
+        text = f"{total / elapsed:.1f}/s" if elapsed else "—"
+        self.kpi_throughput.update_value(text)
+        return text
 
     def _refresh_process_kpis(self, agg: dict) -> None:
         """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값·최소/최대)과 유효 데이터
@@ -469,6 +1140,19 @@ class StatisticsPageTriggers:
         field_items = agg["field_items"]
         self.kpi_valid_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
 
+    def _evaluation_window(self, rows, sessions, running: bool) -> EvalWindow:
+        """배너가 판정할 최근 PATTERN_WINDOW회 수집 구간을 집계한다 — 초기화 이후 누적으로 보면
+        과거의 이상이 회복 뒤에도 배너에 남아서다. 구간은 그 수집 중 가장 이른 것의 시작
+        시각부터의 모든 응답이라 진행 중이거나 중단된 수집의 응답도 들어가며, 오래된 이상은 시간이
+        지나면 자연히 빠진다. 세션은 완료 시점에 기록되므로 진행 중인 수집은 running으로 1회
+        센다 — 그대로 두면 첫 수집 내내 배너가 침묵해 연결·응답 축을 1회로 낮춘 의미가 사라진다."""
+        recent = _recent_sessions(sessions, PATTERN_WINDOW - running)
+        cutoff = recent[0]["started"] if recent else ""
+        window_rows = [r for r in rows if (r.get("timestamp") or "") >= cutoff]
+        agg = self._aggregate_rows(window_rows)
+        agg["per_session"] = _session_tallies(window_rows, recent)
+        return EvalWindow(agg, len(window_rows), len(recent) + running, len(sessions) + running)
+
     def _aggregate_rows(self, rows):
         """url_maps를 한 번만 순회해 행 기반 집계를 모두 산출한다 — 3초마다
         호출되는데 행 수는 통계 초기화 전까지 계속 누적되므로, 지표마다 따로
@@ -480,37 +1164,33 @@ class StatisticsPageTriggers:
         blocked = 0
         page_items = []
         complete_rows = field_items = 0
+        # 최근 악화 감지용 창 — 고정 길이라 행이 아무리 쌓여도 메모리가 늘지 않고,
+        # 이전 구간 값은 누계에서 이 창을 빼서 구하므로 순회도 한 번으로 끝난다
+        recent_ok = deque(maxlen=RECENT_WINDOW)
 
         for r in rows:
-            code = str(r.get("status_code", ""))
-            is_ok = code == "200"
+            facts = _row_facts(r)
             timestamp = r.get("timestamp") or ""
 
-            status_group[_status_group(code)] += 1
-            row_outcome = _outcome(r, code, is_ok)
-            outcome[row_outcome] += 1
-            blocked += code in BLOCKED_STATUS_CODES
-
-            latency = r.get("pure_latency")
-            if isinstance(latency, float):
-                speed[_speed_bucket(latency)] += 1
-
-            item_count = r.get("item_count")
-            if isinstance(item_count, int) and row_outcome == OUTCOME_OK:
-                page_items.append(item_count)
-
-            # 필드 채움 기록(worker.count_field_fill)이 있는 응답만 — 없는 과거 기록은 건너뛴다
-            if isinstance(r.get("field_cells"), int):
-                complete_rows += r.get("complete_rows", 0)
-                field_items += item_count if isinstance(item_count, int) else 0
+            status_group[_status_group(facts.code)] += 1
+            outcome[facts.outcome] += 1
+            blocked += facts.code in BLOCKED_STATUS_CODES
+            recent_ok.append(facts.outcome == OUTCOME_OK)
+            if facts.bucket is not None:
+                speed[facts.bucket] += 1
+            if facts.item_count is not None and facts.outcome == OUTCOME_OK:
+                page_items.append(facts.item_count)
+            complete_rows += facts.complete_rows
+            field_items += facts.field_items
 
             if timestamp:
-                (daily_ok if is_ok else daily_err)[timestamp[:10]] += 1
+                (daily_ok if facts.code == "200" else daily_err)[timestamp[:10]] += 1
 
         return {
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
             "page_items": page_items, "complete_rows": complete_rows, "field_items": field_items,
+            "recent_ok": recent_ok,
         }
 
     def _refresh_session_table(self):
