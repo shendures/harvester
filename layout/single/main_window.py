@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSta
 from trigger import LogViewerDialog, MainWindowTriggersSingle
 from ..common import build_status_bar, center_window_on_screen
 from ..scheduler import SchedulerPage
-from ..statistics import StatisticsPage
 from ..session import SessionSettingsPage
 from ..auth import AuthManagerPage
 from ..tray import TrayManager
@@ -15,6 +14,7 @@ from .toolbar import GlobalToolbarSingle
 from .sidebar import SidebarSingle
 from .dashboard import DashboardPageSingle
 from .monitor import MonitorPageSingle
+from .statistics import StatisticsPageSingle
 
 
 class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
@@ -69,7 +69,7 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
         self.monitor_page = MonitorPageSingle()
         self.schedule_page = SchedulerPage()
         self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
-        self.stats_page = StatisticsPage()
+        self.stats_page = StatisticsPageSingle()
         self.session_page = SessionSettingsPage()
         self.schedule_page.session_page = self.session_page
 

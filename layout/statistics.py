@@ -1,5 +1,6 @@
 # layout/statistics.py
-# 통계 분석 화면 — 본문 위젯(StatisticsPanel)과 이를 감싼 페이지(StatisticsPage).
+# 통계 분석 화면 본문 위젯(StatisticsPanel) — layout/single/statistics.py와
+# layout/multi/statistics.py의 페이지 클래스가 각각 감싸서 쓴다.
 
 from datetime import datetime
 
@@ -163,15 +164,17 @@ def _apply_tooltips(cards, tips) -> None:
 
 class StatisticsPanel(QWidget, StatisticsPageTriggers):
     """통계 본문(KPI·차트·표 카드)과 자동 갱신을 함께 가진 자기완결 위젯 —
-    어떤 레이아웃에든 addWidget만 하면 표시·갱신된다."""
+    어떤 레이아웃에든 addWidget만 하면 표시·갱신된다. seq_no를 주면 그 블루프린트의
+    통계만, 생략하면 전체 합산을 보여준다."""
 
-    def __init__(self):
+    def __init__(self, seq_no=None):
         super().__init__()
+        self.seq_no = seq_no
         self._build()
         # auto-refresh every 3 s — 세션 이력 테이블은 세션 종료 시에만 바뀌므로
         # 제외하고 KPI/차트만 갱신한다(trigger/statistics.py의 reload() 참고)
         self._timer = QTimer()
-        self._timer.timeout.connect(self._refresh_summary)
+        self._timer.timeout.connect(self._refresh_if_visible)
         self._timer.start(3000)
 
     def _build(self):
@@ -180,6 +183,11 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         root.setSpacing(0)
 
         root.addWidget(self._build_body(), 1)
+
+    def _refresh_if_visible(self):
+        """보이지 않는 패널(다른 화면·다른 블루프린트)은 3초 갱신을 건너뛴다."""
+        if self.isVisible():
+            self._refresh_summary()
 
     def _build_body(self) -> QWidget:
         """통계 본문 — KPI 카드, 응답 카드 3종, 수집량 추이, 세션 이력을 한 화면에 쌓는다."""
@@ -190,7 +198,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         self.reset_btn = build_reset_button(
             parts, self,
             title="통계 초기화 확인",
-            text="<b>누적된 통계 분석 데이터를 초기화하시겠습니까?</b>",
+            text=f"<b>{'이 수집 대상의' if self.seq_no else '누적된'} 통계 분석 데이터를 초기화하시겠습니까?</b>",
             informative_text="URL 응답 이력과 세션 이력이 모두 삭제되며, 되돌릴 수 없습니다.",
             on_confirmed=self._on_reset_clicked,
         )
@@ -578,18 +586,24 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         dlg.show()
 
 
+class StatisticsPageBase(QWidget):
+    """단일/다중 통계 페이지의 공통 골격 — 여백 0 루트에 본문을 얹고, 창 쪽 호출 계약인
+    reload()/set_status()를 한 번만 정의한다. 서브클래스는 _active_panel()만 구현한다."""
 
-class StatisticsPage(QWidget):
-    """통계 분석 페이지 — Single/Multi 메인 창이 그대로 공유하는 얇은 껍데기(대응
-    클래스 없음). 본문은 StatisticsPanel이 담당하고, 이 클래스는 창 쪽 호출 계약인
-    reload()만 위임한다."""
-
-    def __init__(self):
+    def __init__(self, body: QWidget):
         super().__init__()
-        self.panel = StatisticsPanel()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self.panel)
+        root.addWidget(body)
+
+    def _active_panel(self):
+        """지금 보이는 StatisticsPanel(없으면 None)."""
+        raise NotImplementedError
 
     def reload(self):
-        self.panel.reload()
+        panel = self._active_panel()
+        if panel:
+            panel.reload()
+
+    def set_status(self, seq_no, status: str) -> None:
+        """수집 상태 컬럼 갱신 — 목록이 없는 레이아웃에서는 할 일이 없다."""

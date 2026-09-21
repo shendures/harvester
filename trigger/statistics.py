@@ -1,5 +1,5 @@
 # trigger/statistics.py
-# StatisticsPage의 데이터 로드·내보내기 메서드(StatisticsPageTriggers).
+# StatisticsPanel의 데이터 로드·내보내기 메서드(StatisticsPageTriggers).
 
 import calendar
 import json
@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import QTableWidgetItem
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 
+from conf import BlueprintStorage
 from .common import (
     store, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED,
     GREEN, RED, BLUE, AMBER, STATUS_CODE_COLORS,
@@ -1012,7 +1013,20 @@ def session_request_rows(session: dict) -> list[list[str]]:
 
 
 class StatisticsPageTriggers:
-    """StatisticsPage의 데이터 로드·내보내기 메서드"""
+    """StatisticsPanel의 데이터 로드·내보내기 메서드"""
+
+    seq_no = None  # None이면 전체 블루프린트 합산, 값이 있으면 그 블루프린트의 통계만
+
+    def _title(self):
+        """seq_no 블루프린트의 제목 — seq_no가 없는 과거 세션 기록을 제목으로 매칭할 때 쓴다."""
+        blueprint = BlueprintStorage().get(self.seq_no)
+        return blueprint.get("title") if blueprint else None
+
+    def _rows(self) -> list:
+        return store.get_url_maps(self.seq_no)
+
+    def _sessions(self) -> list:
+        return store.get_sessions(self.seq_no, self._title())
 
     def reload(self):
         """요약(KPI·차트)과 세션 이력 테이블을 모두 갱신하는 전체 리로드.
@@ -1027,8 +1041,8 @@ class StatisticsPageTriggers:
         running = bool(getattr(toolbar, "_running", False)) if toolbar else False
         self.reset_btn.setEnabled(not running)
 
-        rows = store.get_url_maps()
-        sessions = store.get_sessions()
+        rows = self._rows()
+        sessions = self._sessions()
 
         total = len(rows)
         status_cnt = defaultdict(int)
@@ -1194,7 +1208,7 @@ class StatisticsPageTriggers:
         }
 
     def _refresh_session_table(self):
-        sessions = store.get_sessions()
+        sessions = self._sessions()
 
         self.session_table.setRowCount(0)
         for idx, s in enumerate(reversed(sessions), start=1):
@@ -1219,11 +1233,11 @@ class StatisticsPageTriggers:
         self.session_badge.setText(f"{len(sessions)}건")
 
     def _aggregate_all_time(self, period: str) -> AllTimeTrend:
-        """store 전체 URL 응답 기록을 period의 전체 보기 방식으로 접어 합산한다."""
-        return aggregate_all_time(store.get_url_maps(), period)
+        """이 패널 범위의 URL 응답 기록을 period의 전체 보기 방식으로 접어 합산한다."""
+        return aggregate_all_time(self._rows(), period)
 
     def _on_reset_clicked(self):
-        store.clear_url_maps()
-        store.clear_sessions()
+        store.clear_url_maps(self.seq_no)
+        store.clear_sessions(self.seq_no, self._title())
         store.save_stats_history()
         self.reload()

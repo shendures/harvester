@@ -6,10 +6,11 @@ from .toolbar import GlobalToolbarSingle
 from .sidebar import SidebarSingle
 from .dashboard import DashboardPageSingle
 from .monitor import MonitorPageSingle
+from .statistics import StatisticsPageSingle
 from .main_window import MainWindowSingle
 
 __all__ = [
     "GlobalToolbarSingle", "SidebarSingle",
     "DashboardPageSingle", "MonitorPageSingle",
-    "MainWindowSingle",
+    "StatisticsPageSingle", "MainWindowSingle",
 ]

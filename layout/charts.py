@@ -1,5 +1,5 @@
 # layout/charts.py
-# StatisticsPage 전용 미니 차트 위젯 (RankedBarChart/GroupedBarChart).
+# StatisticsPanel 전용 미니 차트 위젯 (RankedBarChart/GroupedBarChart).
 
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt, QSize

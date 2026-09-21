@@ -42,11 +42,17 @@ class DataStore:
             return
         self._url_map_list.append(url_map)
 
-    def get_url_maps(self) -> list:
-        return list(self._url_map_list)
+    def get_url_maps(self, seq_no=None) -> list:
+        """seq_no를 주면 그 블루프린트의 기록만, 생략하면 전체를 반환한다."""
+        if seq_no is None:
+            return list(self._url_map_list)
+        return [r for r in self._url_map_list if r.get("seq_no") == seq_no]
 
-    def clear_url_maps(self) -> None:
-        self._url_map_list.clear()
+    def clear_url_maps(self, seq_no=None) -> None:
+        if seq_no is None:
+            self._url_map_list.clear()
+        else:
+            self._url_map_list = [r for r in self._url_map_list if r.get("seq_no") != seq_no]
 
     # ── rows ( 수집 데이터 ) ──────────────────────────────────────────
     def add_row(self, row: dict) -> None:
@@ -93,11 +99,24 @@ class DataStore:
             return
         self._sessions.append(s)
 
-    def get_sessions(self) -> list:
-        return list(self._sessions)
+    @staticmethod
+    def _session_belongs(session: dict, seq_no, title) -> bool:
+        """seq_no 필드가 없는 과거 세션은 제목이 같을 때만 그 블루프린트의 것으로 본다."""
+        if session.get("seq_no"):
+            return session["seq_no"] == seq_no
+        return bool(title) and session.get("title") == title
 
-    def clear_sessions(self) -> None:
-        self._sessions.clear()
+    def get_sessions(self, seq_no=None, title=None) -> list:
+        """seq_no를 주면 그 블루프린트의 세션만(과거 기록은 title로 매칭), 생략하면 전체."""
+        if seq_no is None:
+            return list(self._sessions)
+        return [s for s in self._sessions if self._session_belongs(s, seq_no, title)]
+
+    def clear_sessions(self, seq_no=None, title=None) -> None:
+        if seq_no is None:
+            self._sessions.clear()
+        else:
+            self._sessions = [s for s in self._sessions if not self._session_belongs(s, seq_no, title)]
 
     # ── 통계 이력 영속화 (통계 분석 페이지 전용: url_maps + sessions) ──
     def _stats_history_path(self) -> str:

@@ -91,16 +91,18 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
-| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPage` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯) + 이를 감싼 페이지, 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
+| 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거를 펼치는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()` 계약), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
 | single | `common.py` | `ActiveBlueprintMixin` | 활성 블루프린트 조회(Multi 확장 지점) |
 | single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 |
 | single | `monitor.py` | `MonitorPageSingle` | 원본/정제규칙/정제결과/비교 4탭 |
+| single | `statistics.py` | `StatisticsPageSingle(StatisticsPageBase)` | 전체 합산 통계 패널 1개를 감싼 통계 분석 페이지 |
 | multi | `main_window.py` | `MainWindowMulti` | 블루프린트별 페이지 번들 지연 생성·관리 |
 | multi | `sidebar.py`/`toolbar.py` | `*Multi(*Single)` | 표시 항목 재정의(인증관리 제거 등) |
 | multi | `dashboard.py`/`monitor.py` | `*Multi(*Single)` | single 상속, 슬롯 배치만 조정 |
+| multi | `statistics.py` | `StatisticsPageMulti(StatisticsPageBase)` | 좌측 수집 대상 목록 + 우측 블루프린트별 `StatisticsPanel`(지연 생성) |
 | multi | `monitor_target_list.py` | `MonitorTargetListPage` | 경량 블루프린트 목록(정제 화면용) |
 | multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택) |
 
