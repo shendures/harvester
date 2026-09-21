@@ -351,7 +351,7 @@ class MonitorPageTriggers:
 
         if lm:
             lm.append_log(
-                "ok",
+                "info",
                 f"정제 완료 — Raw {stats.raw_count}행 → 정제 후 {stats.refined_count}행 "
                 f"(제거 {stats.removed}행, 치환 {stats.filled}건, 정제율 {stats.refine_rate}"
                 f"{custom_rule_note})"

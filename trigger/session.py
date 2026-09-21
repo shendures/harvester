@@ -254,7 +254,7 @@ class SessionSettingsPageTriggers:
                 t.blockSignals(False)
                 t.setUpdatesEnabled(True)
 
-        self._log("ok", f"Import 완료: {added}개 추가 / {skipped}개 중복 제외 ← {path}")
+        self._log("info", f"Import 완료: {added}개 추가 / {skipped}개 중복 제외 ← {path}")
 
     def _test_all_proxies(self):
         """
@@ -282,8 +282,7 @@ class SessionSettingsPageTriggers:
 
     def _on_connection_test_finished(self, alive: int, dead: int):
         self._proxy_test_thread = None
-        self._log("ok" if dead == 0 else "info",
-                   f"연결 테스트 완료 — 정상 {alive}건, 응답 없음 {dead}건")
+        self._log("info", f"연결 테스트 완료 — 정상 {alive}건, 응답 없음 {dead}건")
 
     def _add_proxy_dialog(self):
         """새 프록시 추가 Dialog를 띄운다."""
@@ -336,7 +335,7 @@ class SessionSettingsPageTriggers:
                      "enabled": True}
             self._proxy_rows.append(data)
             self._insert_table_row(data)
-            self._log("ok", f"프록시 추가됨: {proto} {host}:{port}")
+            self._log("info", f"프록시 추가됨: {proto} {host}:{port}")
             dlg.close()
 
         ok_btn.clicked.connect(_do_add)

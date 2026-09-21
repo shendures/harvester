@@ -300,7 +300,7 @@ class MainWindowTriggersSingle:
     def _update_status_bar(self, level: str, message: str):
         """last_log 시그널 수신 — 하단 상태바에 최신 로그 한 줄 표시"""
         color = LOG_LEVEL_COLORS.get(level, TEXT_SECONDARY)
-        tag   = f"[{level.upper():4s}]"
+        tag   = f"[{level.upper()}]"
         self.status_level.setText(tag)
         self.status_level.setStyleSheet(
             f"color:{color}; font-size:11px; font-weight:bold;"

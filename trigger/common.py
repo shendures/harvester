@@ -39,9 +39,9 @@ RED           = theme.RED
 BLUE          = theme.BLUE
 PURPLE        = theme.PURPLE
 
-# 로그 레벨("ok"/"err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
+# 로그 레벨("err"/"warn"/"info")별 색상 — 하단 상태바(MainWindowTriggers)와
 # 전체 로그 뷰어(LogViewerDialog)가 동일하게 사용
-LOG_LEVEL_COLORS = {"ok": GREEN, "err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
+LOG_LEVEL_COLORS = {"err": RED, "warn": AMBER, "info": ACCENT_LIGHT}
 
 # HTTP 상태코드별 색상 — 대시보드 실시간 테이블(DashboardPageTriggers.add_row)과
 # 통계 분석 "상태 코드 분포" 차트(StatisticsPageTriggers.reload)가 동일하게 사용.

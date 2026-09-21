@@ -80,7 +80,7 @@ class AuthManagerPageTriggers:
             }
             self._auth_rows.append(data)
             self._insert_table_row(data)
-            self._log_auth("ok", f"자격증명 추가됨: {data['name']} ({data['type']})")
+            self._log_auth("info", f"자격증명 추가됨: {data['name']} ({data['type']})")
             dlg.close()
 
         ok_btn.clicked.connect(_do_add)
@@ -112,14 +112,14 @@ class AuthManagerPageTriggers:
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
-        self._log_auth("ok", f"자격증명 내보내기 완료: {path}")
+        self._log_auth("info", f"자격증명 내보내기 완료: {path}")
         _show_message_dialog(self, "완료", f"내보내기 완료:\n{path}", icon=QMessageBox.Icon.Information)
 
     def _on_tls_toggle(self, state):
         if state == Qt.CheckState.Checked.value:
             self._cert_lbl.setText("● TLS 검증 활성화")
             self._cert_lbl.setStyleSheet(f"color:{GREEN}; font-size:12px;")
-            self._log_auth("ok", "TLS 인증서 검증 활성화됨")
+            self._log_auth("info", "TLS 인증서 검증 활성화됨")
         else:
             self._cert_lbl.setText("● TLS 검증 비활성화")
             self._cert_lbl.setStyleSheet(f"color:{AMBER}; font-size:12px;")
