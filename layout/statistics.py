@@ -218,7 +218,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         req_card_w, req_cards = build_stat_summary_card(
             parts, "요청·응답",
-            [("확인한 페이지 수", "0"), ("응답 성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("처리량", "—", AMBER)],
+            [("요청 페이지 수", "0"), ("응답 성공률", "0%", GREEN), ("평균 응답", "—", BLUE), ("처리량", "—", AMBER)],
             help_text=REQUEST_CARD_HELP,
         )
         self.kpi_total, self.kpi_resp_rate, self.kpi_avg_t, self.kpi_throughput = req_cards
@@ -228,7 +228,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         process_card_w, process_cards = build_stat_summary_card(
             parts, "데이터 처리",
-            [("페이지당 중앙값", "—", ACCENT_LIGHT), ("최소/최대 수집 비율", "—", PURPLE),
+            [("건수 중앙값", "—", ACCENT_LIGHT), ("최소/최대 수집 비율", "—", PURPLE),
              ("유효 데이터 비율", "—", GREEN)],
             help_text=PROCESS_CARD_HELP,
         )
