@@ -46,7 +46,7 @@ class LogViewerDialog(QDialog):
     - LogView를 대체: _html_history 버퍼, append_log(), clear_all(), last_log 시그널 자체 보유
     - 앱 시작 시 싱글턴으로 생성되어 백그라운드에서 로그를 처음부터 축적
     - 닫기(×) 버튼은 hide()로 처리 — 실제 파괴 없이 재오픈 가능
-    - 레벨 필터(ALL / INFO / OK / WARN / ERR) 및 키워드 검색 지원
+    - 레벨 필터(ALL / INFO / WARN / ERR) 및 키워드 검색 지원
     """
 
     # last_log: 하단 상태바에 최신 로그 한 줄을 실시간 전달하는 시그널
@@ -74,7 +74,7 @@ class LogViewerDialog(QDialog):
         """
         ts    = datetime.now().strftime("%H:%M:%S")
         color = LOG_LEVEL_COLORS.get(level, TEXT_SECONDARY)
-        tag   = f"[{level.upper():4s}]"
+        tag   = f"[{level.upper()}]"
         line_html = (
             f'<span style="color:{TEXT_MUTED};">{ts}</span> '
             f'<span style="color:{color}; font-weight:bold;">{tag}</span> '
@@ -121,7 +121,7 @@ class LogViewerDialog(QDialog):
         filter_row = QHBoxLayout()
         filter_row.setSpacing(6)
         self._filter_btns: dict[str, QPushButton] = {}
-        for lv in ["ALL", "INFO", "OK", "WARN", "ERR"]:
+        for lv in ["ALL", "INFO", "WARN", "ERR"]:
             btn = QPushButton(lv)
             btn.setCheckable(True)
             btn.setChecked(lv == "ALL")
