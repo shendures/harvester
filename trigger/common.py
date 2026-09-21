@@ -6,14 +6,12 @@ from copy import deepcopy
 import socket
 
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QMessageBox, QSystemTrayIcon,
-    QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
+    QApplication, QFileDialog, QMessageBox, QVBoxLayout, QHBoxLayout, QLineEdit, QCheckBox, QSpinBox,
     QComboBox, QWidget, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QTimer
 
 import db_conn
-import engine
 from conf import DataStore
 from style import THEME, Parts, Divider, TagButton, BoundNoticeSpinBox, BoundNoticeDoubleSpinBox
 from preprocess import DEFAULT_RULES, custom_rule_exists
@@ -257,34 +255,6 @@ def _confirm_destructive_action(parent, title: str, text: str,
     confirm.setDefaultButton(QMessageBox.StandardButton.No)
     confirm.setStyleSheet(_default_msgbox_qss(font_size))
     return confirm.exec() == QMessageBox.StandardButton.Yes
-
-
-def _validate_blueprint_before_run(parent, cfg: dict, *, is_unattended: bool) -> bool:
-    """cfg(블루프린트+런타임 설정 dict)가 실행 가능한지 검사 — 문제가 있으면
-    안내(대화형은 모달, 무인 실행은 트레이 알림)와 로그를 남기고 False, 정상이면
-    True를 반환한다. 요청을 한 건도 보내기 전에 막아, URL마다 같은 설정 오류
-    (KeyError)가 반복되는 것을 피한다. 무인(스케줄/전체 수집) 실행에서 모달을
-    띄우면 아무도 닫아줄 사람이 없어 그 자리에서 멈추므로, 이 프로젝트의 기존
-    관례(_on_finished의 0건 완료 분기 등)와 동일하게 트레이 알림으로 대체한다.
-    log_manager/tray_manager는 호출부가 항상 parent의 것을 그대로 넘기므로
-    parent에서 직접 읽는다(호출부 2곳 모두 MainWindowTriggers* 인스턴스)."""
-    error_msg = engine.validate_blueprint_conditions(cfg)
-    if error_msg is None:
-        return True
-    parent.log_manager.append_log("err", error_msg)
-    if is_unattended:
-        parent.tray_manager.show_message(
-            "⚠ 수집 설정 오류",
-            f"'{cfg.get('title') or cfg.get('task_nm', '')}' 실행을 시작할 수 없습니다 — "
-            f"블루프린트 설정을 확인해 주세요. (자세한 내용은 로그 참고)",
-            icon=QSystemTrayIcon.MessageIcon.Critical,
-        )
-    else:
-        _show_message_dialog(
-            parent, "수집 설정 오류", "<b>수집을 시작할 수 없습니다.</b>",
-            icon=QMessageBox.Icon.Critical, informative_text=error_msg,
-        )
-    return False
 
 
 # 예외 타입명 -> (설명, 해결 방법). "200 응답이지만 추출 실패"(build_failure_item이
