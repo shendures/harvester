@@ -577,6 +577,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 if auto_save_source == "refined" and is_unattended:
                     sched_refine_rules = extract_cfg.get("refine_rules", SCHEDULED_REFINE_RULES)
                     sched_fill_value   = extract_cfg.get("fill_null_value", "")
+                    open_save_path=task.get("job") != SELECT_JOB,
                     mon._run_refine(
                         rules_override=sched_refine_rules, skip_ui_update=True,
                         fill_value_override=sched_fill_value,
