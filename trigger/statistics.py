@@ -4,6 +4,7 @@
 import calendar
 import json
 import math
+import re
 from bisect import bisect_right
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from PyQt6.QtWidgets import QTableWidgetItem
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 
+import engine
 from conf import BlueprintStorage
 from .common import (
     store, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_MUTED,
@@ -166,34 +168,41 @@ class MetricSpec(NamedTuple):
     higher_is_better: bool
     percent: bool
     sample_unit: str
-    advice: str
+    cause: str
+    remedy: str
     pattern_only: bool = False
+
+    @property
+    def advice(self) -> str:
+        """원인과 해결 방법을 이은 한 문장 — 배너와 표 행 툴팁이 쓴다."""
+        return f"{self.cause} {self.remedy}"
 
 
 # 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
 SPEC_CONN_FAIL = MetricSpec(
     AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
-    "사이트에 연결하지 못했습니다. 인터넷 연결이나 프록시 설정을 확인하세요.")
+    "사이트에 연결하지 못했습니다.", "인터넷 연결이나 프록시 설정을 확인하세요.")
 SPEC_BLOCKED = MetricSpec(
     AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, False, True, "건",
-    "사이트가 접근을 막고 있습니다. 수집 간격을 늘리거나 프록시를 사용하세요.")
+    "사이트가 접근을 막고 있습니다.", "수집 간격을 늘리거나 프록시를 사용하세요.")
 SPEC_HTTP_ERR = MetricSpec(
     AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
-    "일부 페이지에서 오류 응답을 받았습니다. 상태 코드 분포에서 오류 종류를 확인하세요.")
+    "일부 페이지에서 오류 응답을 받았습니다.", "상태 코드 분포에서 오류 종류를 확인하세요.")
 SPEC_EMPTY = MetricSpec(
     AXIS_YIELD, "빈 응답률", 0.30, 0.60, False, True, "건",
-    "페이지는 열렸지만 데이터를 찾지 못했습니다. "
-    "사이트 구조가 바뀌었을 수 있으니 추출 설정을 확인하세요.")
+    "페이지는 열렸지만 데이터를 찾지 못했습니다.",
+    "사이트 구조가 바뀌었을 수 있으니 수집 조건을 확인하세요.")
 SPEC_VALID = MetricSpec(
     AXIS_QUALITY, "유효 데이터 비율", 0.90, 0.70, True, True, "행",
-    "꺼낸 데이터에 빈 항목이 많습니다. 추출 규칙이 일부 항목을 못 찾고 있는지 확인하세요.")
+    "꺼낸 데이터에 빈 항목이 많습니다.", "추출 규칙이 일부 항목을 못 찾고 있는지 확인하세요.")
 SPEC_SESSION_ITEMS = MetricSpec(
     AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
-    "수집 회차마다 페이지당 수집량이 달라졌습니다. 사이트 구조가 바뀌었거나 일부 페이지가 빠지고 있는지 확인하세요.",
+    "수집 회차마다 페이지당 수집량이 달라졌습니다.",
+    "사이트 구조가 바뀌었거나 일부 페이지가 빠지고 있는지 확인하세요.",
     pattern_only=True)
 SPEC_SLOW = MetricSpec(
     AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, False, True, "건",
-    "응답이 느린 쪽에 몰려 있습니다. 사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.")
+    "응답이 느린 쪽에 몰려 있습니다.", "사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.")
 
 # 최근 구간과 이전 구간을 비교한 결과
 TREND_WORSE, TREND_BETTER, TREND_FLAT = "악화", "개선", "변화 없음"
@@ -396,6 +405,11 @@ def _session_gated(spec: MetricSpec, sessions: int) -> bool:
     return sessions < AXIS_MIN_SESSIONS[spec.axis]
 
 
+def _is_gate_pending(verdict: MetricVerdict, sessions: int) -> bool:
+    """수집 횟수 게이트 때문에 보류 중인지 — 게이트를 건너뛰고 이미 등급이 매겨진 지표는 제외한다."""
+    return verdict.level == DIAG_HOLD and _session_gated(verdict.spec, sessions)
+
+
 def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
     """신뢰구간이 임계값 한쪽에 온전히 놓일 때만 등급을 매기고, 걸치면 보류한다."""
     if spec.higher_is_better:
@@ -418,7 +432,10 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     low, high = _wilson_bounds(hits, sample)
-    level = DIAG_HOLD if _session_gated(spec, sessions) else _ratio_level(spec, low, high)
+    # 빈 응답 100%는 수집 횟수를 기다릴 이유가 없다 — 표본이 충분해 신뢰구간이 문제 기준을 넘으면 첫 수집부터 판정
+    all_empty = spec is SPEC_EMPTY and hits == sample
+    gated = _session_gated(spec, sessions) and not all_empty
+    level = DIAG_HOLD if gated else _ratio_level(spec, low, high)
     return MetricVerdict(spec, level, hits / sample, low, high, sample)
 
 
@@ -518,11 +535,17 @@ def detect_regression(recent_ok: int, recent_n: int,
     return Regression(trend, recent_ok / recent_n, prior_ok / prior_n, recent_n, prior_n, z)
 
 
+REGRESSION_REMEDY = "최근 실행 설정과 대상 사이트를 확인하세요."
+
+
+def _regression_cause(regression: Regression) -> str:
+    return (f"최근 {regression.recent_n}건의 정상 수집률이 {regression.recent_rate:.0%}로 "
+            f"이전 {regression.prior_n}건({regression.prior_rate:.0%})보다 크게 낮아졌습니다.")
+
+
 def regression_text(regression: Regression) -> str:
     """최근 악화 문장 — 배너와 상세 보기가 같은 문구를 쓴다."""
-    return (f"최근 {regression.recent_n}건의 정상 수집률이 {regression.recent_rate:.0%}로 "
-            f"이전 {regression.prior_n}건({regression.prior_rate:.0%})보다 크게 낮아졌습니다. "
-            "최근 실행 설정과 대상 사이트를 확인하세요.")
+    return f"{_regression_cause(regression)} {REGRESSION_REMEDY}"
 
 
 def _worst_level(verdicts: list) -> str:
@@ -534,7 +557,7 @@ def _worst_level(verdicts: list) -> str:
 def _next_gate(verdicts: list, sessions: int) -> int | None:
     """게이트에 걸려 보류 중인 축 가운데 가장 먼저 풀리는 기준 수집 횟수. 없으면 None."""
     pending = [AXIS_MIN_SESSIONS[v.spec.axis] for v in verdicts
-               if _session_gated(v.spec, sessions)]
+               if _is_gate_pending(v, sessions)]
     return min(pending) if pending else None
 
 
@@ -696,7 +719,8 @@ def metric_criteria_detail(spec: MetricSpec) -> str:
         return f"회차 간 편차 기준 — {line}"
     return (f"절대 기준 — {line}\n"
             f"수집 {PATTERN_MIN_SESSIONS}회 이상부터는 회차별로 일정하면 정상으로 보고, "
-            "문제 기준만 안전망으로 적용합니다.")
+            "문제 기준만 안전망으로 적용합니다."
+            + ("\n빈 응답이 100%이면 수집 횟수와 무관하게 판정합니다." if spec is SPEC_EMPTY else ""))
 
 
 def _pattern_range_text(verdict: MetricVerdict) -> str:
@@ -733,29 +757,9 @@ def metric_pattern_detail(verdict: MetricVerdict) -> str:
     return f"{note}회차별 값 — {shown}\n회차 간 편차 {pattern.spread * 100:.1f}{unit}"
 
 
-def session_gate_text(sessions: int, all_sessions: int) -> str:
-    """판정 범위와 축별 최소 수집 횟수 안내 한 줄 — 같은 기준을 가진 축을 묶어 규칙 전체를 적는다."""
-    grouped = defaultdict(list)
-    for axis, minimum in AXIS_MIN_SESSIONS.items():
-        grouped[minimum].append(axis)
-    rules = " / ".join(f"{'·'.join(axes)} {minimum}회"
-                       for minimum, axes in sorted(grouped.items()))
-    return (f"판정 범위 — 최근 {PATTERN_WINDOW}회 수집만 봅니다(전체 {all_sessions}회 중 {sessions}회). "
-            f"{rules} 이상일 때 판정하며, 완료된 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 "
-            "회차별 패턴이 일정한지로 판정합니다.")
-
-
-def small_sample_text(session_size: float) -> str:
-    """회차당 응답이 적어 작은 이상을 놓칠 수 있다는 고지 — 응답이 충분하거나 판정한 회차가
-    없으면 빈 문자열. 이 한계는 통계 기법으로 없앨 수 없는 데이터의 한계라 알리기만 한다."""
-    if not 0 < session_size < SMALL_SESSION_RESPONSES:
-        return ""
-    return f"회차당 응답이 평균 {session_size:.0f}건으로 적어, 한 회차에만 생긴 작은 이상은 놓칠 수 있습니다."
-
-
 def metric_gate_text(verdict: MetricVerdict, sessions: int) -> str:
     """게이트로 보류 중인 지표의 사유 한 줄 — 걸리지 않았으면 빈 문자열."""
-    if not _session_gated(verdict.spec, sessions):
+    if not _is_gate_pending(verdict, sessions):
         return ""
     return (f"수집 {AXIS_MIN_SESSIONS[verdict.spec.axis]}회 이상일 때 판정합니다"
             f"(현재 {sessions}회).")
@@ -778,6 +782,70 @@ def diagnosis_tooltip() -> str:
         "· 종합 등급은 지표 중 가장 나쁜 등급을 따릅니다.",
         "지표별 관측값·신뢰구간·기준은 오른쪽 상세 보기(⧉) 버튼에서 볼 수 있습니다.",
     ])
+
+
+def _grade_guide_lines() -> list:
+    """등급별 뜻 — 종합 평가 도움말이 등급 읽는 법으로 보여준다."""
+    return [f"· {DIAG_OK} : 이상 신호가 없습니다",
+            f"· {DIAG_WARN} : 확인이 필요한 값이 있습니다",
+            f"· {DIAG_PROBLEM} : 바로 점검이 필요합니다",
+            f"· {DIAG_HOLD} : 데이터가 부족해 아직 판단하지 않습니다",
+            f"· {DIAG_PENDING} : 판단할 수집 기록이 아직 없습니다"]
+
+
+def _min_sessions_lines() -> list:
+    """축별 최소 수집 횟수 — 같은 횟수인 축끼리 묶어 한 줄씩 적는다."""
+    grouped = defaultdict(list)
+    for axis, minimum in AXIS_MIN_SESSIONS.items():
+        grouped[minimum].append(axis)
+    return [f"    - {' · '.join(axes)} : {minimum}회" for minimum, axes in sorted(grouped.items())]
+
+
+def _regression_help_text(regression) -> str:
+    """최근 악화 검사 결과 한 줄 — 비교하지 못했으면 그 사유를 적고, 통계값(z)은 드러내지 않는다."""
+    if regression is None:
+        return "· 최근 악화 검사 : 아직 비교할 만큼 응답이 쌓이지 않았습니다"
+    verdict = {TREND_WORSE: "눈에 띄게 나빠졌습니다", TREND_BETTER: "좋아졌습니다",
+               TREND_FLAT: "큰 변화 없습니다"}[regression.trend]
+    return (f"· 최근 악화 검사 : 최근 {regression.recent_n:,}건 {regression.recent_rate:.0%} / "
+            f"이전 {regression.prior_n:,}건 {regression.prior_rate:.0%} → {verdict}")
+
+
+def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_size: float,
+                        reference_kpis: tuple) -> str:
+    """종합 평가 팝업 제목 옆 도움말 — 무엇을 보는지, 등급 읽는 법, 판정 방식, 현재 상태 순으로
+    소제목을 나눠 쉬운 말로 적는다. 툴팁은 자동 줄바꿈이 없어 한 줄을 짧게 끊어 둔다."""
+    reference = " · ".join(f"{name} {value}" for name, value in reference_kpis)
+    state = [f"· 판정 범위 : 전체 {all_sessions}회 중 최근 {sessions}회",
+             f"· 참고 값(판정에 쓰지 않음) : {reference}" if reference else "",
+             _regression_help_text(regression)]
+    if 0 < session_size < SMALL_SESSION_RESPONSES:
+        state.append(f"· 회차당 응답이 평균 {session_size:.0f}건으로 적어\n  한 회차의 작은 이상은 놓칠 수 있습니다")
+    lines = [
+        "■ 이 평가는 무엇인가요?",
+        f"최근 {PATTERN_WINDOW}회 수집(진행 중 포함)을 살펴",
+        "\"지금 수집이 잘 되고 있는지\" 알려줍니다.",
+        "(위 KPI 카드는 초기화 이후 누적 값입니다)",
+        "",
+        "■ 등급은 이렇게 읽으세요",
+        *_grade_guide_lines(),
+        "종합 등급은 지표 중 가장 나쁜 등급을 따릅니다.",
+        "",
+        "■ 어떻게 판정하나요?",
+        "· 표본이 적으면 단정하지 않고 \"보류\"합니다",
+        "  (95% 신뢰구간으로 판단)",
+        "· 수집 1회는 관측 1번이라 항목마다",
+        "  최소 수집 횟수가 필요합니다",
+        *_min_sessions_lines(),
+        f"· 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지도 봅니다",
+        "  (일정하면 정상, 들쭉날쭉하면 주의·문제)",
+        "· 빈 응답이 100%이면 횟수와 무관하게 바로 판정합니다",
+        f"· 최근 {RECENT_WINDOW}건이 이전보다 눈에 띄게 나빠지면 따로 알립니다",
+        "",
+        "■ 지금 상태",
+        *filter(None, state),
+    ]
+    return "\n".join(lines)
 
 
 def _other_status_counts(status_cnt: dict) -> dict:
@@ -1012,10 +1080,77 @@ def session_request_rows(session: dict) -> list[list[str]]:
     return rows
 
 
+def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> list:
+    """모든 응답이 빈 데이터일 때의 원인·해결 방법 항목 — 데이터로 확인된 원인(설정 누락·추출 예외)은
+    단정하는 문장으로, 확인하지 못한 원인은 "~수도 있습니다" 문장으로 적는다. 확인된 원인이 있으면
+    그 밖의 가능성(데이터 페이지가 아님·실제 데이터 없음)은 줄인다."""
+    notes = []
+    if missing_conditions:
+        notes.append(f"수집 조건(conditions)이 비어 있습니다({missing_conditions}). "
+                     "누락된 수집 조건 항목을 채우세요.")
+    if extract_errors:
+        notes.append(f"데이터 추출 중 예외가 {extract_errors}건 발생했습니다. "
+                     "수집 로그와 응답 상세에서 예외 내용을 확인하세요.")
+    notes.append("사이트 구조가 바뀌었을 수도 있습니다. "
+                 "사이트 구조와 추출 규칙(셀렉터/JSON·XML 경로)을 확인하세요.")
+    if not notes[:-1]:
+        notes.append("200 응답이어도 실제 데이터 페이지가 아닐 수도 있습니다. "
+                     "차단·로그인 요구·점검 안내·리다이렉트 여부를 확인하세요.")
+        notes.append("해당 시점에 수집할 데이터가 실제로 없을 수도 있습니다. "
+                     "대상 사이트에서 데이터 유무를 확인하세요.")
+    return notes
+
+
+class Review(NamedTuple):
+    """종합 평가 팝업 표 하단의 글 — summary는 총평(최대 2문장), notes는 이슈별 원인과 해결 방법
+    항목이며 등급이 주의·문제일 때만 있다."""
+    summary: str
+    notes: list
+
+
+REVIEW_SUMMARY_SENTENCES = 2   # 정상·대기 총평에 남기는 배너 문장 수 — 팝업 폭에서 2줄 안에 든다
+
+
+def _first_sentences(text: str, count: int) -> str:
+    """앞 count개 문장만 남긴다."""
+    return " ".join(re.split(r"(?<=\.)\s+", text)[:count])
+
+
+def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
+    """지표 하나의 이슈 항목 — 회차 불안정이면 그 사실을, 빈 응답이면 원인 후보별 항목을, 그 밖에는
+    지표 고유의 원인과 해결 방법을 한 항목으로 적는다."""
+    spec = verdict.spec
+    if _is_unstable(verdict):
+        return [f"{_cause_text(verdict)} {PATTERN_ADVICE}"]
+    if spec is SPEC_EMPTY and empty_notice:
+        return empty_notice
+    return [f"{spec.cause} {spec.remedy}"]
+
+
+def diagnosis_review(evaluation: Evaluation, empty_notice: list | None) -> Review:
+    """표 하단에 보여줄 글을 만든다 — 정상·대기는 배너 문장의 앞 문장들을, 주의·문제는 이상이
+    확인된 평가 항목 수와 이슈별 원인·해결 방법 항목을(심한 것부터) 돌려준다."""
+    diagnosis = evaluation.diagnosis
+    if diagnosis.level not in (DIAG_WARN, DIAG_PROBLEM):
+        return Review(_first_sentences(diagnosis.detail, REVIEW_SUMMARY_SENTENCES), [])
+
+    issues = sorted((v for v in evaluation.verdicts if v.level in (DIAG_WARN, DIAG_PROBLEM)),
+                    key=lambda v: -DIAG_LEVEL_RANK[v.level])
+    notes = [note for v in issues for note in _issue_notes(v, empty_notice)]
+    count = len(issues)
+    regression = evaluation.regression
+    if regression is not None and regression.trend == TREND_WORSE:
+        notes.append(regression_text(regression))
+        count += 1
+    return Review(f"{count}개의 평가 항목에서 이상이 확인되었습니다.", notes)
+
+
 class StatisticsPageTriggers:
     """StatisticsPanel의 데이터 로드·내보내기 메서드"""
 
     seq_no = None  # None이면 전체 블루프린트 합산, 값이 있으면 그 블루프린트의 통계만
+
+    _empty_notice = None  # 전체가 빈 데이터일 때의 원인·해결 방법 항목(list[str]) — 종합 평가 팝업이 읽는다
 
     _collecting = False  # 수집 진행 중 여부 — 창이 set_collecting()으로 넘긴다
 
@@ -1082,6 +1217,19 @@ class StatisticsPageTriggers:
         self._update_diagnosis(evaluate(total, agg, self._evaluation_window(rows, sessions, self._collecting)))
 
         self._refresh_trend_chart(rows, agg)
+        self._refresh_empty_notice(total, agg)
+
+    def _refresh_empty_notice(self, total: int, agg: dict) -> None:
+        """응답이 전부 빈 응답일 때만 그 종합 원인을 보관한다 — 수집은 막지 않고, 종합 평가 팝업이
+        표 아래에 보여준다. seq_no가 없으면(단일 모드 전체 합산) 유일한 블루프린트의 설정 누락을 확인한다."""
+        if not (total > 0 and agg["outcome"].get(OUTCOME_EMPTY, 0) == total):
+            self._empty_notice = None
+            return
+        storage = BlueprintStorage()
+        seq_no = self.seq_no or next(iter(storage.list_seq_nos()), None)
+        blueprint = storage.get(seq_no) if seq_no else None
+        missing = engine.validate_blueprint_conditions(blueprint) if blueprint else None
+        self._empty_notice = empty_data_notice(agg["extract_errors"], missing)
 
     def _refresh_trend_chart(self, rows, agg):
         """선택된 기간·표시 방식(layout/statistics.py의 self.trend_period,
@@ -1180,6 +1328,7 @@ class StatisticsPageTriggers:
         outcome = defaultdict(int)
         speed = defaultdict(int)
         blocked = 0
+        extract_errors = 0
         page_items = []
         complete_rows = field_items = 0
         # 최근 악화 감지용 창 — 고정 길이라 행이 아무리 쌓여도 메모리가 늘지 않고,
@@ -1193,6 +1342,7 @@ class StatisticsPageTriggers:
             status_group[_status_group(facts.code)] += 1
             outcome[facts.outcome] += 1
             blocked += facts.code in BLOCKED_STATUS_CODES
+            extract_errors += bool(r.get("extract_error"))
             recent_ok.append(facts.outcome == OUTCOME_OK)
             if facts.bucket is not None:
                 speed[facts.bucket] += 1
@@ -1207,6 +1357,7 @@ class StatisticsPageTriggers:
         return {
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
+            "extract_errors": extract_errors,
             "page_items": page_items, "complete_rows": complete_rows, "field_items": field_items,
             "recent_ok": recent_ok,
         }

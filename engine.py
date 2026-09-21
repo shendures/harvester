@@ -92,9 +92,9 @@ def _dig(d: dict, dotted_path: str):
 
 
 def validate_blueprint_conditions(request_info: dict) -> str | None:
-    """수집 시작 전 conditions에 스파이더 타입별 필수 키가 채워져 있는지 검사한다.
-    문제 없으면 None, 있으면 사용자에게 보여줄 안내 문자열을 반환한다 — URL마다
-    반복해서 같은 KeyError를 내며 낭비하는 대신 요청을 한 건도 보내기 전에 막는다."""
+    """conditions에 스파이더 타입별 필수 키가 채워져 있는지 검사한다.
+    문제 없으면 None, 있으면 누락된 항목을 쉼표로 이은 문자열을 반환한다 — 수집을
+    막지는 않으며, 누락 시 추출이 KeyError로 실패해 빈 응답으로 집계된다."""
     mode = conf.get_spider_mode(request_info)
     conditions = request_info.get("conditions") or {}
     missing = []
@@ -117,14 +117,7 @@ def validate_blueprint_conditions(request_info: dict) -> str | None:
             if not _dig(conditions, path):
                 missing.append(path)
 
-    if not missing:
-        return None
-    title = request_info.get("title") or "(제목 없음)"
-    return (
-        f"'{title}' 블루프린트의 수집 설정(conditions)에 필수 항목이 비어 있어 "
-        f"수집을 시작할 수 없습니다.\n\n누락된 항목: {', '.join(missing)}\n\n"
-        f"블루프린트 편집에서 해당 항목을 채운 뒤 다시 시도하세요."
-    )
+    return ", ".join(missing) or None
 
 
 def handle_request_failure(failure):
