@@ -25,6 +25,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
     # 이 표시기는 카드 안에서만 쓰이는 전용 위젯이라 다른 화면과 공유하는
     # 여백 규칙이 없다 — 카드 폭 안에서 4단계가 보기 좋게 퍼지도록 튜닝된
     # 값이므로, 매직 넘버로 흩어놓지 않고 이름 붙여 한 곳에서 관리한다.
+    _EXTRACT_STEP_IDX = 3                  # "결과 처리" — steps 목록의 마지막 단계
     _STEP_CIRCLE_SIZE = 34
     _STEP_ROW_H_MARGIN = 60                # 좌우 여백 — 카드 폭 대비 4단계를 중앙에 모아 배치
     _STEP_ROW_V_MARGIN = 20
@@ -36,6 +37,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         super().__init__()
         self.step_circles = []
         self.step_labels = []
+        self._step_idx = None
         self._running = False
         self._session_error_count = 0
         self._session_latency_sum = 0.0
@@ -58,7 +60,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
             self._STEP_ROW_H_MARGIN, self._STEP_ROW_V_MARGIN,
         )
 
-        steps = ["수집 대기", "수집 세팅", "데이터 수집", "결과물 추출"]
+        steps = ["수집 대기", "수집 세팅", "데이터 수집", "결과 처리"]
 
         for i, text in enumerate(steps):
             circle = QLabel(str(i + 1))
@@ -238,6 +240,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         현재 인덱스에 해당하는 단계만 주인공으로 만들고,
         나머지는 과거/미래 상관없이 모두 배경으로 보냅니다.
         """
+        self._step_idx = step_idx
         for i in range(len(self.step_circles)):
             if i == step_idx:
                 circle_style = f"""
@@ -257,6 +260,12 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
 
             self.step_circles[i].setStyleSheet(circle_style + "border-radius: 14px; font-weight: bold;")
             self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
+
+    def mark_result_displayed(self):
+        """수집 결과가 Raw 수집 결과 표에 표출되기 시작하면 "결과 처리" 단계를 켠다.
+        행마다 호출되므로 이미 켜져 있으면 스타일을 다시 적용하지 않는다."""
+        if self._step_idx != self._EXTRACT_STEP_IDX:
+            self._update_step_ui(self._EXTRACT_STEP_IDX)
 
     def _reset_dashboard(self):
         self.s_total.update_value(0)

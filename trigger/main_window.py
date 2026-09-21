@@ -219,15 +219,8 @@ class MainWindowTriggersSingle:
 
         self.log_manager.append_log("info", "크롤링 완료")
 
-        # step(3) — 정제 단계 표시
-        self.dashboard._update_step_ui(3)
-        QApplication.processEvents()
-
         self.monitor_page.preprocess(task)
         self.stats_page.reload()
-
-        # step(4) — 결과물 추출 단계 표시
-        self.dashboard._update_step_ui(4)
 
         is_unattended = task.get("job") == "스케줄 실행"
         try:
@@ -574,13 +567,8 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         self.log_manager.append_log("info", "크롤링 완료")
 
-        dash._update_step_ui(3)
-        QApplication.processEvents()
-
         mon.preprocess(task)
         self.stats_page.reload()
-
-        dash._update_step_ui(4)
 
         try:
             extract_cfg = task.get("extract", {})
