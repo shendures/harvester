@@ -1,7 +1,6 @@
 # layout/single/common.py
-# Single 전용 전역(blueprint/request_info)과, Single/Multi 결과 컬럼 산출
-# 중복(구 layout_single.py:530-534/889-893 ≈ layout_multi.py:41-56)을
-# 통합하기 위한 ActiveBlueprintMixin.
+# Single 전용 전역(blueprint/request_info)과, Single/Multi가 공유하는
+# 결과 컬럼 산출용 ActiveBlueprintMixin.
 
 from conf import BlueprintStorage
 from ..common import result_columns_from_blueprint

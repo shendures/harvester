@@ -74,10 +74,8 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     def _toolbar_display_info(self):
         """(수집 방식 라벨 텍스트, URL 입력창 초기값) — GlobalToolbarMulti가 오버라이드.
 
-        구 layout_single.py:119,122 표현식을 그대로 유지한다 — request_info에
-        conditions.method가 없는 손상된 데이터에서는 지금까지와 동일하게
-        KeyError로 즉시 실패해야 하며, Multi처럼 .get()으로 조용히 통과시키면
-        안 된다(동작 변경 금지).
+        request_info에 conditions.method가 없는 손상된 데이터에서는 KeyError로
+        즉시 실패해야 하며, Multi처럼 .get()으로 조용히 통과시키면 안 된다.
         """
         return request_info["conditions"]["method"], (request_info["url"] if request_info else "")
 

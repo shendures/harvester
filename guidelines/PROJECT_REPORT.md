@@ -18,8 +18,8 @@ GUI에서 코드 없이 수집 조건을 설정하고, 실시간 진행 상황�
 
 | 영역 | 파일 | 규모 |
 |---|---|---|
-| GUI 레이아웃 | `layout/` 패키지 | 2,680줄 (22개 파일) |
-| 이벤트 핸들러 (Mixin, 단일+다중 공용) | `trigger/` 패키지 | 4,667줄 (11개 파일) |
+| GUI 레이아웃 | `layout/` 패키지 | 3,918줄 (26개 파일) |
+| 이벤트 핸들러 (Mixin, 단일+다중 공용) | `trigger/` 패키지 | 6,330줄 (11개 파일) |
 | 테마·공용 위젯·정제 규칙 UI | `style.py` | 881줄 |
 | 수집 워커 (QThread+multiprocessing) | `worker.py` | 513줄 |
 | 요청 생성·데이터 추출 | `engine.py` | 320줄 |
@@ -55,7 +55,7 @@ GUI 시작 버튼
 **`main.py`**: PyQt6 앱 초기화 → `MainWindowSingle` 시작. `QLocalServer`로 중복 실행 방지, Windows
 작업표시줄 아이콘 등록 처리.
 
-### `layout/` 패키지 (2,680줄, 22개 파일)
+### `layout/` 패키지 (3,918줄, 26개 파일)
 GUI 레이아웃·페이지 정의(로직 없음, 같은 이름의 `trigger/*` Mixin과 다중상속).
 
 | 파일 | 클래스/함수 | 역할 |
@@ -64,6 +64,7 @@ GUI 레이아웃·페이지 정의(로직 없음, 같은 이름의 `trigger/*` M
 | `charts.py`/`statistics.py` | `StatisticsPanel` 등 | 통계 대시보드 — 본문은 독립 패널 위젯(`StatisticsPanel`, `seq_no`로 블루프린트별 범위 지정), 레이아웃별 페이지는 `single/statistics.py`(`StatisticsPageSingle`)·`multi/statistics.py`(`StatisticsPageMulti`, 좌측 수집 대상 목록 + 블루프린트별 패널)(탭 없는 단일 스크롤 화면) — KPI·상태코드·응답시간·응답결과 → 세션 이력 표 → 수집량 추이 카드(기간 필터로 시간대별/주간별/월별을 고르고 전환 버튼으로 최근 기준/현재 일자 기준을 바꿈), 초기화 버튼은 본문 맨 위 우측 |
 | `scheduler.py`/`session.py`/`auth.py` | `SchedulerPage` 등 | 스케줄·세션(딜레이/UA/프록시)·인증 관리 |
 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
+| `window_base.py` | `MainWindowBase` | 단일/다중 메인 윈도우 공통 골격(창 설정·최초 1회 중앙 정렬·사이드바/툴바/스택/상태바 조립) |
 | `single/` | `MainWindowSingle` 등 | 단일 수집 레이아웃 — 기준선 |
 | `multi/` | `MainWindowMulti` 등 | 다중 블루프린트 레이아웃. `single/` 상속 후 훅만 오버라이드 |
 
@@ -71,13 +72,13 @@ GUI 레이아웃·페이지 정의(로직 없음, 같은 이름의 `trigger/*` M
 정제 규칙 UI 빌더(`build_refine_rule_rows`, MonitorPage와 스케줄 등록 화면이 공유). 상세는
 `PREPROCESS.md` §2 참고.
 
-### `trigger/` 패키지 (4,667줄, 11개 파일)
+### `trigger/` 패키지 (6,330줄, 11개 파일)
 `layout/single·multi`의 각 페이지에 Mixin으로 주입되는 이벤트 핸들러(레이아웃-로직 분리). 단일·다중
 수집이 이 패키지 하나를 공유.
 
 | 파일 | 클래스 | 연결 대상 |
 |---|---|---|
-| `common.py` | — | 싱글턴·페이지 간 공유 헬퍼(DB 설정 그리드 등) |
+| `common.py` | — | 싱글턴·페이지 간 공유 헬퍼(DB 설정 그리드·DB 전송 페이지, 모달 다이얼로그 골격 등) |
 | `log_viewer.py` | `LogViewerDialog` | 수집 로그 뷰어(레벨 필터+검색) |
 | `toolbar.py`/`dashboard.py` | `GlobalToolbarTriggers` 등 | 시작/중지, 수집 시작, CSV 내보내기 |
 | `monitor.py` | `MonitorPageTriggers` | 테이블 필터, 정제 실행, 결과 추출 |

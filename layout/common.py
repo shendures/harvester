@@ -1,7 +1,7 @@
 # layout/common.py
-# layout_single.py/layout_multi.py 양쪽(및 그 서브패키지)이 공유하는
-# 테마 상수·헬퍼·상태바 빌더 허브. single/·multi/ 는 이 파일만 참조하고
-# 서로를 직접 import하지 않는다(단, multi는 single을 상속 목적으로 import).
+# single/·multi/ 서브패키지가 공유하는 테마 상수·헬퍼·상태바 빌더 허브.
+# 두 서브패키지는 이 파일만 참조하고 서로를 직접 import하지 않는다
+# (단, multi는 single을 상속 목적으로 import).
 
 from conf import DataStore
 from style import THEME, Parts, EqualSpacingTable, StatCard, CenteredHandleSplitter
@@ -163,13 +163,13 @@ def build_status_bar(open_log_viewer_callback):
 
 
 def build_reset_button(parts, parent, *, title: str, text: str, on_confirmed,
-                        informative_text: str = None, label: str = "RESET"):
+                        informative_text: str = None):
     """"초기화"류의 되돌릴 수 없는 액션 버튼을 만든다. 클릭 시
     trigger.common._confirm_destructive_action()으로 Yes/No 재확인을 거친 뒤에만
     on_confirmed()를 실행한다 — build_status_bar()와 동일하게 실제 로직은 호출부의
     콜백이 담당하고, 이 함수는 UI 조립 + 확인 게이팅만 담당한다. 통계 분석 RESET
     외에 다른 페이지가 같은 "재확인 후 초기화" 버튼이 필요할 때도 그대로 재사용한다."""
-    btn = parts.action_btn(label)
+    btn = parts.action_btn("RESET")
 
     def _on_click():
         if _confirm_destructive_action(parent, title, text, informative_text):
@@ -196,9 +196,11 @@ def build_popup_dialog(parent, title: str, size: tuple, min_size: tuple) -> tupl
     return dlg, lay
 
 
+SPLITTER_HANDLE_WIDTH = 9
+
+
 def build_master_detail_splitter(main_widget, detail_widget, orientation, *,
-                                  handle_width: int = 9, centered: bool = False,
-                                  stretch: tuple = (1, 0)):
+                                  centered: bool = False, stretch: tuple = (1, 0)):
     """main_widget/detail_widget를 담은 QSplitter(centered=True면 세로 핸들
     중앙선을 직접 그리는 CenteredHandleSplitter)를 조립한다. Raw/정제 탭의
     테이블+상세 카드, Raw/정제 비교 팝업의 좌우 카드, MainWindowMulti의 정제
@@ -208,7 +210,7 @@ def build_master_detail_splitter(main_widget, detail_widget, orientation, *,
     splitter_cls = CenteredHandleSplitter if centered else QSplitter
     split = splitter_cls(orientation)
     split.setChildrenCollapsible(False)
-    split.setHandleWidth(handle_width)
+    split.setHandleWidth(SPLITTER_HANDLE_WIDTH)
     split.addWidget(main_widget)
     split.addWidget(detail_widget)
     split.setStretchFactor(0, stretch[0])

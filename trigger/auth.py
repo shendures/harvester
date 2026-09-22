@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
-    QFileDialog, QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QComboBox,
+    QFileDialog, QMessageBox, QHBoxLayout, QLineEdit, QComboBox,
 )
 from PyQt6.QtCore import Qt
 
@@ -13,7 +13,7 @@ from style import Divider
 
 from .common import (
     parts, TEXT_PRIMARY, TEXT_SECONDARY, GREEN, AMBER,
-    _log, _default_dialog_qss, _show_message_dialog,
+    _log, _build_modal_dialog, _build_dialog_button_row, _show_message_dialog,
 )
 
 class AuthManagerPageTriggers:
@@ -24,14 +24,7 @@ class AuthManagerPageTriggers:
         _log(self, level, message)
 
     def _add_cred_dialog(self):
-        dlg = QDialog(self)
-        dlg.setWindowTitle("자격증명 추가")
-        dlg.setFixedWidth(560)
-        dlg.setStyleSheet(_default_dialog_qss())
-
-        vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(22, 18, 22, 18)
-        vl.setSpacing(10)
+        dlg, vl = _build_modal_dialog(self, "자격증명 추가", 560, spacing=10)
         vl.addWidget(parts.make_label("자격증명 추가", TEXT_PRIMARY, 13, True))
         vl.addWidget(Divider())
 
@@ -64,7 +57,6 @@ class AuthManagerPageTriggers:
         exp_row.addWidget(exp_inp, 1)
         vl.addLayout(exp_row)
 
-        btn_row = QHBoxLayout()
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.close)
         ok_btn = parts.action_btn("저장")
@@ -84,11 +76,7 @@ class AuthManagerPageTriggers:
             dlg.close()
 
         ok_btn.clicked.connect(_do_add)
-        btn_row.addStretch()
-        btn_row.addWidget(ok_btn)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(cancel_btn)
-        vl.addLayout(btn_row)
+        vl.addLayout(_build_dialog_button_row(ok_btn, cancel_btn))
         dlg.adjustSize()
         dlg.exec()
 

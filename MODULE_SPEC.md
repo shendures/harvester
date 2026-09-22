@@ -93,13 +93,14 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
 | 공용 | `statistics.py`/`charts.py` | `StatisticsPanel`/`StatisticsPageBase` 등 | 통계 대시보드 본문(수집 상태 평가 배너 + 지표별 값·회차 패턴 근거 표와 하단에 총평 문단과 이슈별 "원인. 해결 방법." 항목을 평문으로 보여주는 종합 평가 팝업 + 단일 스크롤 화면, 독립 패널 위젯, `seq_no`로 블루프린트별 범위 지정, `StatisticsPageBase`는 single/multi 페이지가 공유하는 골격 — 루트 조립과 `reload()`/`set_status()`/`set_collecting()` 계약, 수집 중 여부는 툴바 `running_changed` 시그널을 창이 연결해 주입), 커스텀 차트(`RankedBarChart`/`GroupedBarChart`) |
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
-| single | `main_window.py` | `MainWindowSingle` | 사이드바+툴바+스택 위젯 조립 |
+| 공용 | `window_base.py` | `MainWindowBase` | single/multi 메인 윈도우 공통 골격 — 창 기본 설정, 최초 1회 중앙 정렬, "사이드바 \| (툴바/스택/상태바)" 조립(`_assemble_shell`)과 공통 시그널 연결 |
+| single | `main_window.py` | `MainWindowSingle(MainWindowBase)` | 단일 블루프린트용 페이지 생성·스택 등록 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
 | single | `common.py` | `ActiveBlueprintMixin` | 활성 블루프린트 조회(Multi 확장 지점) |
 | single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 |
 | single | `monitor.py` | `MonitorPageSingle` | 원본/정제규칙/정제결과/비교 4탭 |
 | single | `statistics.py` | `StatisticsPageSingle(StatisticsPageBase)` | 전체 합산 통계 패널 1개를 감싼 통계 분석 페이지 |
-| multi | `main_window.py` | `MainWindowMulti` | 블루프린트별 페이지 번들 지연 생성·관리 |
+| multi | `main_window.py` | `MainWindowMulti(MainWindowBase)` | 블루프린트별 페이지 번들 지연 생성·관리 |
 | multi | `sidebar.py`/`toolbar.py` | `*Multi(*Single)` | 표시 항목 재정의(인증관리 제거 등) |
 | multi | `dashboard.py`/`monitor.py` | `*Multi(*Single)` | single 상속, 슬롯 배치만 조정 |
 | multi | `statistics.py` | `StatisticsPageMulti(StatisticsPageBase)` | 좌측 수집 대상 목록 + 우측 블루프린트별 `StatisticsPanel`(지연 생성) |
@@ -116,7 +117,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 
 | 파일 | 클래스 | 기능 |
 |---|---|---|
-| `common.py` | (다수 함수) | 공용 허브 — task 설정 적용, 블루프린트 검증(`engine`), 추출/DB 설정 UI 빌더 |
+| `common.py` | (다수 함수) | 공용 허브 — task 설정 적용, 블루프린트 검증(`engine`), 추출/DB 설정 UI 빌더, 모달 다이얼로그 골격·버튼 행(`_build_modal_dialog`/`_build_dialog_button_row`) |
 | `auth.py` | `AuthManagerPageTriggers` | 자격증명 추가/삭제/내보내기 |
 | `dashboard.py` | `DashboardPageTriggers` | 실시간 행 추가, 세션 현황, CSV 내보내기 |
 | `log_viewer.py` | `LogViewerDialog` | 로그 뷰어(레벨 필터 + 키워드 검색) |

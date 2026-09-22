@@ -15,7 +15,7 @@ from .common import request_info
 class SidebarSingle(QWidget):
     """
     사이드바 뼈대(로고·구분선·NAVIGATOR/SETTINGS 섹션·하단 연결 상태줄)를 구성한다.
-    SidebarMulti(layout_multi.py)가 이 클래스를 상속해 항목 목록(_nav_items/
+    SidebarMulti(layout/multi/sidebar.py)가 이 클래스를 상속해 항목 목록(_nav_items/
     _settings_items)만 오버라이드하므로, 뼈대를 고치면 양쪽에 함께 반영된다.
     """
     page_changed = pyqtSignal(int)

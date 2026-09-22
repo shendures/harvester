@@ -306,7 +306,7 @@ class MainWindowTriggersSingle:
 
 
 # ══════════════════════════════════════════════════════
-#  다중 수집 전용 트리거 — layout_multi.MainWindowMulti가 사용
+#  다중 수집 전용 트리거 — layout.multi.MainWindowMulti가 사용
 # ══════════════════════════════════════════════════════
 # MainWindowTriggersMulti는 MainWindowTriggersSingle를 상속해, 단일 블루프린트를
 # 전제한 워커 기동/완료 처리를 "블루프린트 번들 라우팅" 방식으로 오버라이드합니다.
@@ -314,7 +314,7 @@ class MainWindowTriggersSingle:
 # 함께 오버라이드합니다(§ 아래). 나머지 동작(_switch_page, _stop_crawl, exit_app
 # 등)은 위 MainWindowTriggersSingle를 그대로 상속합니다 — 다중 수집 쪽에서
 # self.dashboard/self.monitor_page가 항상 "활성 번들"의 페이지를 가리키도록
-# layout_multi._activate_blueprint()가 유지하므로 참조가 안전합니다.
+# MainWindowMulti._activate_blueprint()가 유지하므로 참조가 안전합니다.
 #
 # _build_task()/_on_finished()는 위 MainWindowTriggersSingle의 단일 수집용
 # 해당 로직(GlobalToolbarTriggers._actual_start()/_on_finished())을

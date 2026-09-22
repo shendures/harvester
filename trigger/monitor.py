@@ -8,7 +8,7 @@ import sys
 import subprocess
 
 from PyQt6.QtWidgets import (
-    QMessageBox, QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
+    QMessageBox, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget, QSizePolicy, QScrollArea,
     QAbstractItemView,
 )
@@ -26,8 +26,8 @@ from .common import (
     parts, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
     _normalize_save_type, _get_log_manager, _boxed_panel_qss,
-    _build_db_settings_fields, _build_output_file_page, _wire_db_test_button,
-    _build_collect_settings_fields, _default_dialog_qss, _wire_output_mode_toggle,
+    _build_output_file_page, _build_output_db_page,
+    _build_collect_settings_fields, _build_modal_dialog, _build_dialog_button_row, _wire_output_mode_toggle,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
     _handle_custom_rule_toggle,
 )
@@ -382,7 +382,7 @@ class MonitorPageTriggers:
     def _has_collected_data_or_warn(self) -> bool:
         """self._collected_data가 있으면 True, 없으면 경고를 띄우고 False를 반환합니다.
 
-        "제외 필드 지정" 체크박스 활성화 시(layout_single.py)와 "⚙ 필드 선택" 버튼
+        "제외 필드 지정" 체크박스 활성화 시(layout/single/monitor.py)와 "⚙ 필드 선택" 버튼
         클릭 시(_open_drop_columns_dialog) 양쪽에서 공유하는 헬퍼입니다.
         """
         if self._collected_data:
@@ -404,14 +404,7 @@ class MonitorPageTriggers:
         if not self._has_collected_data_or_warn():
             return
 
-        dlg = QDialog(self)
-        dlg.setWindowTitle("제외 필드 선택")
-        dlg.setFixedWidth(420)
-        dlg.setStyleSheet(_default_dialog_qss())
-
-        vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(22, 18, 22, 18)
-        vl.setSpacing(0)
+        dlg, vl = _build_modal_dialog(self, "제외 필드 선택", 420)
 
         title_row = QHBoxLayout()
         title_row.addWidget(parts.make_label("제외 필드 선택", TEXT_PRIMARY, 14, True))
@@ -452,9 +445,6 @@ class MonitorPageTriggers:
         vl.addWidget(Divider())
         vl.addSpacing(12)
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-
         def _apply():
             self._drop_column_names = [name for name, btn in field_buttons.items() if btn.isChecked()]
             self._update_drop_columns_summary()
@@ -465,10 +455,7 @@ class MonitorPageTriggers:
         apply_btn.clicked.connect(_apply)
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
-        btn_row.addWidget(apply_btn)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(cancel_btn)
-        vl.addLayout(btn_row)
+        vl.addLayout(_build_dialog_button_row(apply_btn, cancel_btn))
 
         dlg.adjustSize()
         dlg.exec()
@@ -730,13 +717,11 @@ class MonitorPageTriggers:
             동안만 잠깐 reparent했다가 닫히면 다시 떼어낸다(캐시된 위젯이므로
             다이얼로그가 파괴될 때 함께 파괴되면 안 된다).
         """
-        dlg = QDialog(self)
         if collect is not None:
             target_title = self._active_blueprint_info().get("title")
             title = f"수집 설정 - {target_title}" if target_title else "수집 설정"
         else:
             title = "추출 설정"
-        dlg.setWindowTitle(title)
         # "인증 관리" 섹션(전역 인증 옵션 체크박스 3개 + 상태 라벨)은 단일 레이아웃의
         # 전체 화면 폭을 기준으로 만들어져 있어, 기존 500px 폭에서는 라벨이 잘린다.
         # "수집 설정" 섹션도 Delay(s)/Threads/Timeout(s)/Retry 4개 라벨+스핀박스를
@@ -744,12 +729,9 @@ class MonitorPageTriggers:
         # 폭이 필요하다 — 특히 가장 긴 라벨인 "Timeout(s)"가 680px에서는 잘렸다.
         # collect 또는 auth_page 중 하나라도 있으면(=다중 레이아웃 호출) 폭을 넓힌다 —
         # 단일 레이아웃 호출(collect=auth_page=None)은 계속 500px 그대로.
-        dlg.setFixedWidth(760 if (collect is not None or auth_page is not None) else 500)
-        dlg.setStyleSheet(_default_dialog_qss())
-
-        vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(22, 18, 22, 18)
-        vl.setSpacing(0)
+        dlg, vl = _build_modal_dialog(
+            self, title, 760 if (collect is not None or auth_page is not None) else 500,
+        )
 
         def _boxed(content: QWidget, margins: int = 14) -> QWidget:
             """"상세 설정" 박스(아래 QStackedWidget#extractStack)와 동일한 프레임
@@ -839,29 +821,10 @@ class MonitorPageTriggers:
         file_page.layout().addWidget(open_path_chk)
         stack.addWidget(file_page)  # index 0
 
-        db_page = QWidget()
-        dp = QVBoxLayout(db_page)
-        dp.setContentsMargins(14, 14, 14, 14)
-        dp.setSpacing(8)
-
-        grid = QGridLayout()
-        grid.setSpacing(8)
-        grid.setColumnStretch(1, 1)
-        db_widgets = _build_db_settings_fields(grid, self.output_info["extract"]["db"])
+        db_page, db_widgets = _build_output_db_page(self.output_info["extract"]["db"], dlg)
         _db_type, _db_host, _db_port  = db_widgets["db_type"], db_widgets["host"], db_widgets["port"]
         _db_name, _db_schema          = db_widgets["name"], db_widgets["schema"]
         _db_user, _db_pw, _db_data    = db_widgets["user"], db_widgets["password"], db_widgets["save_data_nm"]
-        dp.addLayout(grid)
-
-        test_row = QHBoxLayout()
-        test_row.setSpacing(10)
-        test_btn = parts.outline_btn("TEST CONNECTION")
-        test_result_lbl = parts.make_label("", TEXT_MUTED, 11)
-        _wire_db_test_button(test_btn, test_result_lbl, db_widgets, dlg)
-        test_row.addWidget(test_btn)
-        test_row.addWidget(test_result_lbl)
-        test_row.addStretch()
-        dp.addLayout(test_row)
         stack.addWidget(db_page)  # index 1
 
         stack.setCurrentIndex(0 if is_file_mode else 1)
@@ -900,9 +863,6 @@ class MonitorPageTriggers:
         vl.addSpacing(16)
         vl.addWidget(Divider())
         vl.addSpacing(12)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
 
         def _apply_file():
             try:
@@ -971,10 +931,7 @@ class MonitorPageTriggers:
         apply_btn.clicked.connect(_apply_file)
         cancel_btn = parts.outline_btn("취소")
         cancel_btn.clicked.connect(dlg.reject)
-        btn_row.addWidget(apply_btn)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(cancel_btn)
-        vl.addLayout(btn_row)
+        vl.addLayout(_build_dialog_button_row(apply_btn, cancel_btn))
 
         update_dialog_size()
         dlg.adjustSize()

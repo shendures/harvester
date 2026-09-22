@@ -217,7 +217,6 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.timeout_spin     = widgets["timeout_spin"]
         self.retry_spin       = widgets["retry_spin"]
         self.auto_save_chk    = widgets["auto_save_chk"]
-        self.auto_src_raw_btn = widgets["auto_src_raw_btn"]
         self.auto_src_ref_btn = widgets["auto_src_ref_btn"]
 
         # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전

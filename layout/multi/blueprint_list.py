@@ -1,15 +1,14 @@
 # layout/multi/blueprint_list.py
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QMessageBox,
-    QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
+    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
 
 from conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from style import EqualSpacingTable
-from trigger.common import _default_msgbox_qss, _stop_btn_qss
+from trigger.common import _show_message_dialog, _stop_btn_qss
 from ..common import (
     parts, theme, BG_HOVER, ACCENT, ACCENT_LIGHT, GREEN,
     _blueprint_auth_method, _blueprint_requires_auth, row_of_seq,
@@ -370,14 +369,10 @@ class BlueprintListPage(QWidget):
         return result
 
     def _warn_no_selection(self) -> None:
-        """"선택 수집" 클릭 시 체크된 대상이 없으면 안내 — 앱 전역에서 반복 쓰이는
-        다크 테마 QMessageBox 스타일(_default_msgbox_qss)을 그대로 재사용한다."""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("수집 대상 없음")
-        msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setText("수집 대상을 선택한 뒤 수집을 진행해 주세요.")
-        msg.setStyleSheet(_default_msgbox_qss())
-        msg.exec()
+        """"선택 수집" 클릭 시 체크된 대상이 없으면 안내한다."""
+        _show_message_dialog(
+            self, "수집 대상 없음", "수집 대상을 선택한 뒤 수집을 진행해 주세요.", font_size=12,
+        )
 
     def _on_collect_clicked(self) -> None:
         """"선택 수집" 버튼 — 평소엔 체크된 것만 실행("비전체"), 자기 자신이 실행 중

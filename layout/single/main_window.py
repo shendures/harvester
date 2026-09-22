@@ -1,13 +1,12 @@
 # layout/single/main_window.py
 
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
+from PyQt6.QtWidgets import QStackedWidget
 
-from trigger import LogViewerDialog, MainWindowTriggersSingle
-from ..common import build_status_bar, center_window_on_screen
+from trigger import MainWindowTriggersSingle
+from ..window_base import MainWindowBase
 from ..scheduler import SchedulerPage
 from ..session import SessionSettingsPage
 from ..auth import AuthManagerPage
-from ..tray import TrayManager
 from ..common import _blueprint_auth_method, _blueprint_requires_auth
 from .common import request_info
 from .toolbar import GlobalToolbarSingle
@@ -17,52 +16,12 @@ from .monitor import MonitorPageSingle
 from .statistics import StatisticsPageSingle
 
 
-class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("DataCrawler v2.0")
-        self.resize(1843, 1152)
-        self.setMinimumSize(960, 640)
-        self._worker = None
-        self._pending_queue = []   # 스케줄 대기 큐: 실행 중 작업이 있을 때 후속 스케줄을 순서대로 보관
-
-        # ── log_manager 를 _build() 이전에 먼저 생성 ──────────────────────
-        # AuthManagerPage 등 _build() 안에서 생성되는 모든 페이지가
-        # self.window().log_manager 를 통해 즉시 참조할 수 있도록 선행 생성합니다.
-        self.log_manager = LogViewerDialog(parent=self)
-
-        self._build()
-        self.tray_manager = TrayManager(self)
-        self._centered_once = False
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        # 트레이에서 창을 복원할 때마다 다시 중앙으로 튀지 않도록 최초 1회만 정렬한다.
-        if not self._centered_once:
-            self._centered_once = True
-            center_window_on_screen(self)
+class MainWindowSingle(MainWindowBase, MainWindowTriggersSingle):
+    _WINDOW_TITLE = "DataCrawler v2.0"
 
     def _build(self):
-
-        left_widget = QWidget()
-        self.setCentralWidget(left_widget)
-        layout = QHBoxLayout(left_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
         self.sidebar = SidebarSingle()
-        self.sidebar.page_changed.connect(self._switch_page)
-        layout.addWidget(self.sidebar)
-
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
-
         self.global_toolbar = GlobalToolbarSingle()
-        self.global_toolbar.start_requested.connect(self._start_crawl)
-        self.global_toolbar.stop_requested.connect(self._stop_crawl)
-        right_layout.addWidget(self.global_toolbar)
 
         self.stack = QStackedWidget()
         self.dashboard = DashboardPageSingle()
@@ -96,13 +55,4 @@ class MainWindowSingle(QMainWindow, MainWindowTriggersSingle):
             auth_page=getattr(self, 'auth_page', None),
         )
 
-        right_layout.addWidget(self.stack, 1)
-
-        status_bar, self.status_level, self.status_msg = build_status_bar(self._open_log_viewer)
-        right_layout.addWidget(status_bar)
-
-        self.log_manager.last_log.connect(self._update_status_bar)
-
-        layout.addWidget(right_widget, 1)
-
-
+        self._assemble_shell()
