@@ -108,7 +108,7 @@ SPEED_CHART_TIP = (
 OUTCOME_CHART_TIP = (
     "받은 응답을 4가지로 나눈 결과입니다.\n"
     "정상 수집: 실제로 데이터를 가져옴\n"
-    "빈 응답: 페이지는 열렸지만 데이터 없음\n"
+    "데이터 누락: 페이지는 열렸지만 데이터 없음\n"
     "HTTP 오류: 사이트가 오류로 응답함\n"
     "연결 실패: 사이트에 연결하지 못함"
 )
@@ -247,7 +247,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         row2.addWidget(sw, 1)
 
         # 상태 코드가 못 가르는 축 — 200 응답이라도 추출 0건이면 쓸 수 없는
-        # 응답이므로 "빈 응답"으로 따로 세어, 상태 코드 뒤에 가려진 수집 실패를
+        # 응답이므로 "데이터 누락"으로 따로 세어, 상태 코드 뒤에 가려진 수집 실패를
         # 드러낸다.
         ow, ol = parts.card_widget("응답 결과 구성", help_text=OUTCOME_CHART_TIP)
         self.outcome_chart = RankedBarChart()

@@ -94,7 +94,7 @@ def _dig(d: dict, dotted_path: str):
 def validate_blueprint_conditions(request_info: dict) -> str | None:
     """conditions에 스파이더 타입별 필수 키가 채워져 있는지 검사한다.
     문제 없으면 None, 있으면 누락된 항목을 쉼표로 이은 문자열을 반환한다 — 수집을
-    막지는 않으며, 누락 시 추출이 KeyError로 실패해 빈 응답으로 집계된다."""
+    막지는 않으며, 누락 시 추출이 KeyError로 실패해 데이터 누락으로 집계된다."""
     mode = conf.get_spider_mode(request_info)
     conditions = request_info.get("conditions") or {}
     missing = []
