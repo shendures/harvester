@@ -905,6 +905,19 @@ def _percent(part: int, whole: int) -> str:
     return f"{part / whole * 100:.1f}%" if whole else "0%"
 
 
+def _item_range_text(pages: list) -> str:
+    """페이지당 수집량의 최소/최대 건수와 그 비율을 한 줄로 — 최소=최대면 건수를
+    한 번만 쓰고 괄호에 비율(100%)만 덧붙인다. pages가 비어 있거나 최대가 0이면
+    "—"(0으로 나누기·의미 없는 0%를 피함)."""
+    if not (pages and max(pages)):
+        return "—"
+    low, high = min(pages), max(pages)
+    ratio = f"({_percent(low, high)})"
+    if low == high:
+        return f"{_count_text(high)}건{ratio}"
+    return f"{_count_text(low)}건/{_count_text(high)}건{ratio}"
+
+
 def _status_group(code: str) -> str:
     """상태 코드를 2xx/3xx/4xx/5xx로 묶는다. engine.handle_request_failure()가
     보고하는 연결 실패("000")는 HTTP 에러와 원인·대응이 달라 따로 분류한다."""
@@ -1318,13 +1331,13 @@ class StatisticsPageTriggers:
         return text
 
     def _refresh_process_kpis(self, agg: dict) -> None:
-        """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소÷최대 비율)과
+        """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소·최대 건수+비율)과
         유효 데이터 비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
         수집")만 대상으로 해 데이터 누락이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
         필드 채움 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
         self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
-        self.kpi_item_range.update_value(_percent(min(pages), max(pages)) if pages and max(pages) else "—")
+        self.kpi_item_range.update_value(_item_range_text(pages))
 
         field_items = agg["field_items"]
         self.kpi_valid_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
