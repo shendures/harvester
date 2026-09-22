@@ -33,7 +33,7 @@ TREND_MODE_RECENT, TREND_MODE_CALENDAR = "최근 기준", "현재 일자 기준"
 
 NO_BODY_TEXT = "-"
 # 요청 상세 표의 결과 문구 — worker가 기록한 outcome(로그 레벨)을 표시 문구로 옮긴다
-REQUEST_RESULTS = {"ok": "성공", "warn": "빈 응답", "err": "실패"}
+REQUEST_RESULTS = {"ok": "성공", "warn": "데이터 누락", "err": "실패"}
 REQUEST_RESULT_MISSED, REQUEST_RESULT_UNKNOWN = "미수집", "-"
 HOURS_PER_DAY = 24
 DAYS_PER_WEEK = 7
@@ -51,7 +51,7 @@ TREND_ALL_TIME_CAPTIONS = {
 # 통계 "응답 결과 구성" 카드의 4분류 — 표시 순서와 색을 한곳에 묶는다.
 # "연결 실패"에 TEXT_MUTED를 쓰는 건 대시보드 실시간 테이블이 상태 코드 "000"에 쓰는
 # 색(STATUS_CODE_COLORS)과 색 언어를 맞추기 위해서다.
-OUTCOME_OK, OUTCOME_EMPTY = "정상 수집", "빈 응답"
+OUTCOME_OK, OUTCOME_EMPTY = "정상 수집", "데이터 누락"
 OUTCOME_HTTP_ERR, OUTCOME_CONN_FAIL = "HTTP 오류", "연결 실패"
 OUTCOME_SEGMENTS = (
     (OUTCOME_OK, GREEN), (OUTCOME_EMPTY, AMBER),
@@ -202,7 +202,7 @@ SPEC_HTTP_ERR = MetricSpec(
     AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
     "일부 페이지에서 오류 응답을 받았습니다.", "상태 코드 분포에서 오류 종류를 확인하세요.")
 SPEC_EMPTY = MetricSpec(
-    AXIS_YIELD, "빈 응답률", 0.30, 0.60, False, True, "건",
+    AXIS_YIELD, "데이터 누락률", 0.30, 0.60, False, True, "건",
     "페이지는 열렸지만 데이터를 찾지 못했습니다.",
     "사이트 구조가 바뀌었을 수 있으니 수집 조건을 확인하세요.")
 SPEC_VALID = MetricSpec(
@@ -445,7 +445,7 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     low, high = _wilson_bounds(hits, sample)
-    # 빈 응답 100%는 수집 횟수를 기다릴 이유가 없다 — 표본이 충분해 신뢰구간이 문제 기준을 넘으면 첫 수집부터 판정
+    # 데이터 누락 100%는 수집 횟수를 기다릴 이유가 없다 — 표본이 충분해 신뢰구간이 문제 기준을 넘으면 첫 수집부터 판정
     all_empty = spec is SPEC_EMPTY and hits == sample
     gated = _session_gated(spec, sessions) and not all_empty
     level = DIAG_HOLD if gated else _ratio_level(spec, low, high)
@@ -734,7 +734,7 @@ def metric_criteria_detail(spec: MetricSpec) -> str:
     return (f"절대 기준 — {line}\n"
             f"수집 {PATTERN_MIN_SESSIONS}회 이상부터는 회차별로 일정하면 정상으로 보고, "
             "문제 기준만 안전망으로 적용합니다."
-            + ("\n빈 응답이 100%이면 수집 횟수와 무관하게 판정합니다." if spec is SPEC_EMPTY else ""))
+            + ("\n데이터 누락이 100%이면 수집 횟수와 무관하게 판정합니다." if spec is SPEC_EMPTY else ""))
 
 
 def _pattern_range_text(verdict: MetricVerdict) -> str:
@@ -849,7 +849,7 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         *_min_sessions_lines(),
         f"· 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지도 봅니다",
         "  (일정하면 정상, 들쭉날쭉하면 주의·문제)",
-        "· 빈 응답이 100%이면 횟수와 무관하게 바로 판정합니다",
+        "· 데이터 누락이 100%이면 횟수와 무관하게 바로 판정합니다",
         f"· 최근 {RECENT_WINDOW}건이 이전보다 눈에 띄게 나빠지면 따로 알립니다",
         "",
         "■ 지금 상태",
@@ -915,8 +915,8 @@ def _status_group(code: str) -> str:
 
 def _outcome(row: dict, code: str, is_ok: bool) -> str:
     """응답을 실제로 쓸 수 있었는지 기준으로 4분류한다 — 상태 코드만으로는
-    "200인데 추출 0건"(빈 응답)이 성공과 구분되지 않는다. 추출 규칙 예외
-    (extract_error)도 데이터 0건이라 빈 응답으로 센다. 두 필드는 과거
+    "200인데 추출 0건"(데이터 누락)이 성공과 구분되지 않는다. 추출 규칙 예외
+    (extract_error)도 데이터 0건이라 데이터 누락으로 센다. 두 필드는 과거
     stats_history.json 행에는 없을 수 있는데, 그때는 구분할 근거가 없으므로
     정상 수집으로 둔다."""
     if code == NO_STATUS_CODE:
@@ -1138,7 +1138,7 @@ def _grade_breakdown(verdicts: list) -> list:
 
 
 def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
-    """지표 하나의 이슈 항목 — 회차 불안정이면 그 사실을, 빈 응답이면 원인 후보별 항목을, 그 밖에는
+    """지표 하나의 이슈 항목 — 회차 불안정이면 그 사실을, 데이터 누락이면 원인 후보별 항목을, 그 밖에는
     지표 고유의 원인과 해결 방법을 한 항목으로 적는다."""
     spec = verdict.spec
     if _is_unstable(verdict):
@@ -1243,7 +1243,7 @@ class StatisticsPageTriggers:
         self._refresh_empty_notice(total, agg)
 
     def _refresh_empty_notice(self, total: int, agg: dict) -> None:
-        """응답이 전부 빈 응답일 때만 그 종합 원인을 보관한다 — 수집은 막지 않고, 종합 평가 팝업이
+        """응답이 전부 데이터 누락일 때만 그 종합 원인을 보관한다 — 수집은 막지 않고, 종합 평가 팝업이
         표 아래에 보여준다. seq_no가 없으면(단일 모드 전체 합산) 유일한 블루프린트의 설정 누락을 확인한다."""
         if not (total > 0 and agg["outcome"].get(OUTCOME_EMPTY, 0) == total):
             self._empty_notice = None
@@ -1320,7 +1320,7 @@ class StatisticsPageTriggers:
     def _refresh_process_kpis(self, agg: dict) -> None:
         """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소÷최대 비율)과
         유효 데이터 비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
-        수집")만 대상으로 해 빈 응답이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
+        수집")만 대상으로 해 데이터 누락이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
         필드 채움 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
         self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")

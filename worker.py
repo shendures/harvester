@@ -280,7 +280,7 @@ class MultiprocessWorker(QThread):
         processed_urls.add(res_url)
 
         # 200 응답인데 예외 없이 추출 0건인지 판정 — 아래 로그 분기와 url_map이 같은
-        # 값을 공유한다. 통계 페이지가 이 응답을 "빈 응답"으로 따로 세려면 url_map에도
+        # 값을 공유한다. 통계 페이지가 이 응답을 "데이터 누락"으로 따로 세려면 url_map에도
         # 남아야 하는데, 기존에는 로그로만 흘러가 통계에서는 성공으로 집계됐다.
         extracted     = resp_info.get("data") or []
         extract_error = resp_info.get("extract_error")
