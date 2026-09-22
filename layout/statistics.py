@@ -575,7 +575,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
     # ── 전체 보기 팝업 (전체 이력을 기간의 한 주기로 접어 합산) ──────
     def _open_trend_popup(self) -> None:
-        """선택한 기간의 수집량 추이를 전체 이력 기준(00~24시 / 요일별 / 일자별
+        """선택한 기간의 수집량 추이를 전체 이력 기준(00~23시 / 요일별 / 일자별
         누적)으로 새 창에 보여주는 모달리스 팝업을 연다. 데이터는 열릴 때 한 번만
         계산해서 그린다."""
         trend = self._aggregate_all_time(self.trend_period)
