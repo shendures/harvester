@@ -211,6 +211,7 @@ class MainWindowTriggersSingle:
             self._consume_pending_queue()
             return
 
+        self.dashboard.mark_result_displayed()
         self.monitor_page.preprocess(task)
         self.stats_page.reload()
 
@@ -517,6 +518,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             self._consume_pending_queue()
             return
 
+        dash.mark_result_displayed()
         mon.preprocess(task)
         self.stats_page.reload()
 
