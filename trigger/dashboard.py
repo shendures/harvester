@@ -69,11 +69,6 @@ class DashboardPageTriggers:
 
         self.mon_row_count_lbl.setText(f"{self.monitor_table.rowCount()} rows")
 
-        # Raw 수집 결과 표(_add_realtime_row)에 행이 표출되는 조건과 동일
-        data = resp_info.get("data", [])
-        if isinstance(data, list) and data:
-            self.mark_result_displayed()
-
         if str(resp_info.get("status", "")).strip() != "200":
             self._session_error_count += 1
         try:

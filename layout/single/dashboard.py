@@ -261,8 +261,8 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
             self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
 
     def mark_result_displayed(self):
-        """수집 결과가 Raw 수집 결과 표에 표출되기 시작하면 "결과 처리" 단계를 켠다.
-        행마다 호출되므로 이미 켜져 있으면 스타일을 다시 적용하지 않는다."""
+        """수집이 끝나고 정제·저장 등 후처리가 시작되면 "결과 처리" 단계를 켠다.
+        이미 켜져 있으면 스타일을 다시 적용하지 않는다."""
         if self._step_idx != self._EXTRACT_STEP_IDX:
             self._update_step_ui(self._EXTRACT_STEP_IDX)
 
