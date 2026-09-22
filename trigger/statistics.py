@@ -118,6 +118,15 @@ DIAG_LEVEL_COLORS = {
 # 종합 등급은 지표별 등급 중 가장 나쁜 것을 따른다 — 보류는 "아직 모름"이라 최하위
 DIAG_LEVEL_RANK = {DIAG_HOLD: 0, DIAG_OK: 1, DIAG_WARN: 2, DIAG_PROBLEM: 3}
 
+GRADE_ORDER = (DIAG_OK, DIAG_WARN, DIAG_PROBLEM, DIAG_HOLD, DIAG_PENDING)
+GRADE_MEANINGS = {
+    DIAG_OK: "이상 신호가 없습니다",
+    DIAG_WARN: "확인이 필요한 값이 있습니다",
+    DIAG_PROBLEM: "바로 점검이 필요합니다",
+    DIAG_HOLD: "데이터가 부족해 아직 판단하지 않습니다",
+    DIAG_PENDING: "판단할 수집 기록이 아직 없습니다",
+}
+
 CONFIDENCE_Z = 1.96      # 95% 양측 신뢰수준의 표준정규 분위수
 CONFIDENCE_Z_STRICT = 2.576   # 99% 양측 — 크게 불안정("문제")을 줄 때 요구하는 더 강한 근거
 RECENT_WINDOW = 100      # 최근 악화 감지가 보는 최근 응답 수
@@ -154,6 +163,10 @@ AXIS_MIN_SESSIONS = {
     AXIS_YIELD: 2, AXIS_PERFORMANCE: 2,
     AXIS_QUALITY: 3,
 }
+
+# 종합 평가 표의 "평가 축" 기본 정렬 순서
+AXIS_DISPLAY_ORDER = (AXIS_PERFORMANCE, AXIS_CONNECTION, AXIS_RESPONSE, AXIS_YIELD, AXIS_QUALITY)
+AXIS_RANK = {axis: i for i, axis in enumerate(AXIS_DISPLAY_ORDER)}
 
 
 class MetricSpec(NamedTuple):
@@ -656,6 +669,7 @@ def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
                 for spec, hits, sample in _ratio_samples(window.responses, window.agg)]
     # 절대 기준이 없는 지표라 패턴을 판정하기 전까지는 보류다
     verdicts.append(MetricVerdict(SPEC_SESSION_ITEMS, DIAG_HOLD, None, None, None, 0))
+    verdicts.sort(key=lambda v: AXIS_RANK[v.spec.axis])
     tallies = window.agg["per_session"]
     if len(tallies) >= PATTERN_MIN_SESSIONS:
         verdicts = [_with_pattern(v, tallies) for v in verdicts]
@@ -786,11 +800,7 @@ def diagnosis_tooltip() -> str:
 
 def _grade_guide_lines() -> list:
     """등급별 뜻 — 종합 평가 도움말이 등급 읽는 법으로 보여준다."""
-    return [f"· {DIAG_OK} : 이상 신호가 없습니다",
-            f"· {DIAG_WARN} : 확인이 필요한 값이 있습니다",
-            f"· {DIAG_PROBLEM} : 바로 점검이 필요합니다",
-            f"· {DIAG_HOLD} : 데이터가 부족해 아직 판단하지 않습니다",
-            f"· {DIAG_PENDING} : 판단할 수집 기록이 아직 없습니다"]
+    return [f"· {level} : {GRADE_MEANINGS[level]}" for level in GRADE_ORDER]
 
 
 def _min_sessions_lines() -> list:
@@ -1102,18 +1112,29 @@ def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> li
 
 
 class Review(NamedTuple):
-    """종합 평가 팝업 표 하단의 글 — summary는 총평(최대 2문장), notes는 이슈별 원인과 해결 방법
-    항목이며 등급이 주의·문제일 때만 있다."""
-    summary: str
+    """종합 평가 팝업 표 하단의 글 — grades는 표를 등급별로 묶은 요약(레벨, 문장) 목록으로
+    총평을 대신하며, notes는 이슈별 원인과 해결 방법 항목이며 등급이 주의·문제일 때만 있다."""
+    grades: list
     notes: list
 
 
-REVIEW_SUMMARY_SENTENCES = 2   # 정상·대기 총평에 남기는 배너 문장 수 — 팝업 폭에서 2줄 안에 든다
+REVIEW_SUMMARY_SENTENCES = 2   # 수집 기록이 없을 때 남기는 배너 문장 수 — 팝업 폭에서 2줄 안에 든다
 
 
 def _first_sentences(text: str, count: int) -> str:
     """앞 count개 문장만 남긴다."""
     return " ".join(re.split(r"(?<=\.)\s+", text)[:count])
+
+
+def _grade_breakdown(verdicts: list) -> list:
+    """지표를 등급별로 묶어 "등급 N개(지표명·...) — 뜻" 형태의 줄을 만든다(정상→대기 순, 항목이
+    있는 등급만). 표의 '상태' 열을 그대로 집계한 것이라 표 내용과 항상 일치한다."""
+    grouped = defaultdict(list)
+    for v in verdicts:
+        grouped[v.level].append(v.spec.name)
+    return [(level, f"{level} {len(grouped[level])}개({' · '.join(grouped[level])}) "
+                    f"— {GRADE_MEANINGS[level]}")
+            for level in GRADE_ORDER if grouped[level]]
 
 
 def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
@@ -1128,21 +1149,23 @@ def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
 
 
 def diagnosis_review(evaluation: Evaluation, empty_notice: list | None) -> Review:
-    """표 하단에 보여줄 글을 만든다 — 정상·대기는 배너 문장의 앞 문장들을, 주의·문제는 이상이
-    확인된 평가 항목 수와 이슈별 원인·해결 방법 항목을(심한 것부터) 돌려준다."""
+    """표 아래 글을 만든다 — 표를 등급별로 묶은 요약이 총평을 대신하고, 주의·문제 이슈가
+    있으면 원인·해결 방법 항목을(심한 것부터) 덧붙인다. 판정할 지표 자체가 없으면(수집
+    기록 없음) 등급 묶음 대신 안내 문장 한 줄을 보여준다."""
+    grades = _grade_breakdown(evaluation.verdicts)
     diagnosis = evaluation.diagnosis
+    if not grades:
+        return Review([(DIAG_PENDING, _first_sentences(diagnosis.detail, REVIEW_SUMMARY_SENTENCES))], [])
     if diagnosis.level not in (DIAG_WARN, DIAG_PROBLEM):
-        return Review(_first_sentences(diagnosis.detail, REVIEW_SUMMARY_SENTENCES), [])
+        return Review(grades, [])
 
     issues = sorted((v for v in evaluation.verdicts if v.level in (DIAG_WARN, DIAG_PROBLEM)),
                     key=lambda v: -DIAG_LEVEL_RANK[v.level])
     notes = [note for v in issues for note in _issue_notes(v, empty_notice)]
-    count = len(issues)
     regression = evaluation.regression
     if regression is not None and regression.trend == TREND_WORSE:
         notes.append(regression_text(regression))
-        count += 1
-    return Review(f"{count}개의 평가 항목에서 이상이 확인되었습니다.", notes)
+    return Review(grades, notes)
 
 
 class StatisticsPageTriggers:
