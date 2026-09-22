@@ -43,7 +43,7 @@ WEEKDAY_LABELS = ("일", "월", "화", "수", "목", "금", "토")
 # 전체 보기 팝업의 칸 설명 — 기간의 한 주기(하루/한 주/한 달) 안의 칸을 전체
 # 이력에 걸쳐 접어서 합산한다. layout/statistics.py가 툴팁·팝업 제목에 그대로 쓴다.
 TREND_ALL_TIME_CAPTIONS = {
-    TREND_HOURLY: "00~24시 누적",
+    TREND_HOURLY: "00~23시 누적",
     TREND_WEEKLY: "요일별 누적",
     TREND_MONTHLY: "일자별 누적",
 }
@@ -964,9 +964,9 @@ def _recent_window(period: str, now: datetime, today: datetime) -> TrendWindow:
 
 
 def _calendar_window(period: str, today: datetime) -> TrendWindow:
-    """오늘이 속한 일(00~24시) / 주(일~토) / 월(1일~말일) 전체 구간."""
+    """오늘이 속한 일(00~23시) / 주(일~토) / 월(1일~말일) 전체 구간."""
     if period == TREND_HOURLY:
-        return TrendWindow(today, HOURS_PER_DAY, f"{today.month}/{today.day} 00~24시")
+        return TrendWindow(today, HOURS_PER_DAY, f"{today.month}/{today.day} 00~23시")
     if period == TREND_WEEKLY:
         week_start, week_no = _week_of_month(today)
         return TrendWindow(week_start, DAYS_PER_WEEK, f"{today.month}월 {week_no}주차")
