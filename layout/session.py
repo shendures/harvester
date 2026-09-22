@@ -32,12 +32,10 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         row0.setSpacing(16)
 
         self.ua_check = QCheckBox("User-Agent 랜덤")
-        self.ua_check.setToolTip("요청마다 User-Agent를 무작위로 변경")
         self.ua_check.setChecked(True)
 
         self.cookie_check = QCheckBox("Cookie 랜덤")
         self.cookie_check.setChecked(True)
-        self.cookie_check.setToolTip("요청마다 Cookie 세션을 무작위로 순환")
 
         self._global_cb = QCheckBox("전역 프록시 사용")
         self._global_cb.setChecked(False)
@@ -74,10 +72,8 @@ class SessionSettingsPage(QWidget, SessionSettingsPageTriggers):
         hdr_row.addStretch()
 
         self._test_btn = parts.outline_btn("🔌 연결 테스트")
-        self._test_btn.setToolTip("프록시 목록의 모든 IP에 연결을 시도해 상태를 확인합니다")
         self._test_btn.clicked.connect(self._test_all_proxies)
         self._import_btn = parts.outline_btn("📂 Import")
-        self._import_btn.setToolTip("텍스트/CSV 파일에서 IP:PORT 형식의 프록시 목록을 불러옵니다")
         self._import_btn.clicked.connect(self._import_proxy_file)
         self._add_btn = parts.action_btn("+ 추가", ACCENT, ACCENT_HOVER)
         self._add_btn.clicked.connect(self._add_proxy_dialog)

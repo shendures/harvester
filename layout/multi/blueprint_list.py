@@ -231,10 +231,8 @@ class BlueprintListPage(QWidget):
             # 클로저로 직접 캡처해 동작하므로(체크박스와 달리) 정렬로 행 순서가
             # 바뀌어도 재탐색이 필요 없다.
             action_wrap, action_buttons = self._make_action_button_cell([
-                ("▶", "이 블루프린트만 즉시 수집",
-                 lambda _, s=seq_no: self._on_row_run_btn_clicked(s), self._RUN_BTN_QSS),
-                ("⚙", "수집 설정",
-                 lambda _, s=seq_no: self.settings_requested.emit(s), self._SETTINGS_BTN_QSS),
+                ("▶", lambda _, s=seq_no: self._on_row_run_btn_clicked(s), self._RUN_BTN_QSS),
+                ("⚙", lambda _, s=seq_no: self.settings_requested.emit(s), self._SETTINGS_BTN_QSS),
             ])
             self.table.setCellWidget(row, self._COLUMNS.index("Run/Manage"), action_wrap)
             run_btn = action_buttons[0]
@@ -311,7 +309,7 @@ class BlueprintListPage(QWidget):
     def _make_action_button_cell(self, specs: list) -> tuple[QWidget, list]:
         """아이콘 전용 버튼 1개 이상(예: ▶ 실행 + ⚙ 설정)을 체크박스와 동일한
         방식(투명 배경 래퍼 + 좌우 stretch로 중앙 정렬)으로 한 셀에 나란히
-        배치한다. specs는 (text, tooltip, on_click, qss) 튜플 목록이며, 순서
+        배치한다. specs는 (text, on_click, qss) 튜플 목록이며, 순서
         그대로 왼쪽부터 배치된다. (래퍼 위젯, specs 순서와 동일한 QPushButton
         리스트)를 반환한다 — 호출부가 버튼 참조를 보관해 나중에 텍스트/스타일을
         바꿀 수 있도록 한다(행의 ▶→■ 토글 등)."""
@@ -323,14 +321,13 @@ class BlueprintListPage(QWidget):
         wrap_layout.setSpacing(4)
         wrap_layout.addStretch()
         buttons = []
-        for text, tooltip, on_click, qss in specs:
+        for text, on_click, qss in specs:
             btn = parts.outline_btn(text)
             # 셀 위젯은 Qt가 행 높이(row_height=32)에서 상하 여백을 뺀 자리에
             # 배치하므로 실사용 가능한 높이는 32px가 아니라 약 20px다 — 24px로
             # 고정하면 버튼 하단이 그 여백에 가려 잘려 보인다(체크박스는 16px라
             # 문제없었음). 20px로 맞춰 잘림 없이 셀 안에 온전히 들어가게 한다.
             btn.setFixedSize(30, 20)
-            btn.setToolTip(tooltip)
             btn.clicked.connect(on_click)
             btn.setStyleSheet(qss)
             wrap_layout.addWidget(btn)
@@ -443,11 +440,9 @@ class BlueprintListPage(QWidget):
         "⬛ 중지" 배색(_STOP_QSS)과 동일한 관례를 30x20 아이콘 버튼에 적용한다."""
         if running:
             btn.setText("■")
-            btn.setToolTip("이 블루프린트 수집 중지")
             btn.setStyleSheet(self._ROW_STOP_BTN_QSS)
         else:
             btn.setText("▶")
-            btn.setToolTip("이 블루프린트만 즉시 수집")
             btn.setStyleSheet(self._RUN_BTN_QSS)
 
     def _on_row_run_btn_clicked(self, seq_no) -> None:

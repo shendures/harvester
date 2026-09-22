@@ -458,22 +458,18 @@ def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) 
     delay_spin.setValue(defaults.get("delay", 0.5))
     delay_spin.setSingleStep(0.5)
     delay_spin.setDecimals(1)
-    delay_spin.setToolTip("요청 간 대기 시간 (기본 0.5s)")
 
     thread_spin = BoundNoticeSpinBox()
     thread_spin.setRange(1, 16)
     thread_spin.setValue(defaults.get("threads", 4))
-    thread_spin.setToolTip("병렬 수집 스레드 수")
 
     timeout_spin = QSpinBox()
     timeout_spin.setRange(1, 60)
     timeout_spin.setValue(defaults.get("timeout", 10))
-    timeout_spin.setToolTip("요청 최대 대기 시간")
 
     retry_spin = QSpinBox()
     retry_spin.setRange(0, 5)
     retry_spin.setValue(defaults.get("retry", 2))
-    retry_spin.setToolTip("실패 시 재시도 횟수 (기본 2회)")
 
     r1 = QHBoxLayout()
     r1.setSpacing(8)
@@ -507,17 +503,12 @@ def _build_collect_settings_fields(defaults: dict, *, single_row: bool = False) 
     r3 = QHBoxLayout()
     r3.setSpacing(8)
     auto_save_chk = QCheckBox("Auto Save")
-    auto_save_chk.setToolTip("수집 완료 시 선택된 출력 대상(FILE/DB)에 자동 저장")
     auto_save_chk.setChecked(defaults.get("auto_save", True))
     r3.addWidget(auto_save_chk)
     r3.addSpacing(6)
 
     auto_src_raw_btn = TagButton("RAW")
     auto_src_ref_btn = TagButton("정제")
-    auto_src_ref_btn.setToolTip(
-        "'② 정제 규칙 설정' 탭에서 마지막으로 설정해 둔 규칙이 그대로 적용됩니다.\n"
-        "이번 수집을 위해 규칙을 다시 확인하지 않았다면 의도한 결과가 아닐 수 있습니다."
-    )
     is_refined_default = defaults.get("auto_save_source", "raw") == "refined"
     auto_src_raw_btn.setChecked(not is_refined_default)
     auto_src_ref_btn.setChecked(is_refined_default)

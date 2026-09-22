@@ -637,9 +637,7 @@ class SchedulerPageTriggers:
             self._sched_out_mode = "FILE" if ef.get("enabled", True) else "DB"
 
         sched_out_file_btn = TagButton("FILE")
-        sched_out_file_btn.setToolTip("로컬 파일로 저장 (CSV / JSON / Excel)")
         sched_out_db_btn = TagButton("DB")
-        sched_out_db_btn.setToolTip("데이터베이스 서버로 전송")
         sched_out_file_btn.setChecked(self._sched_out_mode == "FILE")
         sched_out_db_btn.setChecked(self._sched_out_mode == "DB")
 
@@ -668,10 +666,6 @@ class SchedulerPageTriggers:
         sched_auto_ref_btn = TagButton("정제")
         sched_auto_raw_btn.setChecked(sched_auto_save_source != "refined")
         sched_auto_ref_btn.setChecked(sched_auto_save_source == "refined")
-        sched_auto_ref_btn.setToolTip(
-            "정제 선택 시 오른쪽에 이 스케줄에 적용할 정제 규칙 패널이 나타납니다. "
-            "현재 화면의 '② 정제 규칙 설정' 탭 체크 상태와는 무관합니다."
-        )
 
         auto_src_row = QHBoxLayout()
         auto_src_row.setSpacing(8)

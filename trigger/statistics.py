@@ -97,10 +97,8 @@ BLOCKED_STATUS_CODES = ("403", "429")
 NO_STATUS_CODE = "000"
 
 # 상태 코드 분포에서 표에 없는 코드를 한 행으로 합쳐 표시하는 이름 — 코드 종류가 몇 개든 행 수를
-# 최대 7행으로 묶어 카드 고정 높이 안에서 글자가 겹치지 않게 한다. 툴팁에는 기타에 든 코드를 최대
-# OTHER_CODES_TOOLTIP_MAX개까지 적는다.
+# 최대 7행으로 묶어 카드 고정 높이 안에서 글자가 겹치지 않게 한다.
 STATUS_OTHER_LABEL = "기타"
-OTHER_CODES_TOOLTIP_MAX = 8
 
 # 상태 코드 분포 도움말 툴팁에 적는 코드별 쉬운 말 — 막대 라벨에는 코드만 표시한다
 STATUS_CODE_MEANINGS = {
@@ -139,11 +137,8 @@ PATTERN_MIN_SESSIONS = 3        # 패턴 판정을 시작하는 데 필요한 �
 YIELD_NOISE_K = 6.0             # 수집량 편차가 회차 간 자체 노이즈의 몇 배를 넘어야 불안정으로 보는지
 PATTERN_SPREAD_WARN = 0.10      # 회차 간 편차가 이 이상이면 불안정("주의") — 비율은 %p 차이, 수집량은 상대 편차
 PATTERN_SPREAD_PROBLEM = 0.30   # 이 이상이면 크게 불안정("문제")
-PATTERN_TOOLTIP_MAX = 10        # 행 툴팁에 회차별 값을 적는 최대 회차 수(최근 순)
 SMALL_SESSION_RESPONSES = 30    # 회차당 응답이 이보다 적으면 한 회차의 작은 이상을 놓칠 수 있다고 알린다
 PATTERN_ADVICE = "사이트 상태나 설정이 회차마다 달라졌는지 확인하세요."
-LIVE_NOTE = "진행 중이거나 중단된 수집의 응답은 아직 회차 패턴에 편입되지 않아 절대 기준을 그대로 적용했습니다."
-ABSOLVED_NOTE = "회차마다 일정해 정상으로 보지만 값이 절대 기준을 넘습니다. 사이트의 원래 특성인지 확인하세요."
 
 # 판정에 쓰지 않고 상세 팝업에 참고값으로만 적는 KPI의 이름
 REF_AVG_LATENCY, REF_THROUGHPUT = "평균 응답", "처리량"
@@ -723,20 +718,6 @@ def metric_criteria_text(spec: MetricSpec) -> str:
             f"{_threshold_text(spec, spec.problem)} {_criteria_compare(spec)}")
 
 
-def metric_criteria_detail(spec: MetricSpec) -> str:
-    """툴팁용 기준 문구 — 표와 달리 어느 쪽이 주의·문제인지 글자로 밝히고, 회차별 패턴이
-    적용되는 지표는 이 기준이 어떻게 쓰이는지도 적는다."""
-    compare = _criteria_compare(spec)
-    line = (f"주의 {_threshold_text(spec, spec.warn)} {compare} · "
-            f"문제 {_threshold_text(spec, spec.problem)} {compare}")
-    if spec.pattern_only:
-        return f"회차 간 편차 기준 — {line}"
-    return (f"절대 기준 — {line}\n"
-            f"수집 {PATTERN_MIN_SESSIONS}회 이상부터는 회차별로 일정하면 정상으로 보고, "
-            "문제 기준만 안전망으로 적용합니다."
-            + ("\n데이터 누락이 100%이면 수집 횟수와 무관하게 판정합니다." if spec is SPEC_EMPTY else ""))
-
-
 def _pattern_range_text(verdict: MetricVerdict) -> str:
     """회차별 값의 최소~최대 — 배너 문장과 표 칸이 같은 표기를 쓴다."""
     values = verdict.pattern.values
@@ -755,47 +736,6 @@ def metric_pattern_text(verdict: MetricVerdict) -> str:
     if verdict.absolved:
         return "일정·기준 초과"
     return "일정·진행분 반영" if verdict.live else "일정"
-
-
-def metric_pattern_detail(verdict: MetricVerdict) -> str:
-    """행 툴팁용 회차별 값 — 최근 PATTERN_TOOLTIP_MAX회까지 적고, 판정하지 않았으면 빈 문자열."""
-    pattern = verdict.pattern
-    if pattern is None:
-        return ""
-    values = pattern.values
-    first = len(values) - min(len(values), PATTERN_TOOLTIP_MAX) + 1
-    shown = " · ".join(f"{no}회 {metric_value_text(verdict.spec, value)}"
-                       for no, value in enumerate(values[-PATTERN_TOOLTIP_MAX:], start=first))
-    unit = "%p" if verdict.spec.percent else "%"
-    note = f"{LIVE_NOTE}\n" if verdict.live else f"{ABSOLVED_NOTE}\n" if verdict.absolved else ""
-    return f"{note}회차별 값 — {shown}\n회차 간 편차 {pattern.spread * 100:.1f}{unit}"
-
-
-def metric_gate_text(verdict: MetricVerdict, sessions: int) -> str:
-    """게이트로 보류 중인 지표의 사유 한 줄 — 걸리지 않았으면 빈 문자열."""
-    if not _is_gate_pending(verdict, sessions):
-        return ""
-    return (f"수집 {AXIS_MIN_SESSIONS[verdict.spec.axis]}회 이상일 때 판정합니다"
-            f"(현재 {sessions}회).")
-
-
-def diagnosis_tooltip() -> str:
-    """진단 배너 툴팁 — 판정 방식만 짧게 안내하고, 지표별 임계값 표는 상세 보기로 넘긴다."""
-    return "\n".join([
-        f"최근 {PATTERN_WINDOW}회 수집(진행 중 포함)의 응답을 지표별로 판정합니다 — "
-        "위 KPI 카드는 초기화 이후 누적이지만, 이 배너는 지금 상태를 봅니다.",
-        "· 각 비율은 95% 신뢰구간(Wilson)으로 판정해, 표본이 적으면 단정하지 않고 보류합니다.",
-        "· 응답이 많아도 한 번의 수집이면 관측 1회라, 축마다 최소 수집 횟수를 함께 봅니다 — "
-        + " / ".join(f"{axis} {minimum}회" for axis, minimum in AXIS_MIN_SESSIONS.items()),
-        f"· 완료된 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지로 판정합니다 — "
-        "일정하면 정상, 들쭉날쭉하면 주의, 더 강한 근거(99%)가 있으면 문제입니다. "
-        "다만 절대 기준이 '문제'인 값은 일정해도 문제입니다.",
-        "· 절대 기준이 '주의'인 값은 일정하면 정상으로 보되 배너와 상세 보기에 함께 알립니다.",
-        "· 진행 중이거나 중단된 수집의 응답은 회차 패턴에 편입되기 전까지 절대 기준으로 판정합니다.",
-        f"· 최근 {RECENT_WINDOW}건과 그 이전 구간의 정상 수집률을 비교해 악화되면 따로 알립니다.",
-        "· 종합 등급은 지표 중 가장 나쁜 등급을 따릅니다.",
-        "지표별 관측값·신뢰구간·기준은 오른쪽 상세 보기(⧉) 버튼에서 볼 수 있습니다.",
-    ])
 
 
 def _grade_guide_lines() -> list:
@@ -848,7 +788,12 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         "  최소 수집 횟수가 필요합니다",
         *_min_sessions_lines(),
         f"· 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지도 봅니다",
-        "  (일정하면 정상, 들쭉날쭉하면 주의·문제)",
+        "  (일정하면 정상, 들쭉날쭉하면 주의, 더 강한 근거(99%)가 있으면 문제 —",
+        "  단 절대 기준이 원래 '문제'인 값은 일정해도 문제로 봅니다)",
+        "· 절대 기준은 '주의'인데 회차가 일정하면 정상으로 보되",
+        "  배너와 이 표에 함께 표시합니다",
+        "· 진행 중이거나 중단된 수집의 응답은 회차 패턴에 들어가기",
+        "  전까지 절대 기준으로 판정합니다",
         "· 데이터 누락이 100%이면 횟수와 무관하게 바로 판정합니다",
         f"· 최근 {RECENT_WINDOW}건이 이전보다 눈에 띄게 나빠지면 따로 알립니다",
         "",
@@ -875,17 +820,6 @@ def _status_segments(status_cnt: dict) -> list:
     if other_total:
         segments.append((STATUS_OTHER_LABEL, other_total, ACCENT_LIGHT))
     return segments
-
-
-def _other_codes_text(status_cnt: dict) -> str:
-    """"기타" 막대 툴팁 — 기타에 합쳐진 코드를 건수 내림차순으로 적는다. 없으면 빈 문자열."""
-    others = sorted(_other_status_counts(status_cnt).items(), key=lambda kv: (-kv[1], kv[0]))
-    if not others:
-        return ""
-    listed = " · ".join(f"{code} {n}건" for code, n in others[:OTHER_CODES_TOOLTIP_MAX])
-    rest = len(others) - OTHER_CODES_TOOLTIP_MAX
-    suffix = f" 외 {rest}종" if rest > 0 else ""
-    return f"{STATUS_OTHER_LABEL}에 포함된 코드: {listed}{suffix}"
 
 
 def _median(values: list) -> float:
@@ -1162,9 +1096,9 @@ def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
 
 
 def diagnosis_review(evaluation: Evaluation, empty_notice: list | None) -> Review:
-    """표 아래 글을 만든다 — 표를 등급별로 묶은 요약이 총평을 대신하고, 주의·문제 이슈가
-    있으면 원인·해결 방법 항목을(심한 것부터) 덧붙인다. 판정할 지표 자체가 없으면(수집
-    기록 없음) 등급 묶음 대신 안내 문장 한 줄을 보여준다."""
+    """표 아래 글을 만든다 — 표를 등급별로 묶은 요약이 총평을 대신하고, 주의·문제 이슈가 있으면
+    원인·해결 방법 항목을(심한 것부터) 덧붙인다. 판정할 지표 자체가 없으면(수집 기록 없음) 등급
+    묶음 대신 안내 문장 한 줄을 보여준다."""
     grades = _grade_breakdown(evaluation.verdicts)
     diagnosis = evaluation.diagnosis
     if not grades:
@@ -1238,7 +1172,6 @@ class StatisticsPageTriggers:
         self._refresh_process_kpis(agg)
 
         self.status_chart.set_data(_status_segments(status_cnt))
-        self.status_chart.setToolTip(_other_codes_text(status_cnt))
 
         # 4분류를 값이 0이어도 항상 모두 넘긴다 — RankedBarChart는 빈 리스트면
         # 카드를 통째로 비우므로, 수집 이력이 없을 때도 골격이 보이게 한다

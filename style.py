@@ -353,7 +353,8 @@ class SpinArrowProxyStyle(QProxyStyle):
     사각형을 그대로 칠해버려(스크린샷으로 실측 확인) 원하는 모양이 나오지 않는다
     — PE_IndicatorSpinUp/Down 프리미티브를 직접 그려 우회한다. main.py에서
     app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))로
-    등록해 사용한다."""
+    등록해 사용한다. 앱에 스타일을 하나만 등록할 수 있어, 툴팁을 지연 없이
+    표시하는 설정(styleHint)도 이 클래스에 함께 둔다."""
 
     _HALF_BASE = 4
     _HALF_HEIGHT = 2
@@ -370,6 +371,13 @@ class SpinArrowProxyStyle(QProxyStyle):
             self._draw_spin_arrow(element, option, painter)
             return
         super().drawPrimitive(element, option, painter, widget)
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        """툴팁을 마우스를 올리자마자 지연 없이 띄운다(기본값은 약 700ms 대기)."""
+        if hint in (QStyle.StyleHint.SH_ToolTip_WakeUpDelay,
+                    QStyle.StyleHint.SH_ToolTip_FallAsleepDelay):
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
 
     def _draw_spin_arrow(self, element, option, painter) -> None:
         is_enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
@@ -1492,8 +1500,6 @@ def apply_render_safety_limits(thread_spin, delay_spin, limits: dict) -> None:
     delay_spin.set_lower_bound_message(
         f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Delay를 최소 {limits['min_delay']}s까지만 허용합니다."
     )
-    thread_spin.setToolTip(f"병렬 수집 스레드 수 (렌더링 수집은 최대 {limits['max_threads']}개로 제한)")
-    delay_spin.setToolTip(f"요청 간 대기 시간 (렌더링 수집은 최소 {limits['min_delay']}s로 제한)")
 
 
 def reset_render_safety_limits(thread_spin, delay_spin, default_max_threads, default_min_delay) -> None:
