@@ -770,9 +770,7 @@ class MonitorPageTriggers:
             vl.addSpacing(14)
 
         out_file_btn = TagButton("FILE")
-        out_file_btn.setToolTip("로컬 파일로 저장 (CSV / JSON / Excel)")
         out_db_btn   = TagButton("DB")
-        out_db_btn.setToolTip("데이터베이스 서버로 전송")
 
         self._out_mode = "FILE" if self.output_info["extract"]["file"]["enabled"] else "DB"
         out_file_btn.setChecked(self._out_mode == "FILE")

@@ -11,12 +11,12 @@ from PyQt6.QtGui import QColor
 from trigger import StatisticsPageTriggers
 from trigger.statistics import (
     TREND_HOURLY, TREND_PERIODS, TREND_MODE_RECENT, TREND_MODE_CALENDAR,
-    TREND_ALL_TIME_CAPTIONS, DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
-    STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_tooltip, diagnosis_help_text, diagnosis_review, Evaluation,
+    DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
+    STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_help_text, diagnosis_review, Evaluation,
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
     DIAG_LEVEL_COLORS, EMPTY_WINDOW,
-    metric_value_text, metric_interval_text, metric_criteria_text, metric_criteria_detail,
-    metric_sample_text, metric_gate_text, metric_pattern_text, metric_pattern_detail,
+    metric_value_text, metric_interval_text, metric_criteria_text,
+    metric_sample_text, metric_pattern_text,
 )
 from style import EqualSpacingTable, Divider, _load_svg_icon
 from .common import (
@@ -50,36 +50,17 @@ DIAG_TABLE_HEADERS = ["평가 축", "지표", "상태", "관측값", "95% 신뢰
 DIAG_POPUP_SIZE = (1180, 480)       # 폭은 표 8열이 잘리지 않는 값, 높이는 내용에서 다시 잡는다
 DIAG_POPUP_MIN_SIZE = (740, 300)
 DIAG_POPUP_TITLE = "수집 현황 종합 평가"
-DIAG_POPUP_TIP = "지표별 관측값·신뢰구간·판정 기준을 새 창에서 보기"
 
-# 지표·차트 카드 툴팁 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게
-# 쉬운 말로 적는다. KPI 튜플의 순서는 build_stat_summary_card()에 넘기는 spec 순서와 같다.
-CARD_HELP_HINT = "\n각 숫자에 마우스를 올리면 자세한 설명이 나옵니다."
+# 카드명 옆 "?" 도움말 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게 쉬운 말로 적는다.
 REQUEST_CARD_HELP = (
     "사이트에 요청을 보내고 응답을 받는 과정의 통계입니다.\n"
-    "페이지가 열렸는지, 얼마나 빨랐는지, 연결이 끊겼는지를 봅니다." + CARD_HELP_HINT
+    "페이지가 열렸는지, 얼마나 빨랐는지, 연결이 끊겼는지를 봅니다."
 )
 PROCESS_CARD_HELP = (
     "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
-    "페이지마다 몇 건씩 나오는지, 꺼낸 데이터가 얼마나 온전한지를 봅니다." + CARD_HELP_HINT
+    "페이지마다 몇 건씩 나오는지, 꺼낸 데이터가 얼마나 온전한지를 봅니다."
 )
 
-REQUEST_KPI_TIPS = (
-    "사이트에 요청해서 응답을 받은 페이지 수입니다. (누적)",
-    "받은 응답 중 사이트가 정상적으로 답한(200) 비율입니다.\n"
-    "페이지가 열렸다는 뜻일 뿐, 데이터를 가져왔는지는\n'응답 결과 구성'의 '정상 수집'에서 확인하세요.",
-    "요청을 보내고 페이지가 도착하기까지 걸린 평균 시간입니다.\n길수록 사이트가 느리거나 혼잡하다는 뜻입니다.",
-    "1초에 평균 몇 페이지를 처리했는지입니다.",
-)
-PROCESS_KPI_TIPS = (
-    "데이터를 가져온 페이지 1개당 나온 건수의 중앙값입니다. 평균과 달리 튀는 값에 덜 흔들립니다.\n"
-    "페이지마다 비슷하게 나와야 정상이며, 평소보다 크게 줄면 사이트 구조가 바뀐 것일 수 있습니다.",
-    "페이지 중 가장 적게 나온 건수와 가장 많이 나온 건수이며, 괄호 안은 그 비율(최소÷최대)입니다.\n"
-    "두 값이 같으면 건수 하나와 100%만 표시합니다.",
-    "꺼낸 데이터(행) 중 모든 항목이 채워진(빈 값이 없는) 행의 비율입니다.\n"
-    "낮으면 추출 규칙이 일부 항목을 못 찾고 있다는 신호이니 수집 설정을 점검하세요.\n"
-    "이 지표를 기록하기 시작한 이후 수집분부터 집계되며, 이전 기록만 있으면 '—'로 표시됩니다.",
-)
 STATUS_MEANINGS_PER_LINE = 3
 
 
@@ -95,7 +76,7 @@ STATUS_CHART_TIP = (
     "사이트가 응답과 함께 보내는 결과 번호(상태 코드)별 개수입니다.\n"
     + _status_meaning_lines() + "\n"
     "자주 보는 코드는 0건이어도 항상 표시됩니다.\n"
-    "표에 없는 코드는 '기타'로 합쳐 표시하며, 기타 막대에 마우스를 올리면 세부 코드를 볼 수 있습니다.\n"
+    "표에 없는 코드는 '기타'로 합쳐 표시합니다.\n"
     "연결에 실패한 응답은 번호가 없어 여기에 없고, '응답 결과 구성'에서 확인할 수 있습니다."
 )
 SPEED_CHART_TIP = (
@@ -129,33 +110,14 @@ def _other_trend_mode(mode: str) -> str:
     return TREND_MODE_CALENDAR if mode == TREND_MODE_RECENT else TREND_MODE_RECENT
 
 
-def _trend_mode_tooltip(mode: str) -> str:
-    """표시 방식 전환 버튼 툴팁 — 아이콘만 있는 버튼이라 현재 방식과 클릭 시
-    바뀔 방식을 함께 안내한다."""
-    return f"현재: {mode} — 클릭하면 '{_other_trend_mode(mode)}'으로 전환합니다"
-
-
-def _trend_popout_tooltip(period: str) -> str:
-    """전체 보기 버튼 툴팁 — 기간마다 달라지는 접어서 합산하는 방식을 안내한다."""
-    return f"전체 이력의 {TREND_ALL_TIME_CAPTIONS[period]} 수집량 추이를 새 창에서 보기"
-
-
-def _header_icon_btn(icon_name: str, tooltip: str):
+def _header_icon_btn(icon_name: str):
     """수집량 추이 카드 헤더용 아이콘 전용 아웃라인 버튼 — 전체 보기(⧉)와 표시 방식
     전환 버튼이 같은 크기·아이콘 크기·색으로 나란히 보이게 한다."""
     btn = parts.outline_btn("")
     btn.setIcon(_load_svg_icon(icon_name, TEXT_SECONDARY, "2", HEADER_ICON_SIZE))
     btn.setIconSize(QSize(HEADER_ICON_SIZE, HEADER_ICON_SIZE))
     btn.setFixedSize(*HEADER_ICON_BTN_SIZE)
-    btn.setToolTip(tooltip)
     return btn
-
-
-def _apply_tooltips(cards, tips) -> None:
-    """KPI 카드마다 같은 순서의 툴팁 문구를 붙인다 — 개수가 다르면 어느 카드에
-    엉뚱한 설명이 붙지 않도록 즉시 오류를 낸다."""
-    for card, tip in zip(cards, tips, strict=True):
-        card.setToolTip(tip)
 
 
 class StatisticsPanel(QWidget, StatisticsPageTriggers):
@@ -218,7 +180,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
             help_text=REQUEST_CARD_HELP,
         )
         self.kpi_total, self.kpi_resp_rate, self.kpi_avg_t, self.kpi_throughput = req_cards
-        _apply_tooltips(req_cards, REQUEST_KPI_TIPS)
         req_card_w.setFixedHeight(req_card_w.sizeHint().height())
         row1.addWidget(req_card_w, 1)
 
@@ -229,7 +190,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
             help_text=PROCESS_CARD_HELP,
         )
         self.kpi_page_median, self.kpi_item_range, self.kpi_valid_rate = process_cards
-        _apply_tooltips(process_cards, PROCESS_KPI_TIPS)
         process_card_w.setFixedHeight(process_card_w.sizeHint().height())
         row1.addWidget(process_card_w, 1)
 
@@ -276,11 +236,10 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
     def _build_diagnosis_banner(self) -> QWidget:
         """수집 상태(정상/주의/문제/대기)와 원인·조치 문장을 보여주는 배너를 만든다.
         판정은 trigger/statistics.py의 evaluate()가 하고, 이 위젯은 결과를 그리기만
-        한다(_update_diagnosis). 판정 방식은 배너 툴팁, 지표별 근거는 상세 보기 버튼으로
-        안내한다."""
+        한다(_update_diagnosis). 판정 방식·지표별 근거는 상세 보기 버튼(팝업)의
+        도움말(?)과 표에서 안내한다."""
         self.diagnosis_banner = QFrame()
         self.diagnosis_banner.setObjectName("diagnosisBanner")
-        self.diagnosis_banner.setToolTip(diagnosis_tooltip())
 
         lay = QHBoxLayout(self.diagnosis_banner)
         lay.setContentsMargins(*DIAG_BANNER_MARGINS)
@@ -295,7 +254,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         lay.addWidget(self.diagnosis_detail_lbl, 1, Qt.AlignmentFlag.AlignVCenter)
 
         # 수집량 추이 카드의 전체 보기 버튼과 같은 모양·크기로 맞춘다
-        self.diagnosis_popout_btn = _header_icon_btn("external-link", DIAG_POPUP_TIP)
+        self.diagnosis_popout_btn = _header_icon_btn("external-link")
         self.diagnosis_popout_btn.clicked.connect(self._open_diagnosis_popup)
         lay.addWidget(self.diagnosis_popout_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -330,14 +289,14 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         dlg, lay = build_popup_dialog(self, DIAG_POPUP_TITLE, DIAG_POPUP_SIZE, DIAG_POPUP_MIN_SIZE)
 
         card_w, card_l = parts.card_widget(DIAG_POPUP_TITLE, help_text=self._diagnosis_help_text(evaluation))
-        card_l.addWidget(self._build_verdict_table(dlg, evaluation.verdicts, evaluation.sessions))
+        card_l.addWidget(self._build_verdict_table(dlg, evaluation.verdicts))
         card_l.addWidget(self._build_review_section(diagnosis_review(evaluation, self._empty_notice)))
         lay.addWidget(card_w)
         # 표 높이와 총평·이슈 줄 수가 달라지므로 높이는 채운 뒤, 정해진 폭에서 줄바꿈된 내용 기준으로 잡는다
         dlg.resize(DIAG_POPUP_SIZE[0], lay.totalHeightForWidth(DIAG_POPUP_SIZE[0]))
         dlg.show()
 
-    def _build_verdict_table(self, parent, verdicts: list, sessions: int) -> EqualSpacingTable:
+    def _build_verdict_table(self, parent, verdicts: list) -> EqualSpacingTable:
         """지표별 판정 결과 표 — 상태는 색과 글자를 함께 써서 색만으로 전달하지 않는다."""
         table = EqualSpacingTable(parent=parent, row_height=TABLE_ROW_H, col_padding=10,
                                   hscroll_handle=50)
@@ -355,16 +314,12 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
                       metric_value_text(spec, verdict.observed), metric_interval_text(verdict),
                       metric_pattern_text(verdict), metric_criteria_text(spec),
                       metric_sample_text(verdict)]
-            tip = "\n".join(filter(None, [
-                f"{spec.axis} · {spec.name}", metric_pattern_detail(verdict),
-                metric_criteria_detail(spec), metric_gate_text(verdict, sessions), spec.advice]))
             table.insertRow(row)
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 is_level_col = DIAG_TABLE_HEADERS[col] == "상태"
                 item.setForeground(QColor(DIAG_LEVEL_COLORS[verdict.level] if is_level_col
                                           else TEXT_PRIMARY))
-                item.setToolTip(tip)
                 table.setItem(row, col, item)
         return table
 
@@ -448,7 +403,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         self.session_table.setColumnCount(len(SESSION_TABLE_HEADERS))
         self.session_table.setHorizontalHeaderLabels(SESSION_TABLE_HEADERS)
         self.session_table.setFixedHeight(TABLE_HEADER_H + SESSION_TABLE_ROWS * TABLE_ROW_H)
-        self.session_table.setToolTip("행을 더블클릭하면 요청 URL별 상세를 볼 수 있습니다.")
         self.session_table.cellDoubleClicked.connect(self._open_session_requests)
         card_l.addWidget(self.session_table)
         return card_w
@@ -470,8 +424,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         header_row.addWidget(self.trend_title_lbl)
         header_row.addStretch()
 
-        self.trend_popout_btn = _header_icon_btn(
-            "external-link", _trend_popout_tooltip(self.trend_period))
+        self.trend_popout_btn = _header_icon_btn("external-link")
         self.trend_popout_btn.clicked.connect(self._open_trend_popup)
         header_row.addWidget(self.trend_popout_btn)
         header_row.addWidget(self._build_trend_mode_btn())
@@ -495,7 +448,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         """기간 필터 버튼과 선택 메뉴를 만든다. 메뉴 스타일은 프록시 테이블
         컨텍스트 메뉴(style.py의 PROXY_CONTEXT_MENU_QSS)와 같은 값을 쓴다."""
         self.trend_filter_btn = parts.outline_btn(_trend_btn_text(self.trend_period))
-        self.trend_filter_btn.setToolTip("수집량 추이를 볼 기간을 선택합니다")
         # 기본 드롭다운 화살표는 테마 색을 따르지 않아, 버튼 문구의 "▾"로 대체한다
         self.trend_filter_btn.setStyleSheet(
             self.trend_filter_btn.styleSheet()
@@ -519,15 +471,14 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
     def _build_trend_mode_btn(self):
         """표시 방식 전환 아이콘 버튼 — 클릭하면 최근 기준 ↔ 현재 일자 기준을
-        뒤집는다. 현재 방식은 툴팁과 카드명의 범위 문구로 확인한다."""
-        self.trend_mode_btn = _header_icon_btn("calendar-sync", _trend_mode_tooltip(self.trend_mode))
+        뒤집는다. 현재 방식은 카드명의 범위 문구로 확인한다."""
+        self.trend_mode_btn = _header_icon_btn("calendar-sync")
         self.trend_mode_btn.clicked.connect(self._on_trend_mode_clicked)
         return self.trend_mode_btn
 
     def _on_trend_mode_clicked(self) -> None:
         """표시 방식을 반대로 뒤집고 차트를 즉시 다시 그린다."""
         self.trend_mode = _other_trend_mode(self.trend_mode)
-        self.trend_mode_btn.setToolTip(_trend_mode_tooltip(self.trend_mode))
         self._refresh_summary()
 
     def _on_trend_period_changed(self, period: str) -> None:
@@ -537,7 +488,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
             return
         self.trend_period = period
         self.trend_filter_btn.setText(_trend_btn_text(period))
-        self.trend_popout_btn.setToolTip(_trend_popout_tooltip(period))
         self._refresh_summary()
 
     def _update_trend_title(self, range_text: str) -> None:
@@ -567,7 +517,6 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
                 item = QTableWidgetItem(value)
                 is_result_col = col == len(values) - 1
                 item.setForeground(QColor(result_colors.get(value, TEXT_PRIMARY) if is_result_col else TEXT_PRIMARY))
-                item.setToolTip(value)
                 table.setItem(r, col, item)
         card_l.addWidget(table)
         lay.addWidget(card_w)
