@@ -227,7 +227,7 @@ class SessionSettingsPageTriggers:
         matches = pattern.findall(raw)
 
         if not matches:
-            self._log("warn", f"파일 파싱 완료 — 유효한 IP:PORT를 찾지 못했습니다: {path}")
+            self._log("warn", f"파일 파싱 완료 — 유효한 IP:PORT 없음: {path}")
             return
 
         existing = {f"{r['host']}:{r['port']}" for r in self._proxy_rows}
@@ -268,7 +268,7 @@ class SessionSettingsPageTriggers:
         Import/+ 추가/테이블 조작이 동시에 일어나지 않도록 막는다.
         """
         if not self._proxy_rows:
-            self._log("info", "연결 테스트 요청 — 등록된 프록시가 없습니다.")
+            self._log("info", "연결 테스트 요청 — 등록된 프록시 없음")
             return
 
         self.pw.setEnabled(False)

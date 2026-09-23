@@ -193,7 +193,7 @@ class MainWindowTriggersSingle:
             elapsed = summary.get("elapsed", 0)
             self.log_manager.append_log(
                 "err",
-                f"수집 실행 실패 — 처리 결과 없이 종료되었습니다 (소요: {elapsed}s)"
+                f"수집 실행 실패 — 처리 결과 없이 종료 (소요: {elapsed}s)"
             )
             self.dashboard._update_step_ui(0)
             if is_unattended:
@@ -221,7 +221,7 @@ class MainWindowTriggersSingle:
             elapsed   = summary.get("elapsed", 0)
             self.log_manager.append_log(
                 "err",
-                f"크롤링 완료 — 수집된 데이터가 없습니다 "
+                f"크롤링 완료 — 수집 데이터 없음 "
                 f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
             )
             self.dashboard._update_step_ui(0)
@@ -284,7 +284,7 @@ class MainWindowTriggersSingle:
                 )
         except Exception as e:
             logger.error("[main_window] 자동 저장 실패: %s", e)
-            self.log_manager.append_log("err", "자동 저장에 실패했습니다 — 결과 파일/DB가 생성되지 않았을 수 있습니다")
+            self.log_manager.append_log("err", "자동 저장 실패 — 결과 파일/DB 미생성 가능")
 
         self.dashboard._update_step_ui(0)
 
@@ -404,7 +404,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         """
         job_name = BATCH_JOB if is_batch_all else SELECT_JOB
         if not seq_no_list:
-            self.log_manager.append_log("warn", f"[{job_name}] 선택된 블루프린트가 없습니다.")
+            self.log_manager.append_log("warn", f"[{job_name}] 선택된 블루프린트 없음")
             return
 
         tasks = [self._build_task(s, job_name=job_name) for s in seq_no_list]
@@ -416,7 +416,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             self._pending_queue.extend(tasks)
             self.log_manager.append_log(
                 "info",
-                f"[{job_name}] 실행 중인 작업이 있어 {len(tasks)}건을 대기 큐에 등록했습니다."
+                f"[{job_name}] 실행 중인 작업 존재 — {len(tasks)}건 대기 큐 등록"
             )
             return
 
@@ -567,7 +567,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             elapsed = summary.get("elapsed", 0)
             self.log_manager.append_log(
                 "err",
-                f"수집 실행 실패 — 처리 결과 없이 종료되었습니다 (소요: {elapsed}s)"
+                f"수집 실행 실패 — 처리 결과 없이 종료 (소요: {elapsed}s)"
             )
             dash._update_step_ui(0)
             self._broadcast_blueprint_status(seq_no, "failed")
@@ -598,7 +598,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             elapsed   = summary.get("elapsed", 0)
             self.log_manager.append_log(
                 "err",
-                f"크롤링 완료 — 수집된 데이터가 없습니다 "
+                f"크롤링 완료 — 수집 데이터 없음 "
                 f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
             )
             dash._update_step_ui(0)
@@ -654,7 +654,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 )
         except Exception as e:
             logger.error("[main_window] 자동 저장 실패: %s", e)
-            self.log_manager.append_log("err", "자동 저장에 실패했습니다 — 결과 파일/DB가 생성되지 않았을 수 있습니다")
+            self.log_manager.append_log("err", "자동 저장 실패 — 결과 파일/DB 미생성 가능")
 
         dash._update_step_ui(0)
 

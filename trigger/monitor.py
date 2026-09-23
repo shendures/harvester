@@ -270,7 +270,7 @@ class MonitorPageTriggers:
             if skip_ui_update:
                 # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
                 if lm:
-                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 정제를 건너뜁니다.")
+                    lm.append_log("warn", "무인 실행 — 수집 데이터 없음, 정제 건너뜀")
             else:
                 QMessageBox.warning(self, "정제 불가", "수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
             return
@@ -308,7 +308,7 @@ class MonitorPageTriggers:
                 logger.error("[monitor] 사용자 정의 정제 규칙 로드 실패 (seq_no=%s): %s", seq_no, e)
 
             if custom_rule_fn is None and lm:
-                lm.append_log("warn", "이 수집 대상의 전용 정제 규칙을 찾을 수 없어 기본 규칙만 적용했습니다")
+                lm.append_log("warn", "이 수집 대상의 전용 정제 규칙 없음 — 기본 규칙만 적용")
 
         refiner = DataRefiner(
             rules        = active_rules,
@@ -322,7 +322,7 @@ class MonitorPageTriggers:
             logger.error("[monitor] 정제 실행 실패: %s", e)
             if skip_ui_update:
                 if lm:
-                    lm.append_log("err", "정제할 수 없는 데이터가 있어 정제를 완료하지 못했습니다 (원본 데이터는 유지됩니다)")
+                    lm.append_log("err", "정제 불가 데이터 존재 — 정제 미완료 (원본 데이터 유지)")
             else:
                 QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
             return
@@ -338,7 +338,7 @@ class MonitorPageTriggers:
             if lm:
                 lm.append_log(
                     "err",
-                    "이 수집 대상의 전용 정제 규칙 실행 중 오류가 발생해 해당 규칙 없이 나머지 정제만 적용했습니다"
+                    "이 수집 대상의 전용 정제 규칙 실행 오류 — 해당 규칙 제외 후 나머지 정제만 적용"
                 )
 
         if not skip_ui_update:
@@ -979,7 +979,7 @@ class MonitorPageTriggers:
                 if not should_notify:
                     if lm:
                         prefix = "무인 실행" if silent else "자동 저장"
-                        lm.append_log("warn", f"{prefix} — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
+                        lm.append_log("warn", f"{prefix} — 정제 결과 없음, 파일/DB 추출 건너뜀")
                 # else: _run_refine()이 이미 "정제 불가" 경고를 띄웠음
                 return
         else:
@@ -989,7 +989,7 @@ class MonitorPageTriggers:
                     QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
                 elif lm:
                     prefix = "무인 실행" if silent else "자동 저장"
-                    lm.append_log("warn", f"{prefix} — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
+                    lm.append_log("warn", f"{prefix} — 수집 데이터 없음, 파일/DB 추출 건너뜀")
                 return
         headers = list(data[0].keys())
 
@@ -1016,7 +1016,7 @@ class MonitorPageTriggers:
                             writer.writeheader()
                             writer.writerows(data)
                         if lm:
-                            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{final_file_name}.csv'에 저장했습니다.")
+                            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{final_file_name}.csv'에 저장")
                     else:
                         self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm, encoding)
 
@@ -1034,7 +1034,7 @@ class MonitorPageTriggers:
                         with open(os.path.join(file_path, f"{file_name}.json"), 'w', encoding='utf-8') as f:
                             json.dump(data, f, ensure_ascii=False, indent=4)
                         if lm:
-                            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{file_name}.json'에 저장했습니다.")
+                            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{file_name}.json'에 저장")
                     else:
                         self._write_json_unattended(file_path, file_name, data, save_type, lm)
 
@@ -1079,14 +1079,14 @@ class MonitorPageTriggers:
                                 return
                         db_conn.save_db(db_info, data, mode=save_mode)
                         if lm:
-                            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{db_info['save_data_nm']}' 테이블에 저장했습니다.")
+                            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{db_info['save_data_nm']}' 테이블에 저장")
                     else:
                         self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
                     logger.error("[monitor] DB 저장 실패: %s", e)
                     if silent:
                         if lm:
-                            lm.append_log("err", "DB 저장에 실패했습니다 — DB 접속 정보를 확인해주세요")
+                            lm.append_log("err", "DB 저장 실패 — DB 접속 정보 확인 필요")
                         tray = _get_tray_manager(self)
                         if tray:
                             tray.show_message(
@@ -1101,7 +1101,7 @@ class MonitorPageTriggers:
             logger.error("[monitor] 추출 실패: %s", e)
             if silent:
                 if lm:
-                    lm.append_log("err", "파일/DB 저장 중 오류가 발생해 추출을 완료하지 못했습니다")
+                    lm.append_log("err", "파일/DB 저장 오류 — 추출 미완료")
                 tray = _get_tray_manager(self)
                 if tray:
                     tray.show_message(
@@ -1120,7 +1120,7 @@ class MonitorPageTriggers:
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.csv")),
             )
             if final_file_name != file_name and lm:
-                lm.append_log("info", f"'{file_name}.csv' 파일이 이미 존재 — '{final_file_name}.csv'(으)로 새로 저장합니다.")
+                lm.append_log("info", f"'{file_name}.csv' 파일 이미 존재 — '{final_file_name}.csv'(으)로 새로 저장")
             full_path = os.path.join(file_path, f"{final_file_name}.csv")
             mode, write_header = 'w', True
         elif save_type == "overwrite":
@@ -1134,7 +1134,7 @@ class MonitorPageTriggers:
                 writer.writeheader()
             writer.writerows(data)
         if lm:
-            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장했습니다.")
+            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장")
 
     def _write_json_unattended(self, file_path, file_name, data, save_type, lm):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
@@ -1145,7 +1145,7 @@ class MonitorPageTriggers:
                 lambda name: os.path.exists(os.path.join(file_path, f"{name}.json")),
             )
             if lm:
-                lm.append_log("info", f"'{file_name}.json' 파일이 이미 존재 — '{final_file_name}.json'(으)로 새로 저장합니다.")
+                lm.append_log("info", f"'{file_name}.json' 파일 이미 존재 — '{final_file_name}.json'(으)로 새로 저장")
             full_path = os.path.join(file_path, f"{final_file_name}.json")
             out_data = data
         elif save_type == "append" and os.path.exists(full_path):
@@ -1157,18 +1157,18 @@ class MonitorPageTriggers:
                 else:
                     out_data = data
                     if lm:
-                        lm.append_log("warn", f"'{file_name}.json' 기존 내용이 배열이 아니어서 새 데이터로 대체합니다.")
+                        lm.append_log("warn", f"'{file_name}.json' 기존 내용 배열 아님 — 새 데이터로 대체")
             except Exception as e:
                 out_data = data
                 logger.error("[monitor] JSON 무인 저장 — 기존 파일 읽기 실패 (%s): %s", file_name, e)
                 if lm:
-                    lm.append_log("warn", f"'{file_name}.json' 기존 파일을 읽지 못해 새로 씁니다")
+                    lm.append_log("warn", f"'{file_name}.json' 기존 파일 읽기 실패 — 새로 저장")
         else:  # "overwrite", 또는 파일이 없는 "new"/"append"
             out_data = data
         with open(full_path, 'w', encoding='utf-8') as f:
             json.dump(out_data, f, ensure_ascii=False, indent=4)
         if lm:
-            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장했습니다.")
+            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장")
 
     def _save_db_unattended(self, db_info, data, save_type, lm):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 DB에 모달 없이 저장합니다."""
@@ -1187,9 +1187,9 @@ class MonitorPageTriggers:
             target = dict(db_info)
             target["save_data_nm"] = final_name
             if final_name != base_name and lm:
-                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{final_name}'(으)로 새로 생성합니다.")
+                lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{final_name}'(으)로 새로 생성")
             db_conn.save_db(target, data, mode='overwrite')
             table_name = final_name
 
         if lm:
-            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{table_name}' 테이블에 저장했습니다.")
+            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{table_name}' 테이블에 저장")
