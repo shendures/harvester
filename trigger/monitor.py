@@ -1007,6 +1007,8 @@ class MonitorPageTriggers:
                             writer = csv.DictWriter(f, fieldnames=headers, delimiter=delimiter)
                             writer.writeheader()
                             writer.writerows(data)
+                        if lm:
+                            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{final_file_name}.csv'에 저장했습니다.")
                     else:
                         self._write_csv_unattended(file_path, file_name, delimiter, headers, data, save_type, lm, encoding)
 
@@ -1023,6 +1025,8 @@ class MonitorPageTriggers:
                                 return
                         with open(os.path.join(file_path, f"{file_name}.json"), 'w', encoding='utf-8') as f:
                             json.dump(data, f, ensure_ascii=False, indent=4)
+                        if lm:
+                            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{file_name}.json'에 저장했습니다.")
                     else:
                         self._write_json_unattended(file_path, file_name, data, save_type, lm)
 
@@ -1066,6 +1070,8 @@ class MonitorPageTriggers:
                             else:
                                 return
                         db_conn.save_db(db_info, data, mode=save_mode)
+                        if lm:
+                            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{db_info['save_data_nm']}' 테이블에 저장했습니다.")
                     else:
                         self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
@@ -1107,6 +1113,8 @@ class MonitorPageTriggers:
             if write_header:
                 writer.writeheader()
             writer.writerows(data)
+        if lm:
+            lm.append_log("info", f"CSV 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장했습니다.")
 
     def _write_json_unattended(self, file_path, file_name, data, save_type, lm):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 JSON을 모달 없이 저장합니다."""
@@ -1139,13 +1147,17 @@ class MonitorPageTriggers:
             out_data = data
         with open(full_path, 'w', encoding='utf-8') as f:
             json.dump(out_data, f, ensure_ascii=False, indent=4)
+        if lm:
+            lm.append_log("info", f"JSON 저장 완료 — {len(data)}건을 '{os.path.basename(full_path)}'에 저장했습니다.")
 
     def _save_db_unattended(self, db_info, data, save_type, lm):
         """무인(스케줄) 실행 전용 — save_type("new"/"overwrite"/"append")에 따라 DB에 모달 없이 저장합니다."""
         if save_type == "overwrite":
             db_conn.save_db(db_info, data, mode='overwrite')
+            table_name = db_info["save_data_nm"]
         elif save_type == "append":
             db_conn.save_db(db_info, data, mode='append')
+            table_name = db_info["save_data_nm"]
         else:  # "new" — 기존 테이블은 건드리지 않고 이름에 접미사를 붙여 새로 생성
             base_name = db_info["save_data_nm"]
             final_name = _next_available_name(
@@ -1157,3 +1169,7 @@ class MonitorPageTriggers:
             if final_name != base_name and lm:
                 lm.append_log("info", f"DB 테이블 '{base_name}' 이미 존재 — '{final_name}'(으)로 새로 생성합니다.")
             db_conn.save_db(target, data, mode='overwrite')
+            table_name = final_name
+
+        if lm:
+            lm.append_log("info", f"DB 저장 완료 — {len(data)}건을 '{table_name}' 테이블에 저장했습니다.")
