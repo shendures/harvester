@@ -5,6 +5,7 @@ import os
 import csv
 import json
 import sys
+import logging
 import subprocess
 
 from PyQt6.QtWidgets import (
@@ -31,6 +32,8 @@ from .common import (
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
     _handle_custom_rule_toggle,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _make_cell_item(val) -> QTableWidgetItem:
@@ -302,15 +305,10 @@ class MonitorPageTriggers:
                 custom_rule_fn = load_custom_rule(seq_no)
             except Exception as e:
                 custom_rule_fn = None
-                if lm:
-                    lm.append_log("err", f"사용자 정의 정제 규칙 로드 실패 (seq_no={seq_no}): {e}")
+                logger.error("[monitor] 사용자 정의 정제 규칙 로드 실패 (seq_no=%s): %s", seq_no, e)
 
             if custom_rule_fn is None and lm:
-                lm.append_log(
-                    "warn",
-                    f"사용자 정의 정제 규칙 파일을 찾을 수 없습니다 (seq_no={seq_no}). "
-                    f"범용 규칙만 적용합니다."
-                )
+                lm.append_log("warn", "이 수집 대상의 전용 정제 규칙을 찾을 수 없어 기본 규칙만 적용했습니다")
 
         refiner = DataRefiner(
             rules        = active_rules,
@@ -321,9 +319,10 @@ class MonitorPageTriggers:
         try:
             refined, stats = refiner.run(self._collected_data)
         except (TypeError, ValueError) as e:
+            logger.error("[monitor] 정제 실행 실패: %s", e)
             if skip_ui_update:
                 if lm:
-                    lm.append_log("err", f"정제 중 오류가 발생했습니다: {e}")
+                    lm.append_log("err", "정제할 수 없는 데이터가 있어 정제를 완료하지 못했습니다 (원본 데이터는 유지됩니다)")
             else:
                 QMessageBox.critical(self, "정제 오류", f"정제 중 오류가 발생했습니다.\n\n{e}")
             return
@@ -335,11 +334,11 @@ class MonitorPageTriggers:
             custom_rule_note = ", 사용자 정의 규칙 적용됨"
         elif stats.custom_rule_error:
             custom_rule_note = ", 사용자 정의 규칙 실행 실패"
+            logger.error("[monitor] 사용자 정의 정제 규칙 실행 실패 (seq_no=%s): %s", seq_no, stats.custom_rule_error)
             if lm:
                 lm.append_log(
                     "err",
-                    f"사용자 정의 정제 규칙 실행 실패 (seq_no={seq_no}): {stats.custom_rule_error}. "
-                    f"원본 데이터로 계속합니다."
+                    "이 수집 대상의 전용 정제 규칙 실행 중 오류가 발생해 해당 규칙 없이 나머지 정제만 적용했습니다"
                 )
 
         if not skip_ui_update:
@@ -1070,17 +1069,19 @@ class MonitorPageTriggers:
                     else:
                         self._save_db_unattended(db_info, data, save_type, lm)
                 except Exception as e:
+                    logger.error("[monitor] DB 저장 실패: %s", e)
                     if silent:
                         if lm:
-                            lm.append_log("err", f"DB 저장 실패 — DB 접속 및 로그인 정보가 올바르지 않습니다: {e}")
+                            lm.append_log("err", "DB 저장에 실패했습니다 — DB 접속 정보를 확인해주세요")
                     else:
                         QMessageBox.critical(
                             self, "DB 저장 실패",
                             f"DB 접속 및 로그인 정보가 올바르지 않습니다.\n\n[시스템 에러 내용]\n{str(e)}")
         except Exception as e:
+            logger.error("[monitor] 추출 실패: %s", e)
             if silent:
                 if lm:
-                    lm.append_log("err", f"추출 오류: {e}")
+                    lm.append_log("err", "파일/DB 저장 중 오류가 발생해 추출을 완료하지 못했습니다")
             else:
                 QMessageBox.critical(self, "추출 오류", str(e))
 
@@ -1131,8 +1132,9 @@ class MonitorPageTriggers:
                         lm.append_log("warn", f"'{file_name}.json' 기존 내용이 배열이 아니어서 새 데이터로 대체합니다.")
             except Exception as e:
                 out_data = data
+                logger.error("[monitor] JSON 무인 저장 — 기존 파일 읽기 실패 (%s): %s", file_name, e)
                 if lm:
-                    lm.append_log("warn", f"'{file_name}.json' 읽기 실패, 새로 씁니다: {e}")
+                    lm.append_log("warn", f"'{file_name}.json' 기존 파일을 읽지 못해 새로 씁니다")
         else:  # "overwrite", 또는 파일이 없는 "new"/"append"
             out_data = data
         with open(full_path, 'w', encoding='utf-8') as f:

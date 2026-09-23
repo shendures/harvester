@@ -2,6 +2,7 @@
 # 트레이 이벤트(TrayManagerTriggers)와 메인 윈도우 오케스트레이션
 # (MainWindowTriggersSingle, MainWindowTriggersMulti — 단일/다중 수집 공용).
 
+import logging
 from copy import deepcopy
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
@@ -15,6 +16,8 @@ from .common import (
     _after_delay_unless_cancelled,
     NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
 )
+
+logger = logging.getLogger(__name__)
 
 class TrayManagerTriggers:
     """TrayManager의 트레이 이벤트 메서드"""
@@ -239,7 +242,8 @@ class MainWindowTriggersSingle:
                     extract_override=extract_cfg if is_unattended else None,
                 )
         except Exception as e:
-            self.log_manager.append_log("err", f"자동 저장 실패: {e}")
+            logger.error("[main_window] 자동 저장 실패: %s", e)
+            self.log_manager.append_log("err", "자동 저장에 실패했습니다 — 결과 파일/DB가 생성되지 않았을 수 있습니다")
 
         self.dashboard._update_step_ui(0)
 
@@ -545,7 +549,8 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                     open_save_path=task.get("job") != SELECT_JOB,
                 )
         except Exception as e:
-            self.log_manager.append_log("err", f"자동 저장 실패: {e}")
+            logger.error("[main_window] 자동 저장 실패: %s", e)
+            self.log_manager.append_log("err", "자동 저장에 실패했습니다 — 결과 파일/DB가 생성되지 않았을 수 있습니다")
 
         dash._update_step_ui(0)
 

@@ -99,8 +99,6 @@ class MultiprocessWorker(QThread):
         threads      = self.task["threads"]
         delay        = self.task["delay"]
 
-        self.log_message.emit("info", "크롤러 초기화")
-
         # ── URL 리스트 생성 ───────────────────────────
         method       = (self.task.get("conditions") or {}).get("method") or "GET"
         requested_urls: list[str] = []
@@ -137,7 +135,6 @@ class MultiprocessWorker(QThread):
                 daemon=True,   # 메인 프로세스 종료 시 자식도 자동 종료
             )
             self.process.start()
-            self.log_message.emit("info", "SCRAPY START")
 
             # ── 실시간 수신 루프 ──────────────────────
             # [수정] queue.empty()는 멀티프로세스 환경에서 신뢰할 수 없으므로
@@ -220,6 +217,11 @@ class MultiprocessWorker(QThread):
             logger.error("[MultiprocessWorker] Scrapy 실행 실패: %s", reason)
             self.log_message.emit("err", f"Scrapy 실행 실패: {reason}")
             self._running = False  # 루프 종료 유도
+            return
+
+        if clean_line.startswith("EXECUTOR_LOG:"):
+            level, _, message = clean_line.removeprefix("EXECUTOR_LOG:").partition(":")
+            self.log_message.emit(level, message)
             return
 
         if not clean_line.startswith("RESULT_INFO:"):
@@ -536,7 +538,7 @@ def run_spider(request_info: dict, queue: multiprocessing.Queue) -> bool:
     sys.stderr  = writer
 
     if not request_info or not isinstance(request_info, dict):
-        print("EXECUTOR_LOG: 실행할 데이터가 없거나 형식이 올바르지 않습니다.")
+        print("EXECUTOR_LOG:err:실행할 데이터가 없거나 형식이 올바르지 않습니다.")
         return False
 
     settings = set_scrapy_settings(request_info)
@@ -546,9 +548,9 @@ def run_spider(request_info: dict, queue: multiprocessing.Queue) -> bool:
     try:
         spider = engine.get_spider(request_info)
         process.crawl(spider, request_info=request_info)
-        print(f"EXECUTOR_LOG: 스파이더 예약 완료: {request_info.get('title', '(제목 없음)')}")
+        print(f"EXECUTOR_LOG:info:스파이더 예약 완료: {request_info.get('title', '(제목 없음)')}")
     except Exception as e:
-        print(f"EXECUTOR_LOG: 스파이더 로드 실패: {e}")
+        print(f"EXECUTOR_LOG:err:스파이더 로드 실패: {e}")
         # 스파이더 등록 실패 시 크롤링 시작 불가 → 즉시 종료
         return False
 
