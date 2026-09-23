@@ -330,7 +330,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
     def _build_review_section(self, review) -> QWidget:
         """표 아래 글 — 표를 등급별로 묶은 요약("분석 요약")과, 이슈가 있으면 원인·해결 방법
-        목록("후속 조치 사항")을 순서대로 만든다. 소제목은 표 왼쪽 끝선에 맞추고, 그 아래
+        목록("체크 리스트")을 순서대로 만든다. 소제목은 표 왼쪽 끝선에 맞추고, 그 아래
         내용은 한 단계 들여써 위계를 드러낸다. 카드 스타일이 새 QWidget에도 테두리를
         그리므로 개체 이름으로 좁혀 테두리와 배경을 없애고, 구분선 없이 위 여백으로만
         구획한다. 항목은 대시와 본문을 나눠 줄바꿈된 줄이 본문에 맞춰 내어쓰기된다."""
@@ -349,7 +349,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         if review.notes:
             lay.addSpacing(DIAG_BANNER_SPACING)
-            lay.addWidget(self._section_label("후속 조치 사항"))
+            lay.addWidget(self._section_label("체크 리스트"))
             notes_body = QVBoxLayout()
             notes_body.setContentsMargins(DIAG_BANNER_SPACING, 0, 0, 0)
             for note in review.notes:
@@ -367,7 +367,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
     @staticmethod
     def _section_label(text: str) -> QLabel:
         """카드 안 소제목 한 줄 — "세션 이력" 헤더(_build_session_card)와 같은 스타일로
-        "분석 요약"/"후속 조치 사항" 섹션을 구분한다."""
+        "분석 요약"/"체크 리스트" 섹션을 구분한다."""
         lbl = parts.make_label(text, TEXT_SECONDARY, 12)
         lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1px;")
         return lbl
