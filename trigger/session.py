@@ -330,7 +330,6 @@ class SessionSettingsPageTriggers:
                      "enabled": True}
             self._proxy_rows.append(data)
             self._insert_table_row(data)
-            self._log("info", f"프록시 추가됨: {proto} {host}:{port}")
             dlg.close()
 
         ok_btn.clicked.connect(_do_add)
@@ -341,8 +340,6 @@ class SessionSettingsPageTriggers:
 
     def _delete_row(self, row_idx):
         if 0 <= row_idx < self._proxy_table.rowCount():
-            host     = self._proxy_table.item(row_idx, 2)
-            host_txt = host.text() if host else "?"
             self._proxy_table.removeRow(row_idx)
             # NO(col 0)가 항상 1..N 연속이 되도록, 삭제된 행 아래의 번호를 다시 매김
             t = self._proxy_table
@@ -350,7 +347,6 @@ class SessionSettingsPageTriggers:
                 no_item = t.item(r, 0)
                 if no_item:
                     no_item.setText(str(r + 1))
-            self._log("warn", f"프록시 삭제됨: {host_txt}")
 
     def _on_proxy_row_clicked(self, item):
         """

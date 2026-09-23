@@ -10,6 +10,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QStyleFactory
 from PyQt6.QtGui import QIcon
 from layout import MainWindowSingle, theme
+import conf
 from conf import BlueprintStorage
 from style import SpinArrowProxyStyle
 import utility
@@ -96,6 +97,10 @@ def main():
         win = MainWindowMulti()
     else:
         win = MainWindowSingle()
+
+    # 창 생성 이전(위 blueprint_count 조회 등)에 conf.py에서 쌓인 경고/오류가
+    # 있으면 여기서 한꺼번에 로그 뷰어로 전달된다.
+    conf.set_error_reporter(win.log_manager.append_log)
 
     local_server.newConnection.connect(win.tray_manager.restore_window)
 

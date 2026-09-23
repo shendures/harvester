@@ -5,10 +5,37 @@ import shutil
 import logging
 import importlib.util
 from copy import deepcopy
+from typing import Callable, Optional
 import customized_settings
 import utility
 
 logger = logging.getLogger(__name__)
+
+# ══════════════════════════════════════════════════════
+#  GUI 로그 뷰어 연결 (지연 주입)
+# ══════════════════════════════════════════════════════
+# conf.py는 순수 파이썬 모듈로 PyQt/layout/trigger를 import하지 않는다(순환참조
+# 회피). GUI가 준비되면 main.py가 set_error_reporter()로 log_manager.append_log를
+# 주입하고, 그 전에 발생한 경고/오류는 버퍼에 쌓아뒀다가 주입 시점에 한꺼번에 전달한다.
+_error_reporter: Optional[Callable[[str, str], None]] = None
+_pending_reports: list[tuple[str, str]] = []
+
+
+def set_error_reporter(reporter: Callable[[str, str], None]) -> None:
+    global _error_reporter
+    _error_reporter = reporter
+    for level, message in _pending_reports:
+        reporter(level, message)
+    _pending_reports.clear()
+
+
+def _report(level: str, message: str) -> None:
+    """사용자 화면 현상과 직결되는 경고/오류만 GUI 로그 뷰어로 전달한다."""
+    if _error_reporter is not None:
+        _error_reporter(level, message)
+    else:
+        _pending_reports.append((level, message))
+
 
 # ══════════════════════════════════════════════════════
 #  SHARED DATA STORE  (크롤 결과 / 스케줄 공유)
@@ -133,6 +160,7 @@ class DataStore:
                 self._sessions = data.get("sessions", [])
         except Exception as e:
             logger.error("[DataStore] 통계 이력 로드 실패: %s", e)
+            _report("err", "이전 통계 이력을 불러오지 못해 통계 페이지가 빈 상태로 시작됩니다")
 
     def save_stats_history(self) -> None:
         path = self._stats_history_path()
@@ -147,6 +175,7 @@ class DataStore:
             os.replace(tmp_path, path)
         except Exception as e:
             logger.error("[DataStore] 통계 이력 저장 실패: %s", e)
+            _report("err", "통계 이력 저장에 실패했습니다 — 다음 실행 시 이번 회차 통계가 누락될 수 있습니다")
 
 
 # ══════════════════════════════════════════════════════
@@ -224,6 +253,7 @@ class BlueprintStorage(_LazyInitSingleton):
 
         if not os.path.exists(target):
             logger.warning("[BlueprintStorage] JSON 파일 없음, 기본값 사용: %s", target)
+            _report("err", "수집 설정 파일을 찾을 수 없어 기본값으로 초기화했습니다")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
         try:
@@ -236,25 +266,30 @@ class BlueprintStorage(_LazyInitSingleton):
                 candidates = raw
             else:
                 logger.error("[BlueprintStorage] 지원하지 않는 JSON 루트 타입: %s", type(raw))
+                _report("err", "수집 설정 형식이 올바르지 않아 기본값으로 초기화했습니다")
                 return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
             validated = []
             for i, item in enumerate(candidates):
                 if not isinstance(item, dict) or not self._validate(item):
                     logger.warning("[BlueprintStorage] 블루프린트 #%d 검증 실패, 건너뜀", i)
+                    _report("warn", f"{i + 1}번째 수집 설정이 손상되어 목록에서 제외했습니다")
                     continue
                 validated.append(self._ensure_seq_no(item, i, validated))
 
             if not validated:
                 logger.error("[BlueprintStorage] 유효한 블루프린트 없음, 기본값 사용")
+                _report("err", "사용 가능한 수집 설정이 없어 기본값으로 초기화했습니다")
                 return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
             return validated
 
         except json.JSONDecodeError as e:
             logger.error("[BlueprintStorage] JSON 파싱 실패 (%s): %s", target, e)
+            _report("err", "수집 설정 파일이 손상되어 기본값으로 초기화했습니다")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
         except Exception as e:
             logger.error("[BlueprintStorage] 로드 실패: %s", e)
+            _report("err", "수집 설정을 불러오지 못해 기본값으로 초기화했습니다")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
     @staticmethod
@@ -434,6 +469,16 @@ class CustomModuleStorage(_LazyInitSingleton):
             return
         self._initialized = True
         self.app_dir = utility.data_dir(app_name)
+        # 시딩/파싱 실패는 화면 재진입마다 같은 파일을 다시 건드릴 수 있어
+        # (seq_no, kind)별로 세션 중 최초 1회만 GUI에 알린다.
+        self._reported_failures: set[tuple[str, str]] = set()
+
+    def _report_once(self, seq_no, kind: str, level: str, message: str) -> None:
+        key = (seq_no, kind)
+        if key in self._reported_failures:
+            return
+        self._reported_failures.add(key)
+        _report(level, message)
 
     # ── 경로 해석 ──────────────────────────────────────
     def resolve_path(self, seq_no, kind: str) -> str:
@@ -462,6 +507,10 @@ class CustomModuleStorage(_LazyInitSingleton):
                 shutil.copy2(default_source, file_path)
             except Exception as e:
                 logger.error("[CustomModuleStorage] 시딩 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
+                self._report_once(
+                    seq_no, kind, "err",
+                    f"이 수집 대상의 커스텀 {kind} 스크립트를 불러오지 못해 기본 동작으로 진행합니다"
+                )
 
         return file_path if os.path.exists(file_path) else default_source
 
@@ -482,6 +531,10 @@ class CustomModuleStorage(_LazyInitSingleton):
                 tree = ast.parse(f.read(), filename=path)
         except (SyntaxError, OSError) as e:
             logger.error("[CustomModuleStorage] 파일 파싱 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
+            self._report_once(
+                seq_no, kind, "err",
+                f"이 수집 대상의 커스텀 {kind} 스크립트에 오류가 있어 기본 동작으로 진행합니다"
+            )
             return False
 
         defined = {

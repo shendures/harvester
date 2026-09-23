@@ -39,7 +39,6 @@ class GlobalToolbarTriggers:
             _reset_pages(self.dashboard, self.monitor_page)
 
             self.set_running(True)
-            self._log("info", "수집을 시작합니다.")
             QApplication.processEvents()
             _after_delay_unless_cancelled(lambda: self._start_cancelled, self._step_to_setting)
         else:
@@ -65,7 +64,6 @@ class GlobalToolbarTriggers:
 
         QApplication.processEvents()
 
-        self._log("info", "환경 설정을 로드합니다. (수집 세팅 중...)")
         _after_delay_unless_cancelled(lambda: self._start_cancelled, self._actual_start)
 
     def _actual_start(self):

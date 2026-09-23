@@ -72,7 +72,6 @@ class AuthManagerPageTriggers:
             }
             self._auth_rows.append(data)
             self._insert_table_row(data)
-            self._log_auth("info", f"자격증명 추가됨: {data['name']} ({data['type']})")
             dlg.close()
 
         ok_btn.clicked.connect(_do_add)
@@ -82,10 +81,7 @@ class AuthManagerPageTriggers:
 
     def _delete_cred_row(self, row_idx):
         if 0 <= row_idx < self._cred_table.rowCount():
-            name_item = self._cred_table.item(row_idx, 0)
-            name_txt  = name_item.text() if name_item else "?"
             self._cred_table.removeRow(row_idx)
-            self._log_auth("warn", f"자격증명 삭제됨: {name_txt}")
 
     def _export_creds(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -100,7 +96,6 @@ class AuthManagerPageTriggers:
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
-        self._log_auth("info", f"자격증명 내보내기 완료: {path}")
         _show_message_dialog(self, "완료", f"내보내기 완료:\n{path}", icon=QMessageBox.Icon.Information)
 
     def _on_tls_toggle(self, state):
