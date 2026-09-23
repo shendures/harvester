@@ -27,6 +27,7 @@ No `최신 갱신` field (rules, not state) and no cross-references — each is 
 | `ISSUES.md` | Resolved / unresolved / deferred status of discovered issues |
 | `PREPROCESS.md` | Deep dive on the refine-rules subsystem (model for future subsystem docs, §6) |
 | `BUILD_GUIDE.md` | Deep dive on the Windows exe/installer build pipeline |
+| `COLLECTION_EXECUTION_ERROR_HANDLING.md` | Deep dive: error-handling/feedback design review across the 4 collection execution paths (manual/select/batch/schedule); §4 issue candidates are pre-formatted for direct promotion into `ISSUES.md` §2 |
 
 All carry a **`최신 갱신`** field (§8) and **cross-reference each other**. They risk **silently
 going stale** when the code changes — always follow the re-verification principles in §5–§7.
