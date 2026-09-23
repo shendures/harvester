@@ -11,7 +11,7 @@ import subprocess
 from PyQt6.QtWidgets import (
     QMessageBox, QVBoxLayout, QHBoxLayout, QCheckBox, QWidget,
     QTableWidgetItem, QGridLayout, QStackedWidget, QSizePolicy, QScrollArea,
-    QAbstractItemView,
+    QAbstractItemView, QSystemTrayIcon,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -26,7 +26,7 @@ from preprocess import DataRefiner, RefineStats, load_custom_rule, custom_rule_e
 from .common import (
     parts, ACCENT_LIGHT, TEXT_PRIMARY, TEXT_SECONDARY,
     TEXT_MUTED, GREEN, AMBER, RED, ROW_ORIGIN_ROLE,
-    _normalize_save_type, _get_log_manager, _boxed_panel_qss,
+    _normalize_save_type, _get_log_manager, _get_tray_manager, _boxed_panel_qss,
     _build_output_file_page, _build_output_db_page,
     _build_collect_settings_fields, _build_modal_dialog, _build_dialog_button_row, _wire_output_mode_toggle,
     _warn_custom_rule_missing as _common_warn_custom_rule_missing,
@@ -944,7 +944,7 @@ class MonitorPageTriggers:
                 auth_scroll.setWidget(auth_body)
 
     def _extract_result_table(self, source: str, silent: bool = False, extract_override: dict = None,
-                              open_save_path: bool = True):
+                              open_save_path: bool = True, notify_empty: bool = True):
         """
         source: "raw"(_collected_data) 또는 "refined"(_refined_data) — 추출 대상을
         호출부에서 명시적으로 지정합니다. "refined"인데 아직 정제를 실행하지
@@ -961,27 +961,35 @@ class MonitorPageTriggers:
             (수동 추출 버튼 등) 기존과 동일하게 self.output_info와 확인 모달을 사용합니다.
         open_save_path: False면 "저장 후 폴더 열기" 설정과 무관하게 폴더를 열지 않습니다
             (silent와 달리 모달/로그 동작은 바꾸지 않음 — "선택 수집" 자동 저장용).
+        notify_empty: False면 데이터가 없을 때도 모달 대신 로그만 남깁니다(EXTRACT
+            버튼이 아닌 수집 완료 후 자동 저장 호출 전용 — "추출 불가" 팝업은 사용자가
+            EXTRACT 버튼을 직접 눌렀을 때만 떠야 합니다).
         """
         lm = _get_log_manager(self)
+        should_notify = notify_empty and not silent
 
         if source == "refined":
-            if not self._refined_data and not silent:
-                self._run_refine()
+            if not self._refined_data and not silent and (self._collected_data or should_notify):
+                # notify_empty=False(자동 저장 등 EXTRACT 버튼 아닌 호출)면 이 폴백도
+                # 팝업 대신 로그만 남기도록 전파한다 — 그렇지 않으면 "정제 불가"/"정제
+                # 오류" 팝업이 여기서 우회 없이 그대로 뜬다.
+                self._run_refine(skip_ui_update=not notify_empty)
             data = self._refined_data
             if not data:
-                if silent:
+                if not should_notify:
                     if lm:
-                        lm.append_log("warn", "무인 실행 — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
+                        prefix = "무인 실행" if silent else "자동 저장"
+                        lm.append_log("warn", f"{prefix} — 정제 결과가 없어 파일/DB 추출을 건너뜁니다.")
                 # else: _run_refine()이 이미 "정제 불가" 경고를 띄웠음
                 return
         else:
             data = self._collected_data
             if not data:
-                if silent:
-                    if lm:
-                        lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
-                else:
+                if should_notify:
                     QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+                elif lm:
+                    prefix = "무인 실행" if silent else "자동 저장"
+                    lm.append_log("warn", f"{prefix} — 수집된 데이터가 없어 파일/DB 추출을 건너뜁니다.")
                 return
         headers = list(data[0].keys())
 
@@ -1079,6 +1087,12 @@ class MonitorPageTriggers:
                     if silent:
                         if lm:
                             lm.append_log("err", "DB 저장에 실패했습니다 — DB 접속 정보를 확인해주세요")
+                        tray = _get_tray_manager(self)
+                        if tray:
+                            tray.show_message(
+                                "⚠ DB 저장 실패", "DB 접속 정보를 확인해주세요.",
+                                icon=QSystemTrayIcon.MessageIcon.Warning,
+                            )
                     else:
                         QMessageBox.critical(
                             self, "DB 저장 실패",
@@ -1088,6 +1102,12 @@ class MonitorPageTriggers:
             if silent:
                 if lm:
                     lm.append_log("err", "파일/DB 저장 중 오류가 발생해 추출을 완료하지 못했습니다")
+                tray = _get_tray_manager(self)
+                if tray:
+                    tray.show_message(
+                        "⚠ 저장 실패", "파일/DB 저장 중 오류가 발생해 추출을 완료하지 못했습니다.",
+                        icon=QSystemTrayIcon.MessageIcon.Warning,
+                    )
             else:
                 QMessageBox.critical(self, "추출 오류", str(e))
 

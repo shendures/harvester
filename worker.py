@@ -72,6 +72,8 @@ class MultiprocessWorker(QThread):
         self.process   = None
         self.queue     = multiprocessing.Queue()
         self._running  = True
+        self._aborted  = False   # Scrapy 실행 자체 실패(EXECUTOR_STATUS: FAILED) — 사용자 중단과 구분
+        self._abort_reason = ""
         self._errors   = 0
         self._done     = 0
         self._skipped  = 0   # URL 불일치로 skip된 응답 수 (중복 응답 skip은 미포함)
@@ -143,8 +145,15 @@ class MultiprocessWorker(QThread):
                 # ── 중단 요청 처리 ────────────────────
                 if not self._running:
                     self._terminate_process()
-                    self._drain_queue()
-                    self.log_message.emit("warn", "사용자에 의해 중단됨")
+                    if self._aborted:
+                        # 실행 실패 직전까지 큐에 도착해 있던 정상 결과는 버리지 않고
+                        # 처리한다 — 사용자 의도적 중단과 달리 가능한 만큼은 살린다.
+                        self._drain_queue_and_process(
+                            url_list, processed_urls, callback_url, total, delay, threads
+                        )
+                    else:
+                        self._drain_queue()
+                        self.log_message.emit("warn", "사용자에 의해 중단됨")
                     break
 
                 # ── 큐에서 메시지 읽기 ────────────────
@@ -216,6 +225,8 @@ class MultiprocessWorker(QThread):
             reason = clean_line.replace("EXECUTOR_STATUS: FAILED", "").strip()
             logger.error("[MultiprocessWorker] Scrapy 실행 실패: %s", reason)
             self.log_message.emit("err", f"Scrapy 실행 실패: {reason}")
+            self._aborted = True
+            self._abort_reason = reason
             self._running = False  # 루프 종료 유도
             return
 
@@ -315,6 +326,9 @@ class MultiprocessWorker(QThread):
             resp_info["empty_extract"] = True
             level = "warn"
             log_text = f"200 응답이지만 추출 데이터 0건 ( {res_url} )"
+        elif extract_error:
+            level = "warn"
+            log_text = f"200 응답이지만 추출 규칙 오류 ( {res_url} ): {extract_error}"
         elif status_code == 200:
             level = "ok"
             log_text = f"{resp_info.get('method')} {res_url}"
@@ -446,7 +460,9 @@ class MultiprocessWorker(QThread):
             "avg_time":    round(avg_t, 3),
             "elapsed":     round(elapsed, 1),
             "started":     self._started_at.strftime("%Y-%m-%d %H:%M:%S") if self._started_at else "—",
-            "interrupted": not self._running,
+            "interrupted": (not self._running) and not self._aborted,
+            "aborted":     self._aborted,
+            "abort_reason": self._abort_reason,
             "finished":    now.strftime("%Y-%m-%d %H:%M:%S"),
             "url_count":   url_count,
             "skipped":     self._skipped,

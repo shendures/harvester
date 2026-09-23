@@ -12,7 +12,7 @@ from trigger import DashboardPageTriggers
 from trigger.common import _build_collect_settings_fields
 from style import EqualSpacingTable, apply_render_safety_limits
 from ..common import (
-    parts, build_scroll_body, build_stat_summary_card,
+    parts, build_scroll_body, build_stat_summary_card, build_status_banner,
     BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
     TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
 )
@@ -90,6 +90,10 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
                 step_layout.addWidget(line, 1)  # 라인이 공간을 채우도록 가중치 1 부여
 
         stl.addWidget(step_container)
+
+        self.status_banner, self._show_status_banner, self._hide_status_banner = build_status_banner(parts)
+        stl.addWidget(self.status_banner)
+
         cfg.addWidget(stw, 1)  # 상태창이 조금 더 넓게 배치 (비율 3)
 
         self._update_step_ui(0)  # 초기 실행 시 "수집 대기" 상태로 불이 들어오게 설정
@@ -265,6 +269,13 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         if self._step_idx != self._EXTRACT_STEP_IDX:
             self._update_step_ui(self._EXTRACT_STEP_IDX)
 
+    def set_status_banner(self, headline: str, detail: str) -> None:
+        """모달을 띄울 수 없는 실행에서 실패 사실을 지속적으로 보여준다."""
+        self._show_status_banner(headline, detail)
+
+    def clear_status_banner(self) -> None:
+        self._hide_status_banner()
+
     def _reset_dashboard(self):
         self.s_total.update_value(0)
         self.s_err.update_value(0)
@@ -282,6 +293,7 @@ class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
         self.prog_lbl.setText("대기 중")
 
         self._update_step_ui(0)
+        self.clear_status_banner()
 
     def set_running(self, v: bool):
         """GlobalToolbarSingle 에서 상태를 받아 내부 플래그만 동기화합니다."""

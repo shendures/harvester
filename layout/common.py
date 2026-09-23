@@ -9,7 +9,7 @@ from trigger.common import _confirm_destructive_action, _default_dialog_qss
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
-    QDialog, QSplitter,
+    QDialog, QSplitter, QFrame, QLabel,
 )
 
 store = DataStore()
@@ -99,6 +99,43 @@ def build_stat_summary_card(parts, title: str, specs: list, help_text: str | Non
         cards.append(card)
     card_l.addLayout(row)
     return card_w, cards
+
+
+def build_status_banner(parts):
+    """모달을 띄울 수 없는 무인/순차 실행에서 실패 사실을 다음 실행 시작 전까지
+    지속적으로 보여주는 배너. (frame, show_fn, hide_fn)을 반환하며 기본은 숨김
+    상태다. layout/statistics.py의 진단 배너(좌측 강조선+레벨 라벨+상세 라벨)
+    구조를 일반화한 것 — dashboard 페이지가 공유한다."""
+    frame = QFrame()
+    frame.setObjectName("statusBanner")
+    frame.hide()
+
+    lay = QHBoxLayout(frame)
+    lay.setContentsMargins(12, 8, 12, 8)
+    lay.setSpacing(10)
+
+    level_lbl = parts.make_label("● 실패", RED, 12, bold=True)
+    lay.addWidget(level_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    detail_lbl = QLabel()
+    detail_lbl.setWordWrap(True)
+    detail_lbl.setStyleSheet(f"color:{TEXT_PRIMARY}; font-size:11px; background:transparent; border:none;")
+    lay.addWidget(detail_lbl, 1, Qt.AlignmentFlag.AlignVCenter)
+
+    frame.setStyleSheet(
+        f"QFrame#statusBanner {{ background:{BG_SECONDARY}; border:1px solid {BORDER};"
+        f" border-left:4px solid {RED}; border-radius:6px; }}"
+    )
+
+    def show(headline: str, detail: str) -> None:
+        level_lbl.setText(f"● {headline}")
+        detail_lbl.setText(detail)
+        frame.show()
+
+    def hide() -> None:
+        frame.hide()
+
+    return frame, show, hide
 
 
 def row_of_seq(table, seq_no, seq_no_col: int) -> int:

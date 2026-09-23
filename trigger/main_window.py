@@ -4,6 +4,7 @@
 
 import logging
 from copy import deepcopy
+from datetime import datetime
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -12,8 +13,8 @@ from conf import BlueprintStorage
 
 from .common import (
     store, TEXT_SECONDARY, LOG_LEVEL_COLORS, SCHEDULED_REFINE_RULES,
-    _apply_task_settings, _reset_pages, _show_no_data_dialog, _stop_worker_if_running,
-    _after_delay_unless_cancelled,
+    _apply_task_settings, _reset_pages, _show_no_data_dialog, _show_aborted_dialog, _stop_worker_if_running,
+    _after_delay_unless_cancelled, _modal_allowed,
     NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
 )
 
@@ -181,11 +182,43 @@ class MainWindowTriggersSingle:
             # 중단은 _stop_crawl()에서 큐를 이미 비웠으므로 큐 소비 불필요
             return
 
+        # 모달 허용 여부는 job 라벨이 아니라 실행 성격(task_nm/batch_meta.total)으로
+        # 판정한다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2).
+        is_unattended = not _modal_allowed(task)
+
+        if summary.get("aborted"):
+            # 사용자 중단이 아니라 Scrapy 실행 자체가 실패한 경우 — 0건 분기와 동일하게
+            # 스케줄 재무장·대기 큐 소비는 계속 진행해야 한다(그렇지 않으면 스케줄이
+            # 영구 정지하고 배치 잔여 작업이 큐에 남아 나중에 엉뚱한 시점에 실행된다).
+            elapsed = summary.get("elapsed", 0)
+            self.log_manager.append_log(
+                "err",
+                f"수집 실행 실패 — 처리 결과 없이 종료되었습니다 (소요: {elapsed}s)"
+            )
+            self.dashboard._update_step_ui(0)
+            if is_unattended:
+                self.tray_manager.show_message(
+                    "⚠ 수집 실행 실패",
+                    f"'{task.get('task_nm', '')}' 스케줄 실행 중 오류가 발생해 처리 결과 없이 "
+                    "종료됐습니다.\n로그를 확인해 주세요.",
+                    icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+                self.dashboard.set_status_banner(
+                    "수집 실행 실패",
+                    f"'{task.get('task_nm', '')}' ({datetime.now():%H:%M:%S} · 소요 {elapsed}s)"
+                    + (f"\n오류 내용: {summary.get('abort_reason', '')}" if summary.get("abort_reason") else "")
+                )
+            else:
+                _show_aborted_dialog(self, summary.get("abort_reason", ""), elapsed)
+            self._mark_schedule_done(task, total=summary.get("total", 0))
+            self._log_collection_done()
+            self._consume_pending_queue()
+            return
+
         if summary.get("total", 0) == 0:
             url_count = summary.get("url_count", 0)
             skipped   = summary.get("skipped", 0)
             elapsed   = summary.get("elapsed", 0)
-            is_unattended = task.get("job") == "스케줄 실행"
             self.log_manager.append_log(
                 "err",
                 f"크롤링 완료 — 수집된 데이터가 없습니다 "
@@ -200,6 +233,10 @@ class MainWindowTriggersSingle:
                     f"'{task.get('task_nm', '')}' 스케줄 실행이 완료됐지만 수집된 데이터가 0건입니다.\n"
                     "사이트 구조 변경 여부를 확인해 주세요.",
                     icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+                self.dashboard.set_status_banner(
+                    "수집 결과 없음",
+                    f"'{task.get('task_nm', '')}' ({datetime.now():%H:%M:%S})"
                 )
             else:
                 _show_no_data_dialog(self, url_count, skipped, elapsed)
@@ -218,12 +255,15 @@ class MainWindowTriggersSingle:
         self.monitor_page.preprocess(task)
         self.stats_page.reload()
 
-        is_unattended = task.get("job") == "스케줄 실행"
+        # 정제 규칙 강제 적용 여부는 모달 판정과 무관한 별개 축이므로 is_unattended를
+        # 재사용하지 않는다(단일 레이아웃은 job이 이 둘뿐이라 현재는 값이 같지만, 개념을
+        # 명확히 분리해 둔다).
+        use_fixed_refine_rules = task.get("job") == "스케줄 실행"
         try:
             extract_cfg = task.get("extract", {})
             if extract_cfg.get("auto_save"):
                 auto_save_source = extract_cfg.get("auto_save_source", "raw")
-                if auto_save_source == "refined" and is_unattended:
+                if auto_save_source == "refined" and use_fixed_refine_rules:
                     # 무인 실행 — 화면 체크박스 상태가 아닌 스케줄별 설정(없으면
                     # SCHEDULED_REFINE_RULES 폴백, §"새 스케줄 등록"의 "⚙ 정제
                     # 규칙 설정" 참고)을 적용, 결과 테이블/탭 전환 등 화면 갱신도 건너뜀
@@ -240,6 +280,7 @@ class MainWindowTriggersSingle:
                     source=auto_save_source,
                     silent=is_unattended,
                     extract_override=extract_cfg if is_unattended else None,
+                    notify_empty=False,
                 )
         except Exception as e:
             logger.error("[main_window] 자동 저장 실패: %s", e)
@@ -463,6 +504,26 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._reset_bundle_pages(next_cfg.get("seq_no"))
         self._launch_worker(next_cfg, job_name=next_cfg.get("job", "스케줄 실행"))
 
+    def _record_batch_outcome(self, task: dict, outcome: str) -> None:
+        """선택/전체 수집(N건 순차 실행)의 건별 결과를 누적하다가, 마지막 건이 끝나면
+        요약 로그 한 줄을 남긴다(원칙 4 — 건별 통보 대신 배치 종료 요약). batch_meta가
+        없는 task(수동 실행/스케줄)는 대상이 아니다."""
+        batch_meta = task.get("batch_meta")
+        if not batch_meta:
+            return
+        index, total = batch_meta.get("index", 0), batch_meta.get("total", 1)
+        if index == 0 or self._batch_outcome_counts is None:
+            self._batch_outcome_counts = {"success": 0, "empty": 0, "aborted": 0}
+        self._batch_outcome_counts[outcome] = self._batch_outcome_counts.get(outcome, 0) + 1
+        if index == total - 1:
+            c = self._batch_outcome_counts
+            self.log_manager.append_log(
+                "info",
+                f"[{task.get('job')}] 배치 완료 — 총 {total}건 중 성공 {c['success']}건 · "
+                f"0건 {c['empty']}건 · 실패 {c['aborted']}건"
+            )
+            self._batch_outcome_counts = None
+
     # ── 완료 처리 (번들 라우팅) ────────────────────────
     def _on_finished(self, task: dict, summary: dict):
         # 늦게 도착한 이전 워커의 finished 신호 무시 (단일과 동일한 가드)
@@ -490,9 +551,46 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             # 중단은 _stop_crawl()에서 큐를 이미 비웠으므로 큐 소비 불필요
             return
 
-        # 전체 수집·스케줄 실행은 "무인 흐름" — 모달을 띄우면 사용자가
-        # 닫아줄 때까지 다음 순번이 영영 시작되지 않으므로 트레이 알림만 사용.
-        is_unattended = task.get("job") in ("스케줄 실행", BATCH_JOB)
+        # 모달 허용 여부는 job 라벨이 아니라 실행 성격(task_nm/batch_meta.total)으로
+        # 판정한다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2). 전체
+        # 수집·스케줄·N>1 선택 수집은 모두 차단되어 트레이+배너로, 단건은 모달로 간다.
+        is_unattended = not _modal_allowed(task)
+        # 정제 규칙 강제 적용 여부는 모달 판정과 무관한 별개 축이다 — SELECT_JOB은
+        # N>1이라도 각 블루프린트 화면(bundle.monitor_page)의 실시간 체크박스 상태를
+        # 신뢰할 수 있으므로 여기서 제외해야 한다(포함하면 방금 설정한 화면 정제
+        # 규칙을 무시하고 스케줄 고정 규칙을 강제하는 회귀가 생김).
+        use_fixed_refine_rules = task.get("job") in ("스케줄 실행", BATCH_JOB)
+
+        if summary.get("aborted"):
+            # 사용자 중단이 아니라 Scrapy 실행 자체가 실패한 경우 — 0건 분기와 동일하게
+            # 스케줄 재무장·대기 큐 소비는 계속 진행해야 한다.
+            elapsed = summary.get("elapsed", 0)
+            self.log_manager.append_log(
+                "err",
+                f"수집 실행 실패 — 처리 결과 없이 종료되었습니다 (소요: {elapsed}s)"
+            )
+            dash._update_step_ui(0)
+            self._broadcast_blueprint_status(seq_no, "failed")
+            if is_unattended:
+                job_label = task.get("task_nm") or task.get("title") or seq_no
+                self.tray_manager.show_message(
+                    "⚠ 수집 실행 실패",
+                    f"'{job_label}' 실행 중 오류가 발생해 처리 결과 없이 종료됐습니다.\n"
+                    "로그를 확인해 주세요.",
+                    icon=QSystemTrayIcon.MessageIcon.Warning,
+                )
+                dash.set_status_banner(
+                    "수집 실행 실패",
+                    f"'{job_label}' ({datetime.now():%H:%M:%S} · 소요 {elapsed}s)"
+                    + (f"\n오류 내용: {summary.get('abort_reason', '')}" if summary.get("abort_reason") else "")
+                )
+            else:
+                _show_aborted_dialog(self, summary.get("abort_reason", ""), elapsed)
+            self._record_batch_outcome(task, "aborted")
+            self._mark_schedule_done(task, total=summary.get("total", 0))
+            self._log_collection_done()
+            self._consume_pending_queue()
+            return
 
         if summary.get("total", 0) == 0:
             url_count = summary.get("url_count", 0)
@@ -504,6 +602,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                 f"(생성 URL {url_count}개 · URL 불일치 skip {skipped}건 · 소요 {elapsed}s)"
             )
             dash._update_step_ui(0)
+            self._broadcast_blueprint_status(seq_no, "failed")
             if is_unattended:
                 job_label = task.get("task_nm") or task.get("title") or seq_no
                 self.tray_manager.show_message(
@@ -512,11 +611,16 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
                     "사이트 구조 변경 여부를 확인해 주세요.",
                     icon=QSystemTrayIcon.MessageIcon.Warning,
                 )
+                dash.set_status_banner(
+                    "수집 결과 없음",
+                    f"'{job_label}' ({datetime.now():%H:%M:%S})"
+                )
             else:
                 _show_no_data_dialog(self, url_count, skipped, elapsed)
                 if task.get("job") in IMMEDIATE_MONITOR_JOBS:
                     self._show_monitor_for(seq_no)
             # 0건이어도 스케줄 재무장·대기 큐 소비는 계속 진행 (단일과 동일)
+            self._record_batch_outcome(task, "empty")
             self._mark_schedule_done(task, total=0)
             self._log_collection_done()
             self._consume_pending_queue()
@@ -530,23 +634,23 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             extract_cfg = task.get("extract", {})
             if extract_cfg.get("auto_save"):
                 auto_save_source = extract_cfg.get("auto_save_source", "raw")
-                if auto_save_source == "refined" and is_unattended:
+                if auto_save_source == "refined" and use_fixed_refine_rules:
                     sched_refine_rules = extract_cfg.get("refine_rules", SCHEDULED_REFINE_RULES)
                     sched_fill_value   = extract_cfg.get("fill_null_value", "")
                     mon._run_refine(
                         rules_override=sched_refine_rules, skip_ui_update=True,
                         fill_value_override=sched_fill_value,
                     )
-                # 무인 실행(스케줄·전체 수집)은 저장 대상 충돌 시 확인 모달 대신
-                # extract_override로 결정론적 저장(schedule_save_type 없으면 "new"
-                # 기본값)을 태운다 — task["extract"]는 제출 시점 스냅샷(deepcopy)
-                # 이므로 화면 설정이 나중에 바뀌어도 영향받지 않는다. "선택 수집"은
-                # 완료 즉시 화면을 지켜보는 것을 전제로 하므로 제외한다.
+                # 모달 허용이 아닌 실행(스케줄·전체 수집·N건 선택 수집)은 저장 대상
+                # 충돌 시 확인 모달 대신 extract_override로 결정론적 저장(schedule_save_type
+                # 없으면 "new" 기본값)을 태운다 — task["extract"]는 제출 시점 스냅샷
+                # (deepcopy)이므로 화면 설정이 나중에 바뀌어도 영향받지 않는다.
                 mon._extract_result_table(
                     source=auto_save_source,
                     silent=is_unattended,
                     extract_override=extract_cfg if is_unattended else None,
                     open_save_path=task.get("job") != SELECT_JOB,
+                    notify_empty=False,
                 )
         except Exception as e:
             logger.error("[main_window] 자동 저장 실패: %s", e)
@@ -554,6 +658,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
 
         dash._update_step_ui(0)
 
+        self._record_batch_outcome(task, "success")
         self._mark_schedule_done(task, total=summary.get("total", 0))
 
         # 수동 실행·선택 수집: 완료되는 즉시 모니터링 화면으로. 전체 수집: 마지막
