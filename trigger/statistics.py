@@ -969,11 +969,13 @@ def _recent_sessions(sessions: list, count: int) -> list:
 
 
 def _session_windows(sessions: list) -> list:
-    """완료된(중단되지 않은) 수집의 (시작, 종료) 시각을 시작 순으로 — 응답을 회차에 귀속하는 데
-    쓴다. 중단된 수집은 일부만 돌아 대표성이 없어 패턴 시리즈에서 뺀다. url_map의 session
-    필드는 항상 1이라 쓸 수 없어, 응답의 timestamp가 어느 구간에 드는지로 귀속한다."""
+    """완료된(중단·실패하지 않은) 수집의 (시작, 종료) 시각을 시작 순으로 — 응답을 회차에
+    귀속하는 데 쓴다. 중단·실행 실패한 수집은 일부만 돌아 대표성이 없어 패턴 시리즈에서
+    뺀다. url_map의 session 필드는 항상 1이라 쓸 수 없어, 응답의 timestamp가 어느 구간에
+    드는지로 귀속한다."""
     return sorted((s["started"], s["finished"]) for s in sessions
-                  if not s.get("interrupted") and s.get("started", "")[:1].isdigit())
+                  if not s.get("interrupted") and not s.get("aborted")
+                  and s.get("started", "")[:1].isdigit())
 
 
 def _window_slot(windows: list, starts: list, timestamp: str) -> int | None:
@@ -1341,12 +1343,14 @@ class StatisticsPageTriggers:
             # title은 세션 레코드에 나중에 추가된 필드라 과거 stats_history.json에는
             # 없을 수 있음 — job/url도 함께 .get()으로 통일해 방어적으로 접근한다.
             interrupted = s.get("interrupted", False)
+            aborted     = s.get("aborted", False)
+            status_label = "중단" if interrupted else ("실패" if aborted else "완료")
             vals = [str(idx), s.get("title", ""), s.get("url", ""), str(s["total"]), str(s["success"]),
                     str(s["errors"]), f"{s['avg_time']}s", f"{s['elapsed']}s", s["started"], s["finished"],
-                    s.get("job", ""), "중단" if interrupted else "완료"]
+                    s.get("job", ""), status_label]
             colors = [TEXT_MUTED, TEXT_PRIMARY, ACCENT_LIGHT, TEXT_PRIMARY, GREEN,
                       RED, BLUE, TEXT_MUTED, TEXT_MUTED, TEXT_MUTED, TEXT_PRIMARY,
-                      RED if interrupted else GREEN]
+                      RED if (interrupted or aborted) else GREEN]
             for col, (val, color) in enumerate(zip(vals, colors)):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(color))

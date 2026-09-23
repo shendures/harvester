@@ -4,13 +4,13 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QColor
 
 from conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from style import EqualSpacingTable
 from trigger.common import _show_message_dialog, _stop_btn_qss
 from ..common import (
-    parts, theme, BG_HOVER, ACCENT, ACCENT_LIGHT, GREEN,
+    parts, theme, BG_HOVER, ACCENT, ACCENT_LIGHT, GREEN, RED,
     _blueprint_auth_method, _blueprint_requires_auth, row_of_seq,
 )
 from ..auth import AuthManagerPage
@@ -18,7 +18,7 @@ from .dashboard import DashboardPageMulti
 from .monitor import MonitorPageMulti
 
 # 블루프린트 실행 상태 라벨 — BlueprintListPage 상태 컬럼에서 사용
-BLUEPRINT_STATUS_LABELS = {"idle": "대기", "running": "수집 중"}
+BLUEPRINT_STATUS_LABELS = {"idle": "대기", "running": "수집 중", "failed": "실패"}
 
 
 class BlueprintListPage(QWidget):
@@ -276,13 +276,13 @@ class BlueprintListPage(QWidget):
                 self._active_view_seq_no = None  # 목록에서 사라진 블루프린트면 추적 해제
 
     def set_status(self, seq_no, status: str) -> None:
-        """실행 상태를 이 테이블의 상태 컬럼에 반영한다(idle/running/done). 이
+        """실행 상태를 이 테이블의 상태 컬럼에 반영한다(idle/running/done/failed). 이
         seq_no가 지금 실행 중인 [수집]/[전체 수집] 버튼이 책임지는 대상이었다면,
-        완료(done/idle) 시 그 버튼을 원래 라벨로 되돌리는 트리거로도 쓰인다.
+        완료(done/idle/failed) 시 그 버튼을 원래 라벨로 되돌리는 트리거로도 쓰인다.
         같은 seq_no의 행 자체(▶/■) 버튼도 이 상태를 그대로 따라간다 — running이면
-        "■"로, done/idle이면(자연 종료) "▶"로. 상단 배치 버튼과 달리 이 행의
-        복귀는 다른 대기 seq_no와 무관하게 독립적으로 일어난다(_pending_run_seq_nos
-        전체가 아니라 이 seq_no 하나만 보면 되므로)."""
+        "■"로, 그 외(자연 종료)면 "▶"로. 상단 배치 버튼과 달리 이 행의 복귀는 다른
+        대기 seq_no와 무관하게 독립적으로 일어난다(_pending_run_seq_nos 전체가
+        아니라 이 seq_no 하나만 보면 되므로)."""
         label = BLUEPRINT_STATUS_LABELS.get(status, BLUEPRINT_STATUS_LABELS["idle"])
         for row in range(self.table.rowCount()):
             id_item = self.table.item(row, self._SEQ_NO_COL)
@@ -290,6 +290,7 @@ class BlueprintListPage(QWidget):
                 status_item = self.table.item(row, self._COLUMNS.index("Status"))
                 if status_item is not None:
                     status_item.setText(label)
+                    status_item.setForeground(QColor(RED) if status == "failed" else Qt.GlobalColor.lightGray)
                 break
 
         if status == "running":
@@ -297,7 +298,7 @@ class BlueprintListPage(QWidget):
             run_btn = self._run_btn_by_seq_no.get(seq_no)
             if run_btn is not None:
                 self._style_row_run_btn(run_btn, running=True)
-        elif status in ("done", "idle"):
+        elif status in ("done", "idle", "failed"):
             if seq_no == self._active_row_seq_no:
                 self._revert_row_run_btn()
             self._pending_run_seq_nos.discard(seq_no)

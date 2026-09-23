@@ -23,6 +23,7 @@ class MainWindowMulti(MainWindowBase, MainWindowTriggersMulti):
     def __init__(self):
         # _build() 안의 _get_or_create_bundle()이 쓰므로 super().__init__() 이전에 바인딩한다.
         self._bundles: dict = {}   # seq_no -> BlueprintPageBundle (지연 생성 캐시)
+        self._batch_outcome_counts = None  # 배치 실행 중 결과 집계(원칙 4) — 진행 중 배치 없으면 None
         super().__init__()
 
     def _build(self):

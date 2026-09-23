@@ -343,6 +343,18 @@ def _warn_custom_rule_missing(parent, title) -> None:
     )
 
 
+def _modal_allowed(task: dict | None) -> bool:
+    """모달을 띄워도 되는지("사람이 직접 시작했고(task_nm 없음) 뒤에 대기 작업이 없는
+    단건 실행(batch_meta.total<=1)"인지) 판정한다. job 라벨을 늘어놓고 비교하는 대신
+    task 자체의 두 속성만 본다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6
+    원칙 2). EXTRACT 버튼처럼 task를 안 넘기는 호출부는 무조건 허용(task=None)."""
+    if task is None:
+        return True
+    if task.get("task_nm"):
+        return False
+    return (task.get("batch_meta") or {}).get("total", 1) <= 1
+
+
 def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
     """'수집 결과 없음' 안내 다이얼로그 (단일/다중 _on_finished에서 동일하게 사용)"""
     _show_message_dialog(
@@ -350,6 +362,19 @@ def _show_no_data_dialog(parent, url_count, skipped, elapsed) -> None:
         "수집이 완료되었으나 데이터가 없습니다.\n"
         f"생성된 URL: {url_count}개 · URL 불일치 skip: {skipped}건 · 소요 시간: {elapsed}s\n"
         "URL 또는 수집 설정을 확인하고 다시 시도해 주세요."
+    )
+
+
+def _show_aborted_dialog(parent, reason: str, elapsed) -> None:
+    """'수집 실행 실패' 안내 다이얼로그 (단일/다중 _on_finished에서 동일하게 사용) —
+    사용자가 중지 버튼을 누른 게 아니라 Scrapy 실행 자체가 실패해 처리 결과 없이
+    종료된 경우 전용."""
+    _show_message_dialog(
+        parent, "수집 실행 실패",
+        "수집 실행 중 오류가 발생해 처리 결과 없이 종료되었습니다.\n"
+        f"소요 시간: {elapsed}s\n"
+        + (f"오류 내용: {reason}\n" if reason else "")
+        + "잠시 후 다시 시도하거나 로그를 확인해 주세요."
     )
 
 
@@ -377,6 +402,12 @@ def _get_log_manager(widget):
     (SessionSettingsPageTriggers/AuthManagerPageTriggers에 동일하게 복제돼 있던 메서드를 통합)
     """
     return getattr(widget.window(), 'log_manager', None)
+
+
+def _get_tray_manager(widget):
+    """최상위 MainWindow의 tray_manager(TrayManager)를 반환한다. 아직 준비되지
+    않았으면 None을 반환한다(_get_log_manager와 동일 패턴)."""
+    return getattr(widget.window(), 'tray_manager', None)
 
 
 def _log(widget, level: str, message: str) -> None:

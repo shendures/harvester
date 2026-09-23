@@ -4,7 +4,7 @@ import customized_settings
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
-    QTabWidget, QCheckBox, QMessageBox, QTableWidgetItem,
+    QTabWidget, QCheckBox, QTableWidgetItem,
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor
@@ -22,8 +22,6 @@ from .common import ActiveBlueprintMixin
 
 
 class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
-    _SILENT_JOBS = ("스케줄 실행",)
-
     def __init__(self):
         super().__init__()
         self._all_rows       = []
@@ -514,11 +512,8 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         _sync_custom_rule_checkbox(self._current_task.get("seq_no"), self._rule_checkboxes)
 
         if not self._collected_data:
-            if (task or {}).get("job") in self._SILENT_JOBS:
-                # 무인 실행 중 블로킹 모달 방지 — 로그만 남기고 조용히 스킵 (이슈 ⑱)
-                lm = getattr(self.window(), "log_manager", None)
-                if lm:
-                    lm.append_log("warn", "무인 실행 — 수집된 데이터가 없어 추출/정제를 건너뜁니다.")
-            else:
-                QMessageBox.warning(self, "추출 불가", "메모리에 수집된 데이터가 없습니다.\n수집을 먼저 실행해 주세요.")
+            # EXTRACT 버튼 클릭이 아닌 수집 완료 후 자동 호출이므로 모달 대신 로그만 남긴다
+            lm = getattr(self.window(), "log_manager", None)
+            if lm:
+                lm.append_log("warn", "수집된 데이터가 없어 추출/정제를 건너뜁니다.")
             return
