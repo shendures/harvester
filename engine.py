@@ -273,7 +273,7 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
     login_fn = conf.CustomModuleStorage().load_login(seq_no)
     if login_fn is None:
         logger.error("[perform_login] login/%s.py에 login()이 정의되어 있지 않습니다.", seq_no)
-        print("EXECUTOR_LOG:err:로그인에 실패해 수집을 시작하지 못했습니다 (원인: login 함수 미정의)")
+        print("EXECUTOR_LOG:err:로그인 실패 — 수집 시작 불가 (원인: login 함수 미정의)")
         return False
 
     pre_login_url = driver.current_url
@@ -285,7 +285,7 @@ def perform_login(driver, login_info: dict, seq_no: str) -> bool:
         # SELENIUM_COMMAND_TIMEOUT_SECONDS 초과(응답 지연·행) 등으로 로그인
         # 처리 중 예외가 나면, 이후 수집 자체를 시작하지 않도록 실패로 처리.
         logger.error("[perform_login] 로그인 처리 중 오류 발생(seq_no=%s): %s", seq_no, e)
-        print(f"EXECUTOR_LOG:err:로그인 처리 중 오류가 발생해 수집을 시작하지 못했습니다: {e}")
+        print(f"EXECUTOR_LOG:err:로그인 처리 오류 — 수집 시작 불가: {e}")
         return False
 
 

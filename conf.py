@@ -160,7 +160,7 @@ class DataStore:
                 self._sessions = data.get("sessions", [])
         except Exception as e:
             logger.error("[DataStore] 통계 이력 로드 실패: %s", e)
-            _report("err", "이전 통계 이력을 불러오지 못해 통계 페이지가 빈 상태로 시작됩니다")
+            _report("err", "통계 이력 로드 실패 — 통계 페이지 빈 상태로 시작")
 
     def save_stats_history(self) -> None:
         path = self._stats_history_path()
@@ -175,7 +175,7 @@ class DataStore:
             os.replace(tmp_path, path)
         except Exception as e:
             logger.error("[DataStore] 통계 이력 저장 실패: %s", e)
-            _report("err", "통계 이력 저장에 실패했습니다 — 다음 실행 시 이번 회차 통계가 누락될 수 있습니다")
+            _report("err", "통계 이력 저장 실패 — 다음 실행 시 이번 회차 통계 누락 가능")
 
 
 # ══════════════════════════════════════════════════════
@@ -253,7 +253,7 @@ class BlueprintStorage(_LazyInitSingleton):
 
         if not os.path.exists(target):
             logger.warning("[BlueprintStorage] JSON 파일 없음, 기본값 사용: %s", target)
-            _report("err", "수집 설정 파일을 찾을 수 없어 기본값으로 초기화했습니다")
+            _report("err", "수집 설정 파일 없음 — 기본값으로 초기화")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
         try:
@@ -266,30 +266,30 @@ class BlueprintStorage(_LazyInitSingleton):
                 candidates = raw
             else:
                 logger.error("[BlueprintStorage] 지원하지 않는 JSON 루트 타입: %s", type(raw))
-                _report("err", "수집 설정 형식이 올바르지 않아 기본값으로 초기화했습니다")
+                _report("err", "수집 설정 형식 오류 — 기본값으로 초기화")
                 return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
             validated = []
             for i, item in enumerate(candidates):
                 if not isinstance(item, dict) or not self._validate(item):
                     logger.warning("[BlueprintStorage] 블루프린트 #%d 검증 실패, 건너뜀", i)
-                    _report("warn", f"{i + 1}번째 수집 설정이 손상되어 목록에서 제외했습니다")
+                    _report("warn", f"{i + 1}번째 수집 설정 손상 — 목록에서 제외")
                     continue
                 validated.append(self._ensure_seq_no(item, i, validated))
 
             if not validated:
                 logger.error("[BlueprintStorage] 유효한 블루프린트 없음, 기본값 사용")
-                _report("err", "사용 가능한 수집 설정이 없어 기본값으로 초기화했습니다")
+                _report("err", "사용 가능한 수집 설정 없음 — 기본값으로 초기화")
                 return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
             return validated
 
         except json.JSONDecodeError as e:
             logger.error("[BlueprintStorage] JSON 파싱 실패 (%s): %s", target, e)
-            _report("err", "수집 설정 파일이 손상되어 기본값으로 초기화했습니다")
+            _report("err", "수집 설정 파일 손상 — 기본값으로 초기화")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
         except Exception as e:
             logger.error("[BlueprintStorage] 로드 실패: %s", e)
-            _report("err", "수집 설정을 불러오지 못해 기본값으로 초기화했습니다")
+            _report("err", "수집 설정 로드 실패 — 기본값으로 초기화")
             return [self._ensure_seq_no(self._safe_fallback(), 0, [])]
 
     @staticmethod
@@ -509,7 +509,7 @@ class CustomModuleStorage(_LazyInitSingleton):
                 logger.error("[CustomModuleStorage] 시딩 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
                 self._report_once(
                     seq_no, kind, "err",
-                    f"이 수집 대상의 커스텀 {kind} 스크립트를 불러오지 못해 기본 동작으로 진행합니다"
+                    f"이 수집 대상의 커스텀 {kind} 스크립트 로드 실패 — 기본 동작으로 진행"
                 )
 
         return file_path if os.path.exists(file_path) else default_source
@@ -533,7 +533,7 @@ class CustomModuleStorage(_LazyInitSingleton):
             logger.error("[CustomModuleStorage] 파일 파싱 실패 (seq_no=%s, kind=%s): %s", seq_no, kind, e)
             self._report_once(
                 seq_no, kind, "err",
-                f"이 수집 대상의 커스텀 {kind} 스크립트에 오류가 있어 기본 동작으로 진행합니다"
+                f"이 수집 대상의 커스텀 {kind} 스크립트 오류 — 기본 동작으로 진행"
             )
             return False
 

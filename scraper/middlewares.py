@@ -132,7 +132,7 @@ class RateLimitedProxyMiddleware:
             self.stats.inc_value('rate_limit/max_reached')
             spider.logger.error(
                 f"❌ Rate Limit 재시도 한도({self.MAX_RATE_LIMIT_RETRIES}회) 초과로 요청을 포기합니다: {request.url}")
-            print(f"EXECUTOR_LOG:err:Rate Limit 재시도 한도 초과로 일부 요청을 포기했습니다: {request.url}")
+            print(f"EXECUTOR_LOG:err:Rate Limit 재시도 한도 초과 — 요청 포기: {request.url}")
             raise IgnoreRequest(f"Rate limit retry limit ({self.MAX_RATE_LIMIT_RETRIES}) exceeded.")
 
         # 다음 요청 가능 시각 계산 (전체 프록시 중 가장 빨리 풀리는 기록 기준)
@@ -146,7 +146,7 @@ class RateLimitedProxyMiddleware:
             f"({retries + 1}/{self.MAX_RATE_LIMIT_RETRIES}): {request.url}")
         if not self._rate_limit_warned:
             self._rate_limit_warned = True
-            print("EXECUTOR_LOG:warn:모든 프록시가 요청 한도에 도달해 응답이 지연되고 있습니다")
+            print("EXECUTOR_LOG:warn:모든 프록시 요청 한도 도달 — 응답 지연")
         self.rescheduler.schedule(request, wait_time)
         raise IgnoreRequest(f"All proxies rate limited. Re-queued in {wait_time:.2f}s.")
 

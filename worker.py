@@ -112,10 +112,10 @@ class MultiprocessWorker(QThread):
 
             if total == 0:
                 logger.warning("[DEBUG][run] generate_combined_urls() 반환값이 비어 있음 — callback_url: %s", callback_url)
-                self.log_message.emit("warn", f"수집 대상 URL이 생성되지 않았습니다. URL 설정을 확인해주세요. (대상: {callback_url})")
+                self.log_message.emit("warn", f"수집 대상 URL 생성 실패 — URL 설정 확인 필요 (대상: {callback_url})")
             else:
                 logger.debug("[DEBUG][run] url_list 생성 완료 — 총 %d개", total)
-                self.log_message.emit("info", f"총 {total}개 수집을 시작합니다.")
+                self.log_message.emit("info", f"총 {total}개 수집 시작")
                 for u in list(url_list)[:5]:   # 최대 5개만 출력 (로그 과부하 방지)
                     logger.debug("[DEBUG][run] url_list 샘플: %s", u)
 
@@ -554,7 +554,7 @@ def run_spider(request_info: dict, queue: multiprocessing.Queue) -> bool:
     sys.stderr  = writer
 
     if not request_info or not isinstance(request_info, dict):
-        print("EXECUTOR_LOG:err:실행할 데이터가 없거나 형식이 올바르지 않습니다.")
+        print("EXECUTOR_LOG:err:실행 데이터 없음 또는 형식 오류")
         return False
 
     settings = set_scrapy_settings(request_info)

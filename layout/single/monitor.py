@@ -515,5 +515,5 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
             # EXTRACT 버튼 클릭이 아닌 수집 완료 후 자동 호출이므로 모달 대신 로그만 남긴다
             lm = getattr(self.window(), "log_manager", None)
             if lm:
-                lm.append_log("warn", "수집된 데이터가 없어 추출/정제를 건너뜁니다.")
+                lm.append_log("warn", "수집 데이터 없음 — 추출/정제 건너뜀")
             return

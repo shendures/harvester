@@ -47,7 +47,7 @@ class GlobalToolbarTriggers:
             self.set_running(False)
             self._set_step_ui(0)
             self._full_reset()
-            self._log("warn", "수집이 중단되었습니다. 수집 대기 상태로 초기화합니다.")
+            self._log("warn", "수집 중단 — 수집 대기 상태로 초기화")
 
     def _step_to_setting(self):
         """[단계 1: 수집 세팅] 처리"""
@@ -55,7 +55,7 @@ class GlobalToolbarTriggers:
             return
 
         if self.dashboard is None or self.session_page is None or self.monitor_page is None:
-            self._log("err", "페이지 초기화가 완료되지 않았습니다. 잠시 후 다시 시도해 주세요.")
+            self._log("err", "페이지 초기화 미완료 — 잠시 후 재시도 필요")
             self._set_step_ui(0)
             self.set_running(False)
             return
