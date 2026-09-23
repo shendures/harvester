@@ -548,9 +548,9 @@ def run_spider(request_info: dict, queue: multiprocessing.Queue) -> bool:
     try:
         spider = engine.get_spider(request_info)
         process.crawl(spider, request_info=request_info)
-        print(f"EXECUTOR_LOG:info:스파이더 예약 완료: {request_info.get('title', '(제목 없음)')}")
+        print(f"EXECUTOR_LOG:info:수집 예약 완료: {request_info.get('title', '(제목 없음)')}")
     except Exception as e:
-        print(f"EXECUTOR_LOG:err:스파이더 로드 실패: {e}")
+        print(f"EXECUTOR_LOG:err:수집 예약 실패: {e}")
         # 스파이더 등록 실패 시 크롤링 시작 불가 → 즉시 종료
         return False
 
