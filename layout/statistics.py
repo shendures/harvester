@@ -185,7 +185,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         process_card_w, process_cards = build_stat_summary_card(
             parts, "데이터 처리",
-            [("건수 중앙값", "—", ACCENT_LIGHT), ("최소/최대 수집 건수", "—", PURPLE),
+            [("건수 중앙값", "—", ACCENT_LIGHT), ("페이지 최소/최대 건수", "—", PURPLE),
              ("유효 데이터 비율", "—", GREEN)],
             help_text=PROCESS_CARD_HELP,
         )
@@ -209,8 +209,9 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         # 상태 코드가 못 가르는 축 — 200 응답이라도 추출 0건이면 쓸 수 없는
         # 응답이므로 "데이터 누락"으로 따로 세어, 상태 코드 뒤에 가려진 수집 실패를
         # 드러낸다.
+        # HTTP오류→연결실패→정상수집→데이터누락 순서 자체가 의미라 값 정렬을 끈다(keep_order)
         ow, ol = parts.card_widget("응답 결과 구성", help_text=OUTCOME_CHART_TIP)
-        self.outcome_chart = RankedBarChart()
+        self.outcome_chart = RankedBarChart(keep_order=True)
         ol.addWidget(self.outcome_chart)
         ow.setFixedHeight(ow.sizeHint().height())
         row2.addWidget(ow, 1)
