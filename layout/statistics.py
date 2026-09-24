@@ -14,7 +14,7 @@ from trigger.statistics import (
     DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
     STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_help_text, diagnosis_review, Evaluation,
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
-    DIAG_LEVEL_COLORS, DIAG_POPUP_TITLE, EMPTY_WINDOW,
+    DIAG_LEVEL_COLORS, DIAG_POPUP_TITLE, CHECKLIST_ADVICE, EMPTY_WINDOW,
     metric_value_text, metric_interval_text, metric_criteria_text,
     metric_sample_text, metric_pattern_text,
 )
@@ -82,7 +82,7 @@ SPEED_CHART_TIP = (
     f"응답이 도착하기까지 걸린 시간을 네 구간으로 나눈 것입니다.\n"
     f"빠름 {speed_secs(SPEED_FAST_MAX)}초 미만 · 보통 {speed_secs(SPEED_FAST_MAX)}~{speed_secs(SPEED_NORMAL_MAX)}초 · "
     f"느림 {speed_secs(SPEED_NORMAL_MAX)}~{speed_secs(SPEED_SLOW_MAX)}초 · 매우 느림 {speed_secs(SPEED_SLOW_MAX)}초 이상\n"
-    "느린 쪽에 몰리면 사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.\n"
+    f"느린 쪽에 몰리면 {CHECKLIST_ADVICE}\n"
     "평균값은 위 '요청·응답' 카드의 '평균 응답'에서 볼 수 있습니다."
 )
 OUTCOME_CHART_TIP = (

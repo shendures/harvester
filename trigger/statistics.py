@@ -138,7 +138,6 @@ YIELD_NOISE_K = 6.0             # 수집량 편차가 회차 간 자체 노이�
 PATTERN_SPREAD_WARN = 0.10      # 회차 간 편차가 이 이상이면 불안정("주의") — 비율은 %p 차이, 수집량은 상대 편차
 PATTERN_SPREAD_PROBLEM = 0.30   # 이 이상이면 크게 불안정("문제")
 SMALL_SESSION_RESPONSES = 30    # 회차당 응답이 이보다 적으면 한 회차의 작은 이상을 놓칠 수 있다고 알린다
-PATTERN_ADVICE = "사이트 상태나 설정이 회차마다 달라졌는지 확인하세요."
 DIAG_POPUP_TITLE = "수집 현황 종합 평가"
 CHECKLIST_ADVICE = f"{DIAG_POPUP_TITLE}의 체크 리스트를 확인하세요."
 
@@ -191,28 +190,60 @@ class MetricSpec(NamedTuple):
 # 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
 SPEC_CONN_FAIL = MetricSpec(
     AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
-    "사이트에 연결하지 못했습니다.", "인터넷 연결이나 프록시 설정을 확인하세요.")
+    "상태 코드 없이 요청이 실패해 사이트에 연결하지 못했습니다.",
+    "'응답 결과 구성' 카드에서 연결 실패 비중을 확인하고, "
+    "세션 설정의 프록시 옵션과 인터넷 연결을 점검하세요.")
 SPEC_BLOCKED = MetricSpec(
     AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, False, True, "건",
-    "사이트가 접근을 막고 있습니다.", "수집 간격을 늘리거나 프록시를 사용하세요.")
+    "403·429 응답으로 사이트가 접근을 막고 있습니다.",
+    "수집 설정의 Delay(s)를 늘리거나 Threads를 줄이고, "
+    "세션 설정에서 프록시를 사용하세요.")
 SPEC_HTTP_ERR = MetricSpec(
     AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
-    "일부 페이지에서 오류 응답을 받았습니다.", "상태 코드 분포에서 오류 종류를 확인하세요.")
+    "일부 요청이 200이 아닌 상태 코드로 응답했습니다.",
+    "'상태 코드 분포' 카드에서 어떤 코드가 몰려 있는지 확인하세요.")
 SPEC_EMPTY = MetricSpec(
     AXIS_YIELD, "데이터 누락률", 0.30, 0.60, False, True, "건",
-    "페이지는 열렸지만 데이터를 찾지 못했습니다.",
-    "사이트 구조가 바뀌었을 수 있으니 수집 조건을 확인하세요.")
+    "200 응답을 받았지만 데이터를 찾지 못했거나 추출 중 예외가 발생했습니다.",
+    "'① Raw 수집 결과' 탭에서 빈 응답을 확인하고, "
+    "사이트 구조가 바뀌었을 수 있으니 수집 조건을 점검하세요.")
 SPEC_VALID = MetricSpec(
     AXIS_QUALITY, "유효 데이터 비율", 0.90, 0.70, True, True, "행",
-    "꺼낸 데이터에 빈 항목이 많습니다.", "추출 규칙이 일부 항목을 못 찾고 있는지 확인하세요.")
+    "추출된 행 중 빈 항목이 많습니다.",
+    "'① Raw 수집 결과' 탭에서 어떤 항목이 자주 비는지 확인하고, "
+    "추출 규칙이 그 항목을 놓치고 있는지 점검하세요.")
 SPEC_SESSION_ITEMS = MetricSpec(
     AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
     "수집 회차마다 페이지당 수집량이 달라졌습니다.",
-    "사이트 구조가 바뀌었거나 일부 페이지가 빠지고 있는지 확인하세요.",
+    "'세션 이력' 표에서 회차별 성공·오류 건수를 비교해 "
+    "사이트 구조 변경이나 페이지 누락 여부를 확인하세요.",
     pattern_only=True)
 SPEC_SLOW = MetricSpec(
     AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, False, True, "건",
-    "응답이 느린 쪽에 몰려 있습니다.", "사이트가 혼잡하거나 수집 간격·동시 요청 설정을 점검할 때입니다.")
+    "응답 시간이 느린 쪽에 몰려 있습니다.",
+    "'응답 속도 구간' 카드에서 지연 비율을 확인하고, "
+    "수집 설정의 Delay(s)·Threads를 조정하세요.")
+
+# 종합 평가 팝업 체크리스트의 원인·해결 방법 문구는 이 구역에서만 정의한다 —
+# 아래 로직(_issue_notes/_result_count_notes/empty_data_notice 등)은 이름만 참조한다.
+PATTERN_ADVICE = ("'세션 이력' 표에서 회차별 값을 비교해 사이트 상태나 수집 설정이 "
+                  "그 사이 바뀌었는지 확인하세요.")
+REGRESSION_REMEDY = ("수집 설정(Delay/Threads/Timeout/Retry)이나 세션 설정(프록시)을 "
+                     "최근 바꿨는지 확인하고, 바뀌지 않았다면 대상 사이트 구조가 "
+                     "바뀌었는지 확인하세요.")
+# RESULT 값별 체크리스트 문구 — "데이터 누락"은 데이터 누락률 지표(SPEC_EMPTY)와, "실패"는
+# 연결 실패율(SPEC_CONN_FAIL)·HTTP 오류율(SPEC_HTTP_ERR) 두 지표와 원인이 같아 그 문구를
+# 그대로 이어 쓴다("실패"는 이 둘을 구분하지 못하는 값이라 두 지표를 모두 담는다).
+REQUEST_RESULT_CAUSE_REMEDY = {
+    REQUEST_RESULTS["err"]: (
+        f"{SPEC_CONN_FAIL.cause} {SPEC_HTTP_ERR.cause}",
+        f"{SPEC_CONN_FAIL.remedy} {SPEC_HTTP_ERR.remedy}"),
+    REQUEST_RESULTS["warn"]: (SPEC_EMPTY.cause, SPEC_EMPTY.remedy),
+    REQUEST_RESULT_MISSED: (
+        "요청을 보냈지만 세션이 끝날 때까지 응답을 받지 못했습니다.",
+        "수집 로그에서 해당 시점 전후로 타임아웃이나 강제 중단이 있었는지 "
+        "확인하고, 반복되면 타임아웃·재시도 설정을 늘려 보세요."),
+}
 
 # 최근 구간과 이전 구간을 비교한 결과
 TREND_WORSE, TREND_BETTER, TREND_FLAT = "악화", "개선", "변화 없음"
@@ -305,25 +336,28 @@ class SessionTally:
 class EvalWindow(NamedTuple):
     """배너가 판정하는 최근 수집 구간 — agg는 그 구간 응답의 집계(회차별 per_session 포함)이고,
     responses는 구간의 응답 수, sessions는 구간 안 수집 횟수(진행 중 1회 포함), all_sessions는
-    초기화 이후 전체 수집 횟수다."""
+    초기화 이후 전체 수집 횟수다. result_counts는 구간 안 세션의 요청별 RESULT 집계(성공 제외)다."""
     agg: dict
     responses: int
     sessions: int
     all_sessions: int
+    result_counts: dict
 
 
-EMPTY_WINDOW = EvalWindow({}, 0, 0, 0)
+EMPTY_WINDOW = EvalWindow({}, 0, 0, 0, {})
 
 
 class Evaluation(NamedTuple):
     """배너에 쓸 종합 판정과 상세 보기에 쓸 지표별 근거 — sessions·all_sessions는 판정 범위
-    안내에 쓸 판정 시점의 수집 횟수로, 팝업이 열릴 때의 값을 같은 스냅샷에서 읽게 한다."""
+    안내에 쓸 판정 시점의 수집 횟수로, 팝업이 열릴 때의 값을 같은 스냅샷에서 읽게 한다.
+    result_counts는 EvalWindow와 같은 구간의 RESULT 집계(성공 제외)로, 체크리스트가 참고한다."""
     diagnosis: Diagnosis
     verdicts: list
     regression: Regression | None
     sessions: int
     all_sessions: int
     session_size: float
+    result_counts: dict
 
 
 def _wilson_bounds(hits: int, sample: int) -> tuple:
@@ -545,9 +579,6 @@ def detect_regression(recent_ok: int, recent_n: int,
     return Regression(trend, recent_ok / recent_n, prior_ok / prior_n, recent_n, prior_n, z)
 
 
-REGRESSION_REMEDY = "최근 실행 설정과 대상 사이트를 확인하세요."
-
-
 def _regression_cause(regression: Regression) -> str:
     return (f"최근 {regression.recent_n}건의 정상 수집률이 {regression.recent_rate:.0%}로 "
             f"이전 {regression.prior_n}건({regression.prior_rate:.0%})보다 크게 낮아졌습니다.")
@@ -671,7 +702,7 @@ def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
         return Evaluation(
             Diagnosis(DIAG_PENDING, DIAG_LEVEL_COLORS[DIAG_PENDING],
                       "아직 수집 기록이 없습니다. 상단 ▶ 시작 버튼으로 수집을 실행하세요."),
-            [], None, sessions, window.all_sessions, 0.0)
+            [], None, sessions, window.all_sessions, 0.0, window.result_counts)
 
     verdicts = [_judge_ratio(spec, hits, sample, sessions)
                 for spec, hits, sample in _ratio_samples(window.responses, window.agg)]
@@ -688,7 +719,8 @@ def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
     # 자체로 실제 신호라 수집 횟수로 막지 않는다
     regression = detect_regression(*_recent_split(total, agg))
     return Evaluation(_banner_diagnosis(verdicts, regression, window.responses, sessions),
-                      verdicts, regression, sessions, window.all_sessions, session_size)
+                      verdicts, regression, sessions, window.all_sessions, session_size,
+                      window.result_counts)
 
 
 def metric_value_text(spec: MetricSpec, value: float | None) -> str:
@@ -1034,6 +1066,12 @@ def _session_requests(session: dict) -> list[dict]:
     return session.get("requests") or [{"url": session.get("url", ""), "body": None}]
 
 
+def _request_result(r: dict) -> str:
+    """요청 1건의 RESULT 값 — outcome 키가 아예 없으면 결과를 기록하지 않던 과거 기록(미상),
+    None이거나 매핑에 없으면 응답 미수신이다."""
+    return REQUEST_RESULT_UNKNOWN if "outcome" not in r else REQUEST_RESULTS.get(r["outcome"], REQUEST_RESULT_MISSED)
+
+
 def session_request_rows(session: dict) -> list[list[str]]:
     """요청 상세 표의 행(NO, URL, Body, Method, Status, Response, Requested At, Result)."""
     method = session.get("method", "GET")
@@ -1042,14 +1080,26 @@ def session_request_rows(session: dict) -> list[list[str]]:
         body = NO_BODY_TEXT if r["body"] is None else json.dumps(r["body"], ensure_ascii=False)
         latency = r.get("latency")
         response = f"{latency}s" if isinstance(latency, (int, float)) else NO_BODY_TEXT
-        # outcome 키가 아예 없으면 결과를 기록하지 않던 과거 기록(미상), None이면 응답 미수신
-        result = REQUEST_RESULT_UNKNOWN if "outcome" not in r else REQUEST_RESULTS.get(r["outcome"], REQUEST_RESULT_MISSED)
         rows.append([
             str(no), r["url"], body, method,
             str(r["status_code"]) if r.get("status_code") is not None else NO_BODY_TEXT,
-            response, r.get("timestamp") or NO_BODY_TEXT, result,
+            response, r.get("timestamp") or NO_BODY_TEXT, _request_result(r),
         ])
     return rows
+
+
+def _session_result_counts(sessions: list) -> dict:
+    """세션 목록의 요청별 RESULT 집계 — 성공과, 결과를 기록하지 않던 과거 기록("-")은
+    체크할 이슈가 아니므로 뺀다. 종합 평가 체크리스트(diagnosis_review)가 참고한다."""
+    counts = defaultdict(int)
+    for session in sessions:
+        for r in _session_requests(session):
+            if "outcome" not in r:
+                continue
+            result = _request_result(r)
+            if result != REQUEST_RESULTS["ok"]:
+                counts[result] += 1
+    return dict(counts)
 
 
 def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> list:
@@ -1060,8 +1110,7 @@ def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> li
     if extract_errors:
         notes.append(f"데이터 추출 중 예외가 {extract_errors}건 발생했습니다. "
                      "수집 로그와 응답 상세에서 예외 내용을 확인하세요.")
-    notes.append("사이트 구조가 바뀌었을 수도 있습니다. "
-                 "사이트 구조와 수집 조건 또는 추출 규칙(셀렉터/JSON·XML 경로)을 확인하세요.")
+    notes.append(SPEC_EMPTY.advice)
     if not notes[:-1] and not missing_conditions:
         notes.append("200 응답이어도 실제 데이터 페이지가 아닐 수도 있습니다. "
                      "차단·로그인 요구·점검 안내·리다이렉트 여부를 확인하세요.")
@@ -1072,7 +1121,9 @@ def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> li
 
 class Review(NamedTuple):
     """종합 평가 팝업 표 하단의 글 — grades는 표를 등급별로 묶은 요약(레벨, 문장) 목록으로
-    총평을 대신하며, notes는 이슈별 원인과 해결 방법 항목이며 등급이 주의·문제일 때만 있다."""
+    총평을 대신한다. notes(체크 리스트)는 수집은 정상적으로 끝났어도 그 과정에서 의심되는
+    지표(주의·문제 등급 이슈)가 있거나 건별로 수집 실패·데이터 누락이 있을 때, 그에 대한
+    해결 방안을 제시하는 항목이며 등급이 주의·문제일 때만 있다."""
     grades: list
     notes: list
 
@@ -1107,10 +1158,18 @@ def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
     return [f"{spec.cause} {spec.remedy}"]
 
 
+def _result_count_notes(result_counts: dict) -> list:
+    """RESULT 집계(성공 제외)를 체크리스트 문장으로 바꾼다 — 값별로 건수를 밝히고 원인·해결
+    방법을 잇는다. 집계에 없는 값(건수 0)은 항목을 만들지 않는다."""
+    return [f"{result} {result_counts[result]}건 — {cause} {remedy}"
+            for result, (cause, remedy) in REQUEST_RESULT_CAUSE_REMEDY.items()
+            if result_counts.get(result)]
+
+
 def diagnosis_review(evaluation: Evaluation, empty_notice: list | None) -> Review:
     """표 아래 글을 만든다 — 표를 등급별로 묶은 요약이 총평을 대신하고, 주의·문제 이슈가 있으면
-    원인·해결 방법 항목을(심한 것부터) 덧붙인다. 판정할 지표 자체가 없으면(수집 기록 없음) 등급
-    묶음 대신 안내 문장 한 줄을 보여준다."""
+    원인·해결 방법 항목을(심한 것부터), 이어서 같은 구간의 요청별 RESULT 집계를 덧붙인다. 판정할
+    지표 자체가 없으면(수집 기록 없음) 등급 묶음 대신 안내 문장 한 줄을 보여준다."""
     grades = _grade_breakdown(evaluation.verdicts)
     diagnosis = evaluation.diagnosis
     if not grades:
@@ -1124,6 +1183,7 @@ def diagnosis_review(evaluation: Evaluation, empty_notice: list | None) -> Revie
     regression = evaluation.regression
     if regression is not None and regression.trend == TREND_WORSE:
         notes.append(regression_text(regression))
+    notes += _result_count_notes(evaluation.result_counts)
     return Review(grades, notes)
 
 
@@ -1309,7 +1369,8 @@ class StatisticsPageTriggers:
         window_rows = [r for r in rows if (r.get("timestamp") or "") >= cutoff]
         agg = self._aggregate_rows(window_rows)
         agg["per_session"] = _session_tallies(window_rows, recent)
-        return EvalWindow(agg, len(window_rows), len(recent) + running, len(sessions) + running)
+        return EvalWindow(agg, len(window_rows), len(recent) + running, len(sessions) + running,
+                          _session_result_counts(recent))
 
     def _aggregate_rows(self, rows):
         """url_maps를 한 번만 순회해 행 기반 집계를 모두 산출한다 — 3초마다
