@@ -14,7 +14,7 @@ from trigger.statistics import (
     DAYS_IN_MONTH_MAX, SPEED_FAST_MAX, SPEED_NORMAL_MAX, SPEED_SLOW_MAX,
     STATUS_CODE_MEANINGS, speed_secs, trend_window, evaluate, diagnosis_help_text, diagnosis_review, Evaluation,
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
-    DIAG_LEVEL_COLORS, EMPTY_WINDOW,
+    DIAG_LEVEL_COLORS, DIAG_POPUP_TITLE, EMPTY_WINDOW,
     metric_value_text, metric_interval_text, metric_criteria_text,
     metric_sample_text, metric_pattern_text,
 )
@@ -49,7 +49,6 @@ DIAG_NOTE_FONT_PX = 12                   # 상세 보기 팝업 하단 참고 �
 DIAG_TABLE_HEADERS = ["평가 축", "지표", "상태", "관측값", "95% 신뢰구간", "회차 패턴", "절대 기준", "표본"]
 DIAG_POPUP_SIZE = (1180, 480)       # 폭은 표 8열이 잘리지 않는 값, 높이는 내용에서 다시 잡는다
 DIAG_POPUP_MIN_SIZE = (740, 300)
-DIAG_POPUP_TITLE = "수집 현황 종합 평가"
 
 # 카드명 옆 "?" 도움말 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게 쉬운 말로 적는다.
 REQUEST_CARD_HELP = (

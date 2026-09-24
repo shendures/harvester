@@ -139,6 +139,8 @@ PATTERN_SPREAD_WARN = 0.10      # 회차 간 편차가 이 이상이면 불안�
 PATTERN_SPREAD_PROBLEM = 0.30   # 이 이상이면 크게 불안정("문제")
 SMALL_SESSION_RESPONSES = 30    # 회차당 응답이 이보다 적으면 한 회차의 작은 이상을 놓칠 수 있다고 알린다
 PATTERN_ADVICE = "사이트 상태나 설정이 회차마다 달라졌는지 확인하세요."
+DIAG_POPUP_TITLE = "수집 현황 종합 평가"
+CHECKLIST_ADVICE = f"{DIAG_POPUP_TITLE}의 체크 리스트를 확인하세요."
 
 # 판정에 쓰지 않고 상세 팝업에 참고값으로만 적는 KPI의 이름
 REF_AVG_LATENCY, REF_THROUGHPUT = "평균 응답", "처리량"
@@ -592,6 +594,14 @@ def _cause_text(verdict: MetricVerdict) -> str:
     return verdict.spec.advice
 
 
+def _cause_only_text(verdict: MetricVerdict) -> str:
+    """"주의"·"문제" 등급 배너용 원인 사실 문장 — 조치는 CHECKLIST_ADVICE로 공통 안내하므로
+    지표별 remedy는 뺀다."""
+    if _is_unstable(verdict):
+        return f"{verdict.spec.name}이 수집 회차마다 일정하지 않습니다({_pattern_range_text(verdict)})."
+    return verdict.spec.cause
+
+
 def _absolved_text(absolved: list) -> str:
     """일정해서 정상으로 본 지표 중 절대 기준을 넘는 값의 안내 — 지표명·값·기준을
     BANNER_MAX_CAUSES개까지 적고 나머지는 개수로 줄인다."""
@@ -622,9 +632,12 @@ def _banner_diagnosis(verdicts: list, regression, total: int, sessions: int) -> 
     # 원인 문장은 "이 지표가 나쁠 때"의 설명이라 정상 등급에서는 쓰지 않는다
     shown = ([v for v in verdicts if v.level == level][:BANNER_MAX_CAUSES]
              if level in (DIAG_WARN, DIAG_PROBLEM) else [])
-    causes = [_cause_text(v) for v in shown]
+    causes = [_cause_only_text(v) for v in shown]
     if any(_is_unstable(v) for v in shown):
         causes.append(PATTERN_ADVICE)
+    elif shown:
+        # 원인 지표가 무엇이든 "주의"·"문제" 등급에서는 개별 remedy 대신 종합 확인을 안내한다
+        causes.append(CHECKLIST_ADVICE)
     if worsened:
         causes.append(regression_text(regression))
     if not causes:
@@ -1040,19 +1053,16 @@ def session_request_rows(session: dict) -> list[list[str]]:
 
 
 def empty_data_notice(extract_errors: int, missing_conditions: str | None) -> list:
-    """모든 응답이 빈 데이터일 때의 원인·해결 방법 항목 — 데이터로 확인된 원인(설정 누락·추출 예외)은
+    """모든 응답이 빈 데이터일 때의 원인·해결 방법 항목 — 데이터로 확인된 원인(추출 예외)은
     단정하는 문장으로, 확인하지 못한 원인은 "~수도 있습니다" 문장으로 적는다. 확인된 원인이 있으면
     그 밖의 가능성(데이터 페이지가 아님·실제 데이터 없음)은 줄인다."""
     notes = []
-    if missing_conditions:
-        notes.append(f"수집 조건(conditions)이 비어 있습니다({missing_conditions}). "
-                     "누락된 수집 조건 항목을 채우세요.")
     if extract_errors:
         notes.append(f"데이터 추출 중 예외가 {extract_errors}건 발생했습니다. "
                      "수집 로그와 응답 상세에서 예외 내용을 확인하세요.")
     notes.append("사이트 구조가 바뀌었을 수도 있습니다. "
-                 "사이트 구조와 추출 규칙(셀렉터/JSON·XML 경로)을 확인하세요.")
-    if not notes[:-1]:
+                 "사이트 구조와 수집 조건 또는 추출 규칙(셀렉터/JSON·XML 경로)을 확인하세요.")
+    if not notes[:-1] and not missing_conditions:
         notes.append("200 응답이어도 실제 데이터 페이지가 아닐 수도 있습니다. "
                      "차단·로그인 요구·점검 안내·리다이렉트 여부를 확인하세요.")
         notes.append("해당 시점에 수집할 데이터가 실제로 없을 수도 있습니다. "
