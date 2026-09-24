@@ -126,6 +126,7 @@ class GroupedBarChart(QWidget):
     PAD_X = 8            # 좌우 여백(px)
     LABEL_GAP = 4        # 이웃한 구간 라벨 사이 최소 간격(px)
     LABEL_FONT_PT = 7    # 구간 라벨 — 칸이 많아도 들어가도록 눈에 보일 정도로만 작게
+    LABEL_LINE_GAP = 2   # 2줄 구간 라벨("HHh"/"(M/D)") 사이 세로 간격(px)
 
     def __init__(self, x_labels=None, datasets=None, parent=None):
         super().__init__(parent)
@@ -153,9 +154,14 @@ class GroupedBarChart(QWidget):
 
         value_font = QFont("Consolas", 7)
         value_fm = QFontMetrics(value_font)
+        label_font = QFont("Consolas", self.LABEL_FONT_PT)
+        label_fm = QFontMetrics(label_font)
 
         pad_l = pad_r = self.PAD_X
-        pad_b = 20
+        # 구간 라벨에 개행이 있으면(날짜 전환 칸의 "HHh\n(M/D)") 둘째 줄이 들어갈
+        # 만큼 하단 여백을 늘린다 — 없으면 기존과 동일한 여백을 유지한다
+        has_two_line_label = any("\n" in str(lbl) for lbl in self.x_labels)
+        pad_b = 20 + self.LABEL_LINE_GAP + label_fm.height() if has_two_line_label else 20
         pad_t = 22 + self.VALUE_GAP + value_fm.height()  # 범례 여백 + 값 라벨 공간
         chart_w = W - pad_l - pad_r
         chart_h = H - pad_t - pad_b
@@ -201,11 +207,13 @@ class GroupedBarChart(QWidget):
                     p.drawText(int(label_x), int(label_y), text_w, value_fm.height(),
                                Qt.AlignmentFlag.AlignCenter, text)
 
-            # 구간 라벨
+            # 구간 라벨 — 날짜가 바뀌는 칸은 "HHh" 아래에 "(M/D)"를 한 줄 더 그린다
             p.setPen(QColor(TEXT_MUTED))
-            p.setFont(QFont("Consolas", self.LABEL_FONT_PT))
-            p.drawText(int(pad_l + i * group_w), int(pad_t + chart_h + 4), int(group_w), 14,
-                       Qt.AlignmentFlag.AlignCenter, str(self.x_labels[i]))
+            p.setFont(label_font)
+            for line_idx, line in enumerate(str(self.x_labels[i]).split("\n")):
+                ly = pad_t + chart_h + 4 + line_idx * (label_fm.height() + self.LABEL_LINE_GAP)
+                p.drawText(int(pad_l + i * group_w), int(ly), int(group_w), label_fm.height(),
+                           Qt.AlignmentFlag.AlignCenter, line)
 
         p.setPen(QColor(BORDER))
         p.drawLine(int(pad_l), int(pad_t + chart_h), int(W - pad_r), int(pad_t + chart_h))
