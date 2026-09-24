@@ -488,7 +488,7 @@ class StatCard(QWidget):
         self._val.setStyleSheet(
             f"color:{color}; font-size:20px; font-weight:bold; border:none; background:transparent;")
         self._lbl = QLabel(label)
-        self._lbl.setStyleSheet(f"color:{self.theme.TEXT_MUTED}; font-size:10px; border:none; background:transparent;")
+        self._lbl.setStyleSheet(f"color:{self.theme.TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
         lay.addWidget(self._val)
         lay.addWidget(self._lbl)
 
