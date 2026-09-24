@@ -1222,7 +1222,10 @@ class StatisticsPageTriggers:
     def _hourly_counts(rows, start: datetime, hours: int):
         """[start, start+hours) 구간을 1시간 칸으로 집계해 (라벨, 성공, 오류)를
         반환한다. 칸 번호를 start부터의 경과 시간으로 정하므로 구간이 자정을
-        넘어도 서로 다른 시각이 한 칸에 섞이지 않는다."""
+        넘어도 서로 다른 시각이 한 칸에 섞이지 않는다. 라벨은 날짜가 바뀌는
+        첫 칸에만 "HHh" 아래 둘째 줄로 "(M/D)"를 붙이고(개행으로 구분,
+        GroupedBarChart가 두 줄로 그림) 나머지는 "HHh"만 써서, 자정을 넘나드는
+        최근 기준 보기에서도 이전 날짜를 구분할 수 있게 한다."""
         ok_vals, err_vals = [0] * hours, [0] * hours
         end = start + timedelta(hours=hours)
 
@@ -1237,7 +1240,15 @@ class StatisticsPageTriggers:
             counts = ok_vals if str(r.get("status_code", "")) == "200" else err_vals
             counts[slot] += 1
 
-        labels = [f"{(start + timedelta(hours=i)).hour:02d}h" for i in range(hours)]
+        labels = []
+        prev_date = start.date()
+        for i in range(hours):
+            dt = start + timedelta(hours=i)
+            if i > 0 and dt.date() != prev_date:
+                labels.append(f"{dt.hour:02d}h\n({dt.month}/{dt.day})")
+            else:
+                labels.append(f"{dt.hour:02d}h")
+            prev_date = dt.date()
         return labels, ok_vals, err_vals
 
     @staticmethod
