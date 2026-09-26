@@ -667,7 +667,9 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         if task.get("job") in IMMEDIATE_MONITOR_JOBS:
             self._show_monitor_for(seq_no)
         elif task.get("job") == BATCH_JOB and not self._pending_queue:
-            self._show_monitor_for(seq_no)
+            # 전체 수집은 마지막으로 끝난 블루프린트가 아니라 목록상 첫 번째
+            # 수집 대상의 정제 화면에서 시작한다.
+            self._show_monitor_for(BlueprintStorage().list_seq_nos()[0])
 
         self._log_collection_done()
         self._consume_pending_queue()
