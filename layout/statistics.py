@@ -16,7 +16,7 @@ from trigger.statistics import (
     session_request_rows, REQUEST_RESULTS, REQUEST_RESULT_MISSED,
     DIAG_LEVEL_COLORS, DIAG_POPUP_TITLE, CHECKLIST_ADVICE, EMPTY_WINDOW,
     metric_value_text, metric_interval_text, metric_criteria_text,
-    metric_sample_text, metric_pattern_text,
+    metric_sample_text, metric_pattern_text, metric_status_text,
 )
 from style import EqualSpacingTable, Divider, _load_svg_icon
 from .common import (
@@ -310,7 +310,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
 
         for row, verdict in enumerate(verdicts):
             spec = verdict.spec
-            values = [spec.axis, spec.name, verdict.level,
+            values = [spec.axis, spec.name, metric_status_text(verdict),
                       metric_value_text(spec, verdict.observed), metric_interval_text(verdict),
                       metric_pattern_text(verdict), metric_criteria_text(spec),
                       metric_sample_text(verdict)]

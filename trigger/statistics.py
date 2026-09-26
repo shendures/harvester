@@ -151,14 +151,8 @@ AXIS_YIELD = "수집 성과"
 AXIS_QUALITY = "데이터 품질"
 AXIS_PERFORMANCE = "응답 성능"
 
-# 축별 최소 수집 횟수 — 응답을 아무리 많이 모아도 한 번의 수집이면 독립적인 관측이 아니라서,
-# 개수 게이트와 별개로 수집 횟수를 본다. 연결·응답은 지금 당장 조치가 필요한 문제라 1회부터
-# 알리고, 추출 규칙의 구조적 품질일수록 여러 번 봐야 판단할 수 있어 더 기다린다.
-AXIS_MIN_SESSIONS = {
-    AXIS_CONNECTION: 1, AXIS_RESPONSE: 1,
-    AXIS_YIELD: 2, AXIS_PERFORMANCE: 2,
-    AXIS_QUALITY: 3,
-}
+# 지표별 최소 수집 횟수는 축이 아니라 지표(MetricSpec.min_sessions·min_sessions_problem) 단위로
+# 정의한다 — 같은 축이라도 지표별로 세션 종속성·재현성이 달라 게이트를 다르게 둬야 하기 때문이다.
 
 # 종합 평가 표의 "평가 축" 기본 정렬 순서
 AXIS_DISPLAY_ORDER = (AXIS_PERFORMANCE, AXIS_CONNECTION, AXIS_RESPONSE, AXIS_YIELD, AXIS_QUALITY)
@@ -169,7 +163,12 @@ class MetricSpec(NamedTuple):
     """지표 하나의 판정 기준 — 임계값을 여기에서만 정의해 배너·상세 표·툴팁이 같은 값을 읽는다.
     higher_is_better면 값이 클수록 좋은 지표라 부등호를 뒤집고, percent면 백분율로 표시한다.
     sample_unit은 지표마다 분모가 다르기 때문에 둔다(응답 / 추출된 행 / 회차).
-    pattern_only면 절대 기준 없이 회차별 패턴으로만 판정하며, warn·problem은 회차 간 편차 기준이다."""
+    pattern_only면 절대 기준 없이 회차별 패턴으로만 판정하며, warn·problem은 회차 간 편차 기준이다.
+    min_sessions는 등급 판정을 시작하는 최소 수집 횟수(그 전엔 값·구간만 계산해 두고 보류)이고,
+    min_sessions_problem은 "문제"까지 확정하는 데 필요한 최소 수집 횟수다 — 그 전에는 절대 판정이
+    문제여도 세션 하나의 이상만으로 최고 등급을 단정하지 않도록 "주의"로 낮춰 표시한다(세션 종속성이
+    큰 지표일수록, 재현성이 낮은 지표일수록 크게 둔다). full_bypass면 표본 전체가 이 지표에
+    해당할 때(예: 응답 전량이 데이터 누락·연결 실패) 두 게이트를 모두 건너뛰고 즉시 판정한다."""
     axis: str
     name: str
     warn: float
@@ -180,6 +179,9 @@ class MetricSpec(NamedTuple):
     cause: str
     remedy: str
     pattern_only: bool = False
+    min_sessions: int = 1
+    min_sessions_problem: int = 1
+    full_bypass: bool = False
 
     @property
     def advice(self) -> str:
@@ -188,41 +190,52 @@ class MetricSpec(NamedTuple):
 
 
 # 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
+# min_sessions·min_sessions_problem 근거는 guidelines/STATISTICS_EVALUATION_SESSION.md §3.9 참고.
 SPEC_CONN_FAIL = MetricSpec(
     AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
     "상태 코드 없이 요청이 실패해 사이트에 연결하지 못했습니다.",
     "'응답 결과 구성' 카드에서 연결 실패 비중을 확인하고, "
-    "세션 설정의 프록시 옵션과 인터넷 연결을 점검하세요.")
+    "세션 설정의 프록시 옵션과 인터넷 연결을 점검하세요.",
+    min_sessions=1, min_sessions_problem=3, full_bypass=True)
 SPEC_BLOCKED = MetricSpec(
     AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, False, True, "건",
     "403·429 응답으로 사이트가 접근을 막고 있습니다.",
     "수집 설정의 Delay(s)를 늘리거나 Threads를 줄이고, "
-    "세션 설정에서 프록시를 사용하세요.")
+    "세션 설정에서 프록시를 사용하세요.",
+    min_sessions=1, min_sessions_problem=2)
 SPEC_HTTP_ERR = MetricSpec(
     AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
     "일부 요청이 200이 아닌 상태 코드로 응답했습니다.",
-    "'상태 코드 분포' 카드에서 어떤 코드가 몰려 있는지 확인하세요.")
+    "'상태 코드 분포' 카드에서 어떤 코드가 몰려 있는지 확인하세요.",
+    min_sessions=1, min_sessions_problem=3)
 SPEC_EMPTY = MetricSpec(
     AXIS_YIELD, "데이터 누락률", 0.30, 0.60, False, True, "건",
     "200 응답을 받았지만 데이터를 찾지 못했거나 추출 중 예외가 발생했습니다.",
     "'① Raw 수집 결과' 탭에서 빈 응답을 확인하고, "
-    "사이트 구조가 바뀌었을 수 있으니 수집 조건을 점검하세요.")
+    "사이트 구조가 바뀌었을 수 있으니 수집 조건을 점검하세요.",
+    min_sessions=1, min_sessions_problem=2, full_bypass=True)
 SPEC_VALID = MetricSpec(
     AXIS_QUALITY, "유효 데이터 비율", 0.90, 0.70, True, True, "행",
     "추출된 행 중 빈 항목이 많습니다.",
     "'① Raw 수집 결과' 탭에서 어떤 항목이 자주 비는지 확인하고, "
-    "추출 규칙이 그 항목을 놓치고 있는지 점검하세요.")
+    "추출 규칙이 그 항목을 놓치고 있는지 점검하세요.",
+    min_sessions=2, min_sessions_problem=3)
 SPEC_SESSION_ITEMS = MetricSpec(
     AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
     "수집 회차마다 페이지당 수집량이 달라졌습니다.",
     "'세션 이력' 표에서 회차별 성공·오류 건수를 비교해 "
     "사이트 구조 변경이나 페이지 누락 여부를 확인하세요.",
-    pattern_only=True)
+    pattern_only=True, min_sessions=PATTERN_MIN_SESSIONS, min_sessions_problem=PATTERN_MIN_SESSIONS)
 SPEC_SLOW = MetricSpec(
     AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, False, True, "건",
     "응답 시간이 느린 쪽에 몰려 있습니다.",
     "'응답 속도 구간' 카드에서 지연 비율을 확인하고, "
-    "수집 설정의 Delay(s)·Threads를 조정하세요.")
+    "수집 설정의 Delay(s)·Threads를 조정하세요.",
+    min_sessions=2, min_sessions_problem=3)
+
+# 도움말 텍스트가 지표별 게이트를 순회할 단일 소스 — 표시 순서는 카드 등장 순서를 따른다.
+METRIC_SPECS = (SPEC_CONN_FAIL, SPEC_BLOCKED, SPEC_HTTP_ERR, SPEC_EMPTY,
+                SPEC_VALID, SPEC_SESSION_ITEMS, SPEC_SLOW)
 
 # 종합 평가 팝업 체크리스트의 원인·해결 방법 문구는 이 구역에서만 정의한다 —
 # 아래 로직(_issue_notes/_result_count_notes/empty_data_notice 등)은 이름만 참조한다.
@@ -267,7 +280,11 @@ class MetricVerdict(NamedTuple):
     """지표 하나의 판정 결과 — 신뢰구간을 쓰지 않는 지표(페이지당 수집량)는 low/high가 None이고,
     pattern은 회차별 패턴을 판정할 수 있을 때(완료된 수집 PATTERN_MIN_SESSIONS회 이상)만 채운다.
     live는 진행 중이거나 중단된 수집의 응답이 절대 판정을 끌어올려 등급이 정해졌음을, absolved는
-    절대 판정은 "주의"였으나 회차 패턴이 일정해 정상으로 본 지표임을 뜻한다."""
+    절대 판정은 "주의"였으나 회차 패턴이 일정해 정상으로 본 지표임을 뜻한다. capped는 절대 판정이
+    "문제"였으나 수집 횟수가 그 지표의 min_sessions_problem에 못 미쳐 "주의"로 낮춰 표시했음을
+    뜻한다(문제 확정에 반복 확인이 더 필요하다는 신호). 현재 상수값에서는 min_sessions_problem이
+    모두 PATTERN_MIN_SESSIONS 이하라 패턴 결합이 적용되는 시점(완료 수집 PATTERN_MIN_SESSIONS회
+    이상)에는 capped가 항상 False다 — absolved 판정과 섞이지 않는다."""
     spec: MetricSpec
     level: str
     observed: float | None
@@ -277,6 +294,7 @@ class MetricVerdict(NamedTuple):
     pattern: PatternResult | None = None
     live: bool = False
     absolved: bool = False
+    capped: bool = False
 
 
 class Regression(NamedTuple):
@@ -445,8 +463,8 @@ def _judge_pattern_items(tallies: list) -> PatternResult | None:
 
 
 def _session_gated(spec: MetricSpec, sessions: int) -> bool:
-    """수집 횟수가 이 지표의 축 기준에 못 미쳐 아직 등급을 매기지 않을지."""
-    return sessions < AXIS_MIN_SESSIONS[spec.axis]
+    """수집 횟수가 이 지표의 판정 시작 기준에 못 미쳐 아직 등급을 매기지 않을지."""
+    return sessions < spec.min_sessions
 
 
 def _is_gate_pending(verdict: MetricVerdict, sessions: int) -> bool:
@@ -472,15 +490,21 @@ def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
 def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> MetricVerdict:
     """비율 지표 하나를 Wilson 신뢰구간으로 판정한다. 표본이 0이면 보류하고, 수집 횟수가
     모자라면 값·구간은 그대로 계산해 두고 등급만 보류한다 — 화면 위 KPI 카드가 이미 같은
-    숫자를 보여주고 있어 상세 표에서 "—"로 비면 카드와 어긋난다."""
+    숫자를 보여주고 있어 상세 표에서 "—"로 비면 카드와 어긋난다. 판정을 시작한 뒤에도 절대
+    판정이 "문제"인데 min_sessions_problem에 못 미치면 세션 하나의 이상만으로 최고 등급을
+    단정하지 않도록 "주의"로 낮추고 capped로 표시한다."""
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     low, high = _wilson_bounds(hits, sample)
-    # 데이터 누락 100%는 수집 횟수를 기다릴 이유가 없다 — 표본이 충분해 신뢰구간이 문제 기준을 넘으면 첫 수집부터 판정
-    all_empty = spec is SPEC_EMPTY and hits == sample
-    gated = _session_gated(spec, sessions) and not all_empty
+    # 표본 전체가 이 지표에 해당하면(예: 데이터 누락·연결 실패 100%) 두 게이트 모두 기다릴 이유가 없다
+    bypass = spec.full_bypass and hits == sample
+    gated = _session_gated(spec, sessions) and not bypass
     level = DIAG_HOLD if gated else _ratio_level(spec, low, high)
-    return MetricVerdict(spec, level, hits / sample, low, high, sample)
+    capped = (not gated and level == DIAG_PROBLEM
+              and sessions < spec.min_sessions_problem and not bypass)
+    if capped:
+        level = DIAG_WARN
+    return MetricVerdict(spec, level, hits / sample, low, high, sample, capped=capped)
 
 
 def _ratio_samples(total: int, agg: dict) -> list:
@@ -596,9 +620,8 @@ def _worst_level(verdicts: list) -> str:
 
 
 def _next_gate(verdicts: list, sessions: int) -> int | None:
-    """게이트에 걸려 보류 중인 축 가운데 가장 먼저 풀리는 기준 수집 횟수. 없으면 None."""
-    pending = [AXIS_MIN_SESSIONS[v.spec.axis] for v in verdicts
-               if _is_gate_pending(v, sessions)]
+    """게이트에 걸려 보류 중인 지표 가운데 가장 먼저 풀리는 기준 수집 횟수. 없으면 None."""
+    pending = [v.spec.min_sessions for v in verdicts if _is_gate_pending(v, sessions)]
     return min(pending) if pending else None
 
 
@@ -617,6 +640,13 @@ def _is_unstable(verdict: MetricVerdict) -> bool:
     return verdict.pattern is not None and verdict.pattern.level in (DIAG_WARN, DIAG_PROBLEM)
 
 
+def _capped_note(verdict: MetricVerdict) -> str:
+    """문제 확정을 아직 못한 지표의 안내 — 절대 기준은 "문제"를 넘었지만 반복 확인 전이라
+    "주의"로 낮춰 표시했다는 사실을 밝힌다."""
+    return (f"(수집 {verdict.spec.min_sessions_problem}회부터 '문제'로 확정합니다 — "
+            "지금은 '주의'로 낮춰 표시합니다)")
+
+
 def _cause_text(verdict: MetricVerdict) -> str:
     """배너에 적는 원인 문장 — 패턴이 흔들렸다면 그 사실을, 아니면 지표가 나쁠 때의 조치를
     적는다. 지표명이 모두 받침으로 끝나 조사 "이"가 어색하지 않다."""
@@ -630,7 +660,8 @@ def _cause_only_text(verdict: MetricVerdict) -> str:
     지표별 remedy는 뺀다."""
     if _is_unstable(verdict):
         return f"{verdict.spec.name}이 수집 회차마다 일정하지 않습니다({_pattern_range_text(verdict)})."
-    return verdict.spec.cause
+    text = verdict.spec.cause
+    return f"{text} {_capped_note(verdict)}" if verdict.capped else text
 
 
 def _absolved_text(absolved: list) -> str:
@@ -694,9 +725,10 @@ def _banner_diagnosis(verdicts: list, regression, total: int, sessions: int) -> 
 def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
     """통계 화면 5개 카드의 KPI를 판정해 종합 평가를 만든다. 지표 판정은 최근 수집 구간(window)만
     본다 — 초기화 이후 전체를 보면 과거의 이상이 회복 뒤에도 배너에 남기 때문이다. 지표마다
-    신뢰구간과 축별 수집 횟수로 절대 판정을 하고, 완료된 수집이 PATTERN_MIN_SESSIONS회
-    이상이면 회차별 패턴의 일정함을 결합한다. total(초기화 이후 전체 응답 수)이 0이면 집계가
-    비어 있으므로(화면 조립 시의 evaluate(0, {}, EMPTY_WINDOW)) 바로 대기로 끝낸다."""
+    신뢰구간과 지표별 수집 횟수(판정 시작·"문제" 확정 2단계)로 절대 판정을 하고, 완료된 수집이
+    PATTERN_MIN_SESSIONS회 이상이면 회차별 패턴의 일정함을 결합한다. total(초기화 이후 전체
+    응답 수)이 0이면 집계가 비어 있으므로(화면 조립 시의 evaluate(0, {}, EMPTY_WINDOW)) 바로
+    대기로 끝낸다."""
     sessions = window.sessions
     if total == 0:
         return Evaluation(
@@ -728,6 +760,11 @@ def metric_value_text(spec: MetricSpec, value: float | None) -> str:
     if value is None:
         return "—"
     return f"{value:.1%}" if spec.percent else f"{value:,.1f}건"
+
+
+def metric_status_text(verdict: MetricVerdict) -> str:
+    """표의 "상태" 칸 문구 — 문제 확정 전이라 "주의"로 낮춘 경우 그 사실을 덧붙인다."""
+    return f"{verdict.level}(확정 전)" if verdict.capped else verdict.level
 
 
 def metric_interval_text(verdict: MetricVerdict) -> str:
@@ -789,11 +826,15 @@ def _grade_guide_lines() -> list:
 
 
 def _min_sessions_lines() -> list:
-    """축별 최소 수집 횟수 — 같은 횟수인 축끼리 묶어 한 줄씩 적는다."""
-    grouped = defaultdict(list)
-    for axis, minimum in AXIS_MIN_SESSIONS.items():
-        grouped[minimum].append(axis)
-    return [f"    - {' · '.join(axes)} : {minimum}회" for minimum, axes in sorted(grouped.items())]
+    """지표별 최소 수집 횟수 — 판정 시작과 "문제" 확정 시점이 다르면 함께 적는다."""
+    lines = []
+    for spec in METRIC_SPECS:
+        if spec.min_sessions == spec.min_sessions_problem:
+            lines.append(f"    - {spec.name} : {spec.min_sessions}회")
+        else:
+            lines.append(f"    - {spec.name} : {spec.min_sessions}회부터 판정, "
+                         f"'문제'는 {spec.min_sessions_problem}회부터 확정")
+    return lines
 
 
 def _regression_help_text(regression) -> str:
@@ -832,6 +873,8 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         "· 수집 1회는 관측 1번이라 항목마다",
         "  최소 수집 횟수가 필요합니다",
         *_min_sessions_lines(),
+        "· 일부 지표는 '문제' 확정에 더 기다립니다 —",
+        "  그전에는 '주의'로 낮춰 표시합니다",
         f"· 수집이 {PATTERN_MIN_SESSIONS}회 이상이면 회차마다 결과가 일정한지도 봅니다",
         "  (일정하면 정상, 들쭉날쭉하면 주의, 더 강한 근거(99%)가 있으면 문제 —",
         "  단 절대 기준이 원래 '문제'인 값은 일정해도 문제로 봅니다)",
@@ -839,7 +882,7 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         "  배너와 이 표에 함께 표시합니다",
         "· 진행 중이거나 중단된 수집의 응답은 회차 패턴에 들어가기",
         "  전까지 절대 기준으로 판정합니다",
-        "· 데이터 누락이 100%이면 횟수와 무관하게 바로 판정합니다",
+        "· 데이터 누락 또는 연결 실패가 100%이면 횟수와 무관하게 바로 판정합니다",
         f"· 최근 {RECENT_WINDOW}건이 이전보다 눈에 띄게 나빠지면 따로 알립니다",
         "",
         "■ 지금 상태",
@@ -1149,13 +1192,14 @@ def _grade_breakdown(verdicts: list) -> list:
 
 def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
     """지표 하나의 이슈 항목 — 회차 불안정이면 그 사실을, 데이터 누락이면 원인 후보별 항목을, 그 밖에는
-    지표 고유의 원인과 해결 방법을 한 항목으로 적는다."""
+    지표 고유의 원인과 해결 방법을 한 항목으로 적는다. 문제 확정 전(capped)이면 그 사실을 덧붙인다."""
     spec = verdict.spec
     if _is_unstable(verdict):
         return [f"{_cause_text(verdict)} {PATTERN_ADVICE}"]
     if spec is SPEC_EMPTY and empty_notice:
         return empty_notice
-    return [f"{spec.cause} {spec.remedy}"]
+    note = f"{spec.cause} {spec.remedy}"
+    return [f"{note} {_capped_note(verdict)}" if verdict.capped else note]
 
 
 def _result_count_notes(result_counts: dict) -> list:
