@@ -194,7 +194,7 @@ class MetricSpec(NamedTuple):
 
 
 # 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
-# min_sessions·min_sessions_problem 근거는 guidelines/STATISTICS_EVALUATION_SESSION.md §3.9 참고.
+# min_sessions·min_sessions_problem 근거는 guidelines/statistics_evaluation_session.md §3.9 참고.
 SPEC_CONN_FAIL = MetricSpec(
     AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
     "상태 코드 없이 요청이 실패해 사이트에 연결하지 못했습니다.",

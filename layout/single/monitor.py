@@ -190,7 +190,7 @@ class MonitorPageSingle(QWidget, MonitorPageTriggers, ActiveBlueprintMixin):
         )
 
         # 체크박스 행 생성은 style.build_refine_rule_rows()가 전담(스케줄 등록
-        # 다이얼로그의 정제 규칙 설정과 공유하는 빌더, guidelines/PREPROCESS.md 참고)
+        # 다이얼로그의 정제 규칙 설정과 공유하는 빌더, guidelines/preprocess.md 참고)
         result = build_refine_rule_rows(
             parts, rl, self._rule_checkboxes, self._refine_rules,
             include_keys=None,   # 전체 7개 규칙

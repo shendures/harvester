@@ -2,9 +2,10 @@
 
 > DataCrawler(Harvest)를 고객 배포용 `.exe` / 설치 프로그램(`Setup.exe`)으로 빌드하는
 > 절차를 다룹니다. 함께 관리되는 문서:
-> - **빌드 스크립트 도입·수정 이력**: `HISTORY.md` (PR #64·#65·#66, 이슈㉗·㉘ 등)
-> - **알려진 이슈**: `ISSUES.md` (이슈㉕·㉗·㉘)
-> - **아키텍처 개요**: `PROJECT_REPORT.md` §6 의존성 요약
+> - **빌드 스크립트 도입·수정 이력**: `history.md` (PR #64·#65·#66, 이슈㉗·㉘ 등)
+> - **알려진 이슈**: `issues.md` (이슈㉕·㉗·㉘)
+> - **전체 아키텍처**: `architecture.md`
+> - **의존성 라이브러리 요약**: `project_report.md` §5
 
 - **최신 갱신**: 2026-09-14
 
@@ -24,7 +25,7 @@
   pip install -r requirements.txt
   ```
   **주의**: WSL 네이티브 경로(`/home/...`)의 저장소 클론에서는 `.venv`가 WSL 실행/테스트용
-  가상환경(Python 3.12, `guidelines/STUDY_WSL_DB_CONNECT.md` 등 참고)으로 이미 쓰이고
+  가상환경(Python 3.12, `guidelines/study_wsl_db_connect.md` 등 참고)으로 이미 쓰이고
   있습니다 — 이 클론에서 위 명령을 그대로 실행하면 그 가상환경을 덮어씁니다. Windows
   빌드는 반드시 Windows 네이티브 경로(`/mnt/c`, `/mnt/d` 등)의 별도 클론에서, 또는 최소한
   다른 이름(`.venv-win` 등)의 가상환경으로 진행하세요.
@@ -57,7 +58,7 @@
 
    > **주의(WSL 개발 환경 전용 host 값)**: 이 저장소를 WSL에서 개발용으로 클론해 쓰는 경우
    > `env/database.ini`의 `host`가 `172.22.224.1`처럼 WSL→Windows 게이트웨이를 가리키는
-   > 특수 주소로 되어 있을 수 있습니다(배경은 `guidelines/STUDY_WSL_DB_CONNECT.md` 참고).
+   > 특수 주소로 되어 있을 수 있습니다(배경은 `guidelines/study_wsl_db_connect.md` 참고).
    > 이는 **그 WSL 환경에서만 유효한 값**이며, 실제 고객 배포 빌드를 수행하는 다른
    > 머신(별도의 Windows 네이티브 클론 등)에서는 그 머신 기준으로 DB에 실제로 도달
    > 가능한 host(예: `localhost`, 사내 DB 서버 주소)로 별도 구성해야 합니다. 이 값을
@@ -72,7 +73,7 @@
 2. **(필요 시) 커스텀 규칙** — `render/{seq_no}.py`(렌더링), `login/{seq_no}.py`(로그인),
    `refine/{seq_no}.py`(정제) 중 해당 고객에게 필요한 파일. **이 절차는 DB 연동과 무관하게
    이전과 동일합니다** — 여전히 로컬 파일로 관리합니다. DB에 active인 고객이 여럿이면 각
-   `seq_no`별로 필요한 파일을 모두 준비하세요. 작성법은 `PREPROCESS.md` §3.1a 참고.
+   `seq_no`별로 필요한 파일을 모두 준비하세요. 작성법은 `preprocess.md` §3.1a 참고.
 
 > `render/`·`login/`·`refine/`은 여러 고객의 규칙 파일을 함께 보관하는 개발자용 폴더입니다.
 > 2단계의 `build_manifest.py`가 DB에서 가져온 active `seq_no`의 파일만 골라 담기 때문에,
@@ -192,6 +193,6 @@ Inno Setup의 커맨드라인 컴파일러 `ISCC.exe`를 PATH → `Program Files
 
 ## 관련 문서
 
-- 커스텀 규칙(정제/렌더링) 작성 및 배포 절차 상세: `PREPROCESS.md` §3.1a, §5
-- 빌드 파이프라인 도입·수정 이력: `HISTORY.md` (2026-07-13, 2026-07-21 항목)
-- 알려진 이슈: `ISSUES.md` 이슈㉕·㉗·㉘
+- 커스텀 규칙(정제/렌더링) 작성 및 배포 절차 상세: `preprocess.md` §3.1a, §5
+- 빌드 파이프라인 도입·수정 이력: `history.md` (2026-07-13, 2026-07-21 항목)
+- 알려진 이슈: `issues.md` 이슈㉕·㉗·㉘

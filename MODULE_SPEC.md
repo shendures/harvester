@@ -1,9 +1,10 @@
 # Harvest — 모듈 기능서 (Module Functional Specification)
 
 > 이 문서는 Harvest 크롤링 프로그램의 핵심 모듈이 각각 어떤 기능을 담당하며 서로
-> 어떻게 상호작용하는지를 정리한 기능서입니다. 아키텍처/파일구조 스냅샷은
-> `guidelines/PROJECT_REPORT.md`에서 별도 관리되므로 중복 없이 모듈 단위 책임과
-> 모듈 간 의존·연동 관계에 집중합니다. 상세 요약표는 `MODULE_SPEC_SUMMARY.md` 참고.
+> 어떻게 상호작용하는지를 정리한 기능서입니다. 전체 아키텍처(프로세스 경계·계층
+> 구조·핵심 설계 원칙)는 `guidelines/architecture.md`, 신규 합류자용 프로젝트 개요·
+> 디렉터리 맵은 `guidelines/project_report.md`에서 별도 관리되므로 중복 없이 모듈
+> 단위 책임과 모듈 간 의존·연동 관계에 집중합니다.
 
 - **작성 기준일**: 2026-09-14 (코드를 직접 읽고 확인한 내용 기준)
 
@@ -19,59 +20,15 @@
 `main.py`, `preprocess.py`, `style.py`, `utility.py`, `worker.py`
 
 **표기 안내**: 요청 목록의 `items.py`/`middlewares.py`/`pipelines.py`는 저장소
-루트가 아니라 `scraper/` 패키지 내부 파일이며(3.7절에서 함께 다룸), `customized_
+루트가 아니라 `scraper/` 패키지 내부 파일이며(2.7절에서 함께 다룸), `customized_
 setting.py`→`customized_settings.py`, `generator_condition.html`→`generator_
 conditions.html`이 실제 파일명(모두 복수형)입니다.
 
 ---
 
-## 2. 전체 아키텍처 요약
+## 2. 모듈별 상세 기능
 
-PyQt6 GUI와 Scrapy 크롤링 엔진을 결합한 데스크톱 앱으로, GUI와 크롤러는 서로 다른
-프로세스에서 실행되며 표준출력(stdout)과 `multiprocessing.Queue`로만 통신합니다.
-
-```
-[진입점] main.py → layout/ (Single/Multi 선택은 request_info.json 블루프린트 개수)
-
-[GUI 계층 — 같은 프로세스, 항상 layout → trigger → style 방향]
-  layout/*(위젯 트리) → trigger/*(동작 Mixin, 다중상속) → style.py(테마 QSS)
-
-[실행 브리지 — GUI 프로세스가 별도 OS 프로세스를 기동]
-  trigger/main_window.py → worker.py:MultiprocessWorker(QThread)
-    → multiprocessing.Process(run_spider)  ← 여기서부터 별도 프로세스
-
-[크롤링 프로세스 — conf.DataStore에 직접 접근 불가]
-  worker.run_spider() → engine.get_spider() → scraper/spiders/*.py
-    ├── glean.py(URL 목록 생성)
-    ├── engine.py(요청 생성·응답 추출·로그인)
-    └── scraper/pipelines.py("RESULT_INFO:{json}"를 stdout 출력)
-
-[프로세스 간 통신]
-  child stdout → QueueWriter → Queue → MultiprocessWorker._handle_line()
-    → conf.DataStore 갱신 + Qt 시그널(new_row/progress) emit → GUI 갱신
-
-[설정·상태 — GUI 프로세스 전용]
-  conf.py: DataStore/BlueprintStorage/CustomModuleStorage(싱글턴)
-  customized_settings.py(기본값 팩토리) · request_info.json ⇄ BlueprintStorage
-  {render,login,refine}/{seq_no}.py ⇄ CustomModuleStorage
-
-[수집 후 처리] trigger/monitor.py → preprocess.DataRefiner → db_conn.py 또는 파일 저장
-
-[블루프린트 저작 — 앱 실행과 무관한 오프라인 트랙]
-  generator_conditions.html(브라우저) → tb_blueprint(DB)
-    → create_request_info.py(수동 실행) → request_info.json 재생성
-```
-
-**핵심 설계 원칙**: ① GUI(`layout/trigger`)는 크롤링(`scraper/engine`)을 직접
-참조하지 않고 `worker.py` 하나로만 연결됩니다. ② `conf.DataStore`는 GUI 프로세스
-전용이며 자식 프로세스와 상태를 공유하지 않습니다. ③ `utility.py`는 내부
-의존성이 없는 최하위 공용 모듈로 거의 모든 계층이 참조합니다.
-
----
-
-## 3. 모듈별 상세 기능
-
-### 3.1 진입점 — `main.py`
+### 2.1 진입점 — `main.py`
 
 `QApplication` 생성 → 테마/아이콘 적용 → `QLocalServer`로 중복 실행 방지 →
 `conf.BlueprintStorage().list_seq_nos()`로 블루프린트 개수 확인해 `layout.
@@ -79,7 +36,7 @@ MainWindowSingle`(1개) 또는 `layout.multi.MainWindowMulti`(2개 이상) 생�
 
 **의존**: `layout`, `layout.multi`, `conf`, `style`, `utility` · **피의존**: 없음(엔트리포인트).
 
-### 3.2 GUI 레이아웃 — `layout/` 패키지
+### 2.2 GUI 레이아웃 — `layout/` 패키지
 
 QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger/*` Mixin과
 다중상속되어 동작을 위임받습니다. 블루프린트 1개면 `single/*`, 2개 이상이면
@@ -110,7 +67,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 **의존**: `trigger/*`, `style.py`, `conf.py` · **피의존**: `main.py`만 최상위 import.
 **주의**: `scraper/*`·`engine.py`·`worker.py`는 직접 참조하지 않습니다(`trigger/main_window.py` 뒤에 캡슐화).
 
-### 3.3 GUI 이벤트/트리거 — `trigger/` 패키지
+### 2.3 GUI 이벤트/트리거 — `trigger/` 패키지
 
 각 화면의 "동작 메서드"만 모은 Mixin 패키지로, GUI와 `conf`/`worker`/`engine`/
 `db_conn`/`preprocess` 등 백엔드를 잇는 접점 역할도 겸합니다.
@@ -131,7 +88,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 **의존**: `style.py`, `conf.py`, `worker.py`(main_window만), `engine.py`·`db_conn.py`·`preprocess.py`(common/monitor 등), `customized_settings.py`·`utility.py`(monitor·scheduler).
 **피의존**: `layout/*`의 대응 Page 클래스 전부(다중상속).
 
-### 3.4 테마·공용 위젯 — `style.py`
+### 2.4 테마·공용 위젯 — `style.py`
 
 앱의 다크 테마 QSS와 재사용 위젯을 정의하는 유일한 소스입니다(비즈니스 로직
 없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
@@ -139,7 +96,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 
 **의존**: `utility.py`만(아이콘 경로) · **피의존**: `layout/*` 대부분, `trigger/*` 다수, `main.py`.
 
-### 3.5 수집 실행 브리지 — `worker.py`
+### 2.5 수집 실행 브리지 — `worker.py`
 
 GUI(Qt) 스레드와 Scrapy 크롤링(별도 OS 프로세스)을 잇는 다리입니다. Scrapy의
 Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크롤링마다 새 프로세스를
@@ -151,7 +108,7 @@ Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크�
 **의존**: `utility.py`, `engine.py`(`get_spider`만), `customized_settings.py`, `conf.DataStore`.
 **피의존**: `trigger/main_window.py`가 유일한 호출자 — 전체 GUI는 이 클래스로만 크롤링을 시작합니다.
 
-### 3.6 크롤링 유틸리티 — `engine.py`, `glean.py`
+### 2.6 크롤링 유틸리티 — `engine.py`, `glean.py`
 
 `engine.py`는 스파이더 자체가 아니라 **스파이더 공용 라이브러리**입니다.
 
@@ -168,7 +125,7 @@ Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크�
 **의존**: 둘 다 `utility.py`; `engine.py`는 추가로 `conf.py`, `scraper.items`, `scraper.spiders.*`(전체 import, 순환참조 방지를 위해 `base.py`는 이를 지연 import).
 **피의존**: `worker.py`(`get_spider`), 5개 스파이더 전부, `trigger/common.py`(검증 호출).
 
-### 3.7 Scrapy 패키지 — `scraper/`
+### 2.7 Scrapy 패키지 — `scraper/`
 
 Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `__init__.py`는
 독스트링만 있고 하위 모듈을 재-export하지 않습니다(`engine.py`와의 순환참조 방지).
@@ -190,7 +147,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 **피의존**: `engine.py`만 직접 import. `worker.py`/`customized_settings.py`는 파이프라인·미들웨어를 Scrapy 설정 딕셔너리 안 **문자열 경로**로만 참조(동적 로드).
 **주의**: `layout/*`, `trigger/*`는 `scraper/*`를 전혀 import하지 않습니다.
 
-### 3.8 설정·상태 관리 — `conf.py`, `customized_settings.py`
+### 2.8 설정·상태 관리 — `conf.py`, `customized_settings.py`
 
 `conf.py`는 이름과 달리 정적 상수가 아니라 앱의 **영속 상태 싱글턴 모음**입니다.
 
@@ -207,7 +164,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 **의존**: `conf.py`→`customized_settings.py`,`utility.py`; `customized_settings.py`→없음.
 **피의존**: `conf.py`는 거의 전 계층, `customized_settings.py`는 `conf.py`·`worker.py`·`create_request_info.py`·`layout/single/*`·`trigger/monitor.py`·`scheduler.py`.
 
-### 3.9 데이터 정제 — `preprocess.py`
+### 2.9 데이터 정제 — `preprocess.py`
 
 수집 완료 후 **GUI 프로세스에서** 원시 데이터를 정제하는 엔진입니다.
 `DataRefiner`가 정해진 순서로 규칙을 적용합니다: ①null 행 제거 → ②커스텀 규칙
@@ -216,7 +173,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 
 **의존**: `conf.py`(커스텀 규칙 로드)만 · **피의존**: `trigger/common.py`(규칙 UI 초기화), `trigger/monitor.py`(`DataRefiner` 실행).
 
-### 3.10 데이터베이스 연동 — `db_conn.py`
+### 2.10 데이터베이스 연동 — `db_conn.py`
 
 PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Qt/Scrapy 의존
 없음). `_check_db_connect_info()`(연결 검증+실패 원인 분류), `read_db_data()`,
@@ -224,7 +181,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 **의존**: `sqlalchemy`, `pymongo`(프로젝트 내부 모듈 의존 없음) · **피의존**: `create_request_info.py`, `trigger/common.py`·`monitor.py`(출력 설정 UI).
 
-### 3.11 공용 유틸리티 — `utility.py`
+### 2.11 공용 유틸리티 — `utility.py`
 
 프로젝트 내부 의존성이 전혀 없는 최하위 헬퍼 모음입니다. `resource_path()`/
 `data_dir()`(경로), `transform_to_json()`, `generate_combined_urls()`(`${page:...}`/
@@ -232,7 +189,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 **의존**: 없음(표준 라이브러리만) · **피의존**: 거의 모든 모듈(`conf`, `engine`, `glean`, `worker`, `main`, `style`, 다수 `layout/*`·`trigger/*`).
 
-### 3.12 블루프린트 저작 도구 — `generator_conditions.html`, `create_request_info.py`
+### 2.12 블루프린트 저작 도구 — `generator_conditions.html`, `create_request_info.py`
 
 앱 실행 흐름과 무관한 **오프라인 트랙**입니다 — 런타임에 `main.py`/`worker.py`/
 `engine.py`가 호출하지 않습니다.
@@ -249,9 +206,9 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 ---
 
-## 4. 모듈 간 상호작용
+## 3. 모듈 간 상호작용
 
-### 4.1 의존관계 표
+### 3.1 의존관계 표
 
 | 모듈 | 직접 의존하는 모듈 |
 |---|---|
@@ -270,7 +227,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 | `create_request_info.py` | `db_conn.py`, `utility.py`, `customized_settings.py` |
 | `generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
 
-### 4.2 대표 흐름
+### 3.2 대표 흐름
 
 **① GUI 수집 실행 흐름**
 1. 시작 버튼 클릭 → `trigger/toolbar.py._actual_start()`가 설정을 `BlueprintStorage`에 저장 후 `start_requested` emit
@@ -291,9 +248,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 ---
 
-## 5. 참고
+## 4. 참고
 
-- **아키텍처/파일구조 스냅샷**: `guidelines/PROJECT_REPORT.md`
-- **정제 규칙(refine) 서브시스템 심화 문서**: `guidelines/PREPROCESS.md`
-- **작업 이력**: `guidelines/HISTORY.md` · **이슈·백로그**: `guidelines/ISSUES.md`
-- **모듈 요약표(1장 표)**: `MODULE_SPEC_SUMMARY.md`
+- **전체 아키텍처 개요**: `guidelines/architecture.md`
+- **정제 규칙(refine) 서브시스템 심화 문서**: `guidelines/preprocess.md`
