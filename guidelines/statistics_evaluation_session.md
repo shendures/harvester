@@ -1,7 +1,7 @@
 # 통계 분석 페이지 수집 종합 평가 — 세션 작업 정리 (2026-09-21)
 
 > 통계 분석 페이지 최상단 "수집 상태" 배너를 5개 카드 KPI의 통계적 평가로 확장하고, 이후 감사로 발견한
-> 결함을 고쳐 나간 한 세션의 작업을 정리한 문서입니다. 작업 단위별 이력은 `HISTORY.md`(2026-09-21 행),
+> 결함을 고쳐 나간 한 세션의 작업을 정리한 문서입니다. 작업 단위별 이력은 `history.md`(2026-09-21 행),
 > 모듈 책임은 `MODULE_SPEC.md`(통계 행), 코드는 `trigger/statistics.py`·`layout/statistics.py`를 참고하세요.
 > 줄번호 인용은 코드가 바뀌면 곧바로 어긋나므로 이 문서는 함수·상수 이름으로만 가리킵니다.
 
@@ -308,9 +308,9 @@
 |---|---|
 | `trigger/statistics.py` | 판정 로직 전반(`evaluate` 이하), 평가 창, 회차 귀속, 패턴·게이트·사면·소표본 고지, **지표별 2단계 게이트(`MetricSpec.min_sessions`/`min_sessions_problem`/`full_bypass`, `MetricVerdict.capped`, §3.9)** |
 | `layout/statistics.py` | 배너 상세 보기 버튼, 종합 평가 팝업, 참고 줄, **상태 칸에 `metric_status_text()`로 확정 전 표시(§3.9)** |
-| `guidelines/HISTORY.md` | 2026-09-21 행 추가(§3.9는 커밋 시점에 별도 행 추가 예정) |
+| `guidelines/history.md` | 2026-09-21 행 추가(§3.9는 커밋 시점에 별도 행 추가 예정) |
 | `MODULE_SPEC.md` | 통계 행 갱신(판정은 최근 5회 창) |
-| `guidelines/STATISTICS_EVALUATION_SESSION.md` | 이 문서(신규, §3.9로 갱신) |
+| `guidelines/statistics_evaluation_session.md` | 이 문서(신규, §3.9로 갱신) |
 
 `style.py`·`layout/common.py` 등 공용 코드는 손대지 않았고, 대시보드·정제 페이지 생성은 매 검증에서 회귀 없음을 확인했습니다.
 `guidelines/STATISTICS_KPI_NAMES.md`는 이 세션 이전부터 있던 미추적 파일이며 건드리지 않았습니다.

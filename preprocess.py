@@ -29,7 +29,7 @@ load_custom_rule() 함수
     행을 미리 제거하는 ①remove_null_row 바로 다음, 나머지 범용 규칙(중복 제거
     등)보다는 먼저 실행되어 원시 데이터를 사이트별로 정규화한 뒤, 그 위에서
     나머지 규칙이 동작합니다 (2026-07-17, 메모리 절감을 위해 ①remove_null_row만
-    앞으로 재배치 — 이전에는 custom_rule이 항상 맨 먼저 실행됐음, HISTORY.md 참고).
+    앞으로 재배치 — 이전에는 custom_rule이 항상 맨 먼저 실행됐음, history.md 참고).
 
 사용 예:
     from preprocess import DataRefiner, RefineStats, load_custom_rule
@@ -100,7 +100,7 @@ class DataRefiner:
 
     규칙 적용 순서 (변경하지 마세요 — 순서가 결과에 영향을 미칩니다.
     2026-07-17, 만 건 이상 규모 처리 시 메모리/CPU 절감 + 정확성 개선을 위해 재배치됨
-    — 이전 순서는 HISTORY.md 참고):
+    — 이전 순서는 history.md 참고):
         ① remove_null_row   — 모든 필드 null 행 제거. 계산량이 가벼워 가장 먼저 실행,
                                ②custom_rule 처리 대상도 그만큼 줄임
         ② custom_rule       — 커스텀 규칙(seq_no, 있고 활성화된 경우) 적용 — ①을 제외한

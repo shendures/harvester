@@ -12,7 +12,7 @@
 
 **Pricing (2026-08-11, `pricing` 스킬로 설계 — 초안, 실제 계약 사례 0건이라 첫 2~3건 이후 검증·조정 필요):**
 
-> **제품 제약 반영:** 현재 아키텍처는 프로그램 1개당 사이트(블루프린트) 1개만 지원(`guidelines/ISSUES.md` 이슈 ⑯, 2개 이상 등록 시 워커가 조용히 죽는 버그 있음 — 다중 블루프린트 재설계까지 보류, [[harvest-multi-blueprint-upgrade-plan]] 참고). 따라서 "여러 사이트 동시 모니터링"을 단일 패키지 기능으로 판매하지 않는다 — 사이트 추가는 별도 프로젝트로 취급.
+> **제품 제약 반영:** 현재 아키텍처는 프로그램 1개당 사이트(블루프린트) 1개만 지원(`guidelines/issues.md` 이슈 ⑯, 2개 이상 등록 시 워커가 조용히 죽는 버그 있음 — 다중 블루프린트 재설계까지 보류, [[harvest-multi-blueprint-upgrade-plan]] 참고). 따라서 "여러 사이트 동시 모니터링"을 단일 패키지 기능으로 판매하지 않는다 — 사이트 추가는 별도 프로젝트로 취급.
 
 *개발 견적 (1회성, 사이트 1개 기준 — Good-Better-Best):*
 
@@ -149,8 +149,8 @@
 
 ## Changelog
 *Newest first. One line per revision: what changed and why.*
-- v5 (2026-08-11) — `pricing` 스킬로 Business model의 "가격 체계 미확인"을 구체적 견적 구조로 채움. 개발 견적 3티어(Starter 120만/Standard 190만/Advanced 280~350만)와 유지보수 리테이너 3등급(Basic 5만/Standard 12만/Priority 25만·월)을 설계. 설계 전 코드 확인(`guidelines/ISSUES.md` 이슈 ⑯)으로 "다중 사이트 동시 모니터링"이 현재 미지원·보류 상태임을 재확인하고, 이 기능을 패키지에 넣지 않도록 반영(멀티사이트는 사이트별 별도 프로젝트+할인으로 구조화). 전부 실제 계약 이력 없는 초안이라 첫 2~3건 계약 후 검증 필요.
+- v5 (2026-08-11) — `pricing` 스킬로 Business model의 "가격 체계 미확인"을 구체적 견적 구조로 채움. 개발 견적 3티어(Starter 120만/Standard 190만/Advanced 280~350만)와 유지보수 리테이너 3등급(Basic 5만/Standard 12만/Priority 25만·월)을 설계. 설계 전 코드 확인(`guidelines/issues.md` 이슈 ⑯)으로 "다중 사이트 동시 모니터링"이 현재 미지원·보류 상태임을 재확인하고, 이 기능을 패키지에 넣지 않도록 반영(멀티사이트는 사이트별 별도 프로젝트+할인으로 구조화). 전부 실제 계약 이력 없는 초안이라 첫 2~3건 계약 후 검증 필요.
 - v4 (2026-08-11) — `customer-research` 스킬로 공개 웹 리서치(Mode 2) 진행, 실제 유료 고객 인터뷰는 아직 없어 모든 신규 항목에 confidence label 부여. 주요 변경: (1) Problems & Pain Points의 Core problem/Why alternatives fall short/What it costs them을 채움 — 특히 "크몽 저가 프리랜서 방치 리스크"를 velog 개발자 후기·hashscraper 비교가이드·클리앙 게시글 3개 독립 소스로 HIGH CONFIDENCE로 상향. (2) Competitive Landscape에 1차 타겟 세그먼트(스마트스토어 가격 모니터링)를 직접 공략하는 SaaS 경쟁자 Retrix·바티AI, 그리고 브랜드 MAP 세그먼트의 마크비전을 신규 추가 — 기존 문서가 이 세그먼트에 SaaS 경쟁이 없다고 암묵 가정했던 것이 사실과 다름을 확인. (3) Objections에 "SaaS 대신 왜 맞춤개발인가" 신규 항목(미검증 가설로 표시) 추가. (4) Switching Dynamics Push/Pull, Customer Language Words to use/avoid를 부분적으로 채움. 출처: kmong.com/prices(크롤링-스크래핑-개발), velog.io/@zeta050525, blog.hashscraper.com(비교가이드·네이버크롤링난이도), clien.net 게시글, blog.bati.ai, retrix.io, marqvision.com, keyzard.cc. **한계:** 전부 공개 웹 소스이며 Harvest의 실제 문의·계약 고객 데이터는 여전히 0건 — Core problem/Emotional tension/How they describe us 등은 첫 문의 확보 시 최우선으로 검증·교체할 것.
-- v3 (2026-07-31) — Differentiation/Objections/Anxiety 수정: "GUI로 직접 재실행·스케줄링·정제 규칙 조정 가능"이 마치 사이트 구조 변경까지 재의뢰 없이 대응 가능한 것처럼 읽히는 과장을 코드 검증(`custom_rules/`, `generator_conditions.html`, `PREPROCESS.md`)으로 확인 후 정정. 실제로는 재실행/스케줄링/후처리(정제)만 GUI 셀프서비스이고, 구조 변경 대응은 코드 수정+재빌드가 필수 — "재의뢰 없음"이 아니라 "재의뢰해도 유지보수 계약 SLA로 확실히 대응받음"으로 차별화 문구를 정정. Objections에 관련 반박 문구 추가.
+- v3 (2026-07-31) — Differentiation/Objections/Anxiety 수정: "GUI로 직접 재실행·스케줄링·정제 규칙 조정 가능"이 마치 사이트 구조 변경까지 재의뢰 없이 대응 가능한 것처럼 읽히는 과장을 코드 검증(`custom_rules/`, `generator_conditions.html`, `preprocess.md`)으로 확인 후 정정. 실제로는 재실행/스케줄링/후처리(정제)만 GUI 셀프서비스이고, 구조 변경 대응은 코드 수정+재빌드가 필수 — "재의뢰 없음"이 아니라 "재의뢰해도 유지보수 계약 SLA로 확실히 대응받음"으로 차별화 문구를 정정. Objections에 관련 반박 문구 추가.
 - v2 (2026-07-30) — 웹 리서치로 Target Audience/Personas/Problems/Competitive Landscape/Differentiation/Anti-persona/Goals 갱신. 1차 타겟을 "이커머스 셀러·도매업자 가격 모니터링"으로 결정하고 가격 포지셔닝을 100~300만원대 운영형 프로그램으로 정함. 출처: kmong.com/category/645, kmong.com/gig/663527·622145, kmong.com/portfolio/view/193186, kmong.com/prices(크롤링-스크래핑-개발), blog.spiderkim.com 고객사례 글, blog.hashscraper.com 비교가이드 글·hashscraper.com, soomgo.com/prices(데이터-크롤링), wishket.com 유사사례(상품 가격 크롤링).
-- v1 (2026-07-30) — Initial context. 코드베이스(`guidelines/PROJECT_REPORT.md`, `guidelines/WORK_FLOW.md`)에서 확인 가능한 서비스 구조·기능만으로 초안 작성. 타깃 고객 상세, 경쟁사, 브랜드 톤, 실적/고객 사례 등 대부분 섹션은 실제 비즈니스 정보 부재로 미확인 상태.
+- v1 (2026-07-30) — Initial context. 코드베이스(`guidelines/project_report.md`, `guidelines/work_flow.md`)에서 확인 가능한 서비스 구조·기능만으로 초안 작성. 타깃 고객 상세, 경쟁사, 브랜드 톤, 실적/고객 사례 등 대부분 섹션은 실제 비즈니스 정보 부재로 미확인 상태.
