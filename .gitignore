@@ -184,7 +184,8 @@ null
 
 # IDE / Tools
 .idea/
-.claude/
+.claude/*
+!.claude/settings.json
 .vscode/
 *.code-workspace
 

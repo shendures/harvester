@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./verify-result.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
