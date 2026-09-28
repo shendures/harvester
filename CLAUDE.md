@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Priority
+
+- This project's work entry point is `./model-tuner.sh "<prompt>" --backend claude|codex`.
+  Jev (`~/jev`) determines the model/effort based on the prompt content, then executes with that configuration.
 - Before working on any request, consult `MODULE_SPEC.md` to identify the module(s) that
   match the instructed task, then proceed with the work based on that module scope.
 - Respond to all requests or questions in Korean.
