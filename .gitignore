@@ -186,6 +186,7 @@ null
 .idea/
 .claude/*
 !.claude/settings.json
+.jev-session/
 .vscode/
 *.code-workspace
 
