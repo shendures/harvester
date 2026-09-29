@@ -15,7 +15,7 @@ from .common import (
     store, TEXT_SECONDARY, LOG_LEVEL_COLORS, SCHEDULED_REFINE_RULES,
     _apply_task_settings, _reset_pages, _show_no_data_dialog, _show_aborted_dialog, _stop_worker_if_running,
     _after_delay_unless_cancelled, _modal_allowed,
-    NAV_MONITOR, NAV_REFINE, NAV_STATS, NAV_BLUEPRINT_LIST,
+    NAV_REFINE, NAV_STATS,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,6 @@ class MainWindowTriggersSingle:
         self.reset_progress()
         self.global_toolbar.set_running(True)
         self.dashboard._update_step_ui(2)
-        self._activate_nav_page(NAV_MONITOR)
 
     def _consume_pending_queue(self):
         """
@@ -477,9 +476,6 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
         self._broadcast_blueprint_status(seq_no, "running")
         self.global_toolbar.set_running(True)
         dash._update_step_ui(2)
-        # 다중 레이아웃은 "모니터링"이 "수집 목록"(NAV_BLUEPRINT_LIST) 하단 상세로
-        # 통합됐으므로, 단일과 달리 NAV_MONITOR가 아니라 그쪽으로 전환한다.
-        self._activate_nav_page(NAV_BLUEPRINT_LIST)
 
     # ── 진행률 (번들별) ────────────────────────────────
     @staticmethod

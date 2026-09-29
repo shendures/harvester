@@ -60,4 +60,5 @@ class MainWindowBase(QMainWindow):
         self.sidebar.page_changed.connect(self._switch_page)
         self.global_toolbar.start_requested.connect(self._start_crawl)
         self.global_toolbar.stop_requested.connect(self._stop_crawl)
+        self.global_toolbar.running_changed.connect(self.sidebar.set_collecting)
         self.log_manager.last_log.connect(self._update_status_bar)

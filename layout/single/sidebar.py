@@ -87,10 +87,10 @@ class SidebarSingle(QWidget):
 
         status_row = QHBoxLayout()
         status_row.setContentsMargins(16, 8, 16, 0)
-        dot = parts.make_label("●", GREEN, 10)
-        st = parts.make_label("연결됨", GREEN, 12)
-        status_row.addWidget(dot)
-        status_row.addWidget(st)
+        self._status_dot = parts.make_label("●", TEXT_MUTED, 10)
+        self._status_lbl = parts.make_label("대기", TEXT_MUTED, 12)
+        status_row.addWidget(self._status_dot)
+        status_row.addWidget(self._status_lbl)
         status_row.addStretch()
         footer_lay.addLayout(status_row)
         footer_lay.addStretch()
@@ -114,3 +114,13 @@ class SidebarSingle(QWidget):
         for b in self._btns:
             b.setChecked(self._nav_idx_by_btn[b] == idx)
         self.page_changed.emit(idx)
+
+    def set_collecting(self, collecting: bool):
+        if collecting:
+            self._status_dot.setStyleSheet(f"color: {GREEN};")
+            self._status_lbl.setText("수집 중")
+            self._status_lbl.setStyleSheet(f"color: {GREEN};")
+        else:
+            self._status_dot.setStyleSheet(f"color: {TEXT_MUTED};")
+            self._status_lbl.setText("대기")
+            self._status_lbl.setStyleSheet(f"color: {TEXT_MUTED};")
