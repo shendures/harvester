@@ -170,9 +170,9 @@ class MetricSpec(NamedTuple):
     큰 지표일수록, 재현성이 낮은 지표일수록 크게 둔다). full_bypass면 표본 전체가 이 지표에
     해당할 때(예: 응답 전량이 데이터 누락·연결 실패, 값이 큰 게 좋은 지표는 전 행이 빈 행) 두 게이트를
     모두 건너뛰고 즉시 판정한다.
-    exact_ok면 "정상"은 신뢰구간이 아니라 관측값이 정확히 100%(hits==sample)일 때만 매기고,
-    100% 미달이면 문제·주의·보류는 그대로 신뢰구간으로 가른다 — CI 하한은 유한 표본에서 1.0에
-    닿을 수 없어 "정상"을 CI로 요구하면 사실상 도달 불가능하기 때문이다."""
+    point_ok면 관측값이 warn 이상이면 신뢰구간 없이 정상으로 매기고, warn 미만이면 100% 미달이므로
+    Wilson 신뢰구간으로 문제·주의·보류를 가른다 — 신뢰구간 기준만으로는 유한 표본에서 도달할 수
+    없는 기준값을 요구할 수 있기 때문이다."""
     axis: str
     name: str
     warn: float
@@ -186,7 +186,7 @@ class MetricSpec(NamedTuple):
     min_sessions: int = 1
     min_sessions_problem: int = 1
     full_bypass: bool = False
-    exact_ok: bool = False
+    point_ok: bool = False
 
     @property
     def advice(self) -> str:
@@ -219,14 +219,14 @@ SPEC_EMPTY = MetricSpec(
     "'① Raw 수집 결과' 탭에서 빈 응답을 확인하고, "
     "사이트 구조가 바뀌었을 수 있으니 수집 조건을 점검하세요.",
     min_sessions=1, min_sessions_problem=2, full_bypass=True)
-# 정상은 100%(exact_ok) 전용이고, warn=99%/problem=90%는 그 미달 구간을 신뢰구간으로
-# 가르는 기존 로직 그대로다 — warn 값만 보고 "정상 기준이 99%"로 오독하지 않도록 주의.
+# 정상은 관측값 95% 이상(point_ok), warn=95%/problem=80%는 그 미달 구간을 신뢰구간으로 가른다.
+# warn과 problem 임계값은 5%/20% 허용 오차(연결 실패율·접근 차단율과 동일 정책)를 뜻한다.
 SPEC_VALID = MetricSpec(
-    AXIS_QUALITY, "유효 데이터 비율", 0.99, 0.90, True, True, "행",
+    AXIS_QUALITY, "유효 데이터 비율", 0.95, 0.80, True, True, "행",
     "값이 전혀 없는 행이 많이 수집됐습니다.",
     "'① Raw 수집 결과' 탭에서 값이 전부 빈 행을 확인하고, "
     "추출 규칙이 데이터를 놓치고 있는지 점검하세요.",
-    min_sessions=1, min_sessions_problem=2, full_bypass=True, exact_ok=True)
+    min_sessions=1, min_sessions_problem=2, full_bypass=True, point_ok=True)
 SPEC_SESSION_ITEMS = MetricSpec(
     AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
     "수집 회차마다 페이지당 수집량이 달라졌습니다.",
@@ -495,34 +495,30 @@ def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
 
 
 def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> MetricVerdict:
-    """비율 지표 하나를 Wilson 신뢰구간으로 판정한다. 표본이 0이면 보류하고, 수집 횟수가
-    모자라면 값·구간은 그대로 계산해 두고 등급만 보류한다 — 화면 위 KPI 카드가 이미 같은
-    숫자를 보여주고 있어 상세 표에서 "—"로 비면 카드와 어긋난다. 판정을 시작한 뒤에도 절대
-    판정이 "문제"인데 min_sessions_problem에 못 미치면 세션 하나의 이상만으로 최고 등급을
-    단정하지 않도록 "주의"로 낮추고 capped로 표시한다. exact_ok 지표는 "정상"만 예외로
-    관측값이 정확히 100%일 때로 좁힌다 — CI 하한 기준으로는 유한 표본에서 100%를 사실상
-    요구할 수 없기 때문이며, 그 외 등급은 그대로 신뢰구간으로 가른다."""
+    """비율 지표 하나를 판정한다. 표본이 0이면 보류하고, 수집 횟수가 모자라면 값·구간은 그대로
+    계산해 두고 등급만 보류한다 — 화면 위 KPI 카드가 이미 같은 숫자를 보여주고 있어 상세 표에서
+    "—"로 비면 카드와 어긋난다. 판정을 시작한 뒤에도 절대 판정이 "문제"인데 min_sessions_problem에
+    못 미치면 세션 하나의 이상만으로 최고 등급을 단정하지 않도록 "주의"로 낮추고 capped로 표시한다.
+    point_ok 지표는 관측값(hits/sample)이 warn 이상이면 신뢰구간 없이 정상으로 매기고,
+    미만이면 Wilson 신뢰구간으로 문제·주의·보류를 가른다."""
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
+    observed = hits / sample
     low, high = _wilson_bounds(hits, sample)
     # 표본 전체가 이 지표에 해당하면 두 게이트 모두 기다릴 이유가 없다
     bypass = spec.full_bypass and hits == (0 if spec.higher_is_better else sample)
     gated = _session_gated(spec, sessions) and not bypass
     if gated:
         level = DIAG_HOLD
-    elif spec.exact_ok and hits == sample:
+    elif spec.point_ok and observed >= spec.warn:
         level = DIAG_OK
     else:
         level = _ratio_level(spec, low, high)
-        # 표본이 크면 100% 미달인데도 신뢰구간 하한이 warn을 넘어 정상이 나올 수 있다 —
-        # exact_ok 지표는 이 분기에 왔다는 것 자체가 100% 미달이라는 뜻이라 주의로 낮춘다
-        if spec.exact_ok and level == DIAG_OK:
-            level = DIAG_WARN
     capped = (not gated and level == DIAG_PROBLEM
               and sessions < spec.min_sessions_problem and not bypass)
     if capped:
         level = DIAG_WARN
-    return MetricVerdict(spec, level, hits / sample, low, high, sample, capped=capped)
+    return MetricVerdict(spec, level, observed, low, high, sample, capped=capped)
 
 
 def _ratio_samples(total: int, agg: dict) -> list:
@@ -811,11 +807,7 @@ def _threshold_text(spec: MetricSpec, value: float) -> str:
 
 
 def metric_criteria_text(spec: MetricSpec) -> str:
-    """표 한 칸에 들어가는 짧은 기준 문구 — 앞이 주의, 뒤가 문제 임계값이다.
-    exact_ok 지표는 "정상"이 관측값 100% 전용이라 기준이 3단으로 늘어난다."""
-    if spec.exact_ok:
-        return (f"100% / {_threshold_text(spec, spec.warn)} / "
-                f"{_threshold_text(spec, spec.problem)} {_criteria_compare(spec)}")
+    """표 한 칸에 들어가는 짧은 기준 문구 — 앞이 주의, 뒤가 문제 임계값이다."""
     if spec.pattern_only:
         return f"편차 {_threshold_text(spec, spec.warn)} / {_threshold_text(spec, spec.problem)}"
     return (f"{_threshold_text(spec, spec.warn)} / "
