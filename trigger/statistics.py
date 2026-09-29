@@ -168,7 +168,8 @@ class MetricSpec(NamedTuple):
     min_sessions_problem은 "문제"까지 확정하는 데 필요한 최소 수집 횟수다 — 그 전에는 절대 판정이
     문제여도 세션 하나의 이상만으로 최고 등급을 단정하지 않도록 "주의"로 낮춰 표시한다(세션 종속성이
     큰 지표일수록, 재현성이 낮은 지표일수록 크게 둔다). full_bypass면 표본 전체가 이 지표에
-    해당할 때(예: 응답 전량이 데이터 누락·연결 실패) 두 게이트를 모두 건너뛰고 즉시 판정한다.
+    해당할 때(예: 응답 전량이 데이터 누락·연결 실패, 값이 큰 게 좋은 지표는 전 행이 빈 행) 두 게이트를
+    모두 건너뛰고 즉시 판정한다.
     exact_ok면 "정상"은 신뢰구간이 아니라 관측값이 정확히 100%(hits==sample)일 때만 매기고,
     100% 미달이면 문제·주의·보류는 그대로 신뢰구간으로 가른다 — CI 하한은 유한 표본에서 1.0에
     닿을 수 없어 "정상"을 CI로 요구하면 사실상 도달 불가능하기 때문이다."""
@@ -222,10 +223,10 @@ SPEC_EMPTY = MetricSpec(
 # 가르는 기존 로직 그대로다 — warn 값만 보고 "정상 기준이 99%"로 오독하지 않도록 주의.
 SPEC_VALID = MetricSpec(
     AXIS_QUALITY, "유효 데이터 비율", 0.99, 0.90, True, True, "행",
-    "추출된 행 중 빈 항목이 많습니다.",
-    "'① Raw 수집 결과' 탭에서 어떤 항목이 자주 비는지 확인하고, "
-    "추출 규칙이 그 항목을 놓치고 있는지 점검하세요.",
-    min_sessions=2, min_sessions_problem=3, exact_ok=True)
+    "값이 전혀 없는 행이 많이 수집됐습니다.",
+    "'① Raw 수집 결과' 탭에서 값이 전부 빈 행을 확인하고, "
+    "추출 규칙이 데이터를 놓치고 있는지 점검하세요.",
+    min_sessions=1, min_sessions_problem=2, full_bypass=True, exact_ok=True)
 SPEC_SESSION_ITEMS = MetricSpec(
     AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
     "수집 회차마다 페이지당 수집량이 달라졌습니다.",
@@ -320,7 +321,7 @@ class RowFacts(NamedTuple):
     outcome: str
     bucket: str | None
     item_count: int | None
-    complete_rows: int
+    non_empty_rows: int
     field_items: int
 
 
@@ -336,7 +337,7 @@ class SessionTally:
     empty: int = 0
     slow: int = 0
     timed: int = 0
-    complete_rows: int = 0
+    non_empty_rows: int = 0
     field_items: int = 0
     ok_pages: int = 0
     ok_items: int = 0
@@ -350,7 +351,7 @@ class SessionTally:
         if facts.bucket is not None:
             self.timed += 1
             self.slow += facts.bucket in (SPEED_SLOW, SPEED_VERY_SLOW)
-        self.complete_rows += facts.complete_rows
+        self.non_empty_rows += facts.non_empty_rows
         self.field_items += facts.field_items
         if facts.outcome == OUTCOME_OK and facts.item_count is not None:
             self.ok_pages += 1
@@ -504,8 +505,8 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     low, high = _wilson_bounds(hits, sample)
-    # 표본 전체가 이 지표에 해당하면(예: 데이터 누락·연결 실패 100%) 두 게이트 모두 기다릴 이유가 없다
-    bypass = spec.full_bypass and hits == sample
+    # 표본 전체가 이 지표에 해당하면 두 게이트 모두 기다릴 이유가 없다
+    bypass = spec.full_bypass and hits == (0 if spec.higher_is_better else sample)
     gated = _session_gated(spec, sessions) and not bypass
     if gated:
         level = DIAG_HOLD
@@ -534,7 +535,7 @@ def _ratio_samples(total: int, agg: dict) -> list:
         (SPEC_BLOCKED, agg["blocked"], total),
         (SPEC_HTTP_ERR, outcome.get(OUTCOME_HTTP_ERR, 0), total),
         (SPEC_EMPTY, outcome.get(OUTCOME_EMPTY, 0), total),
-        (SPEC_VALID, agg["complete_rows"], agg["field_items"]),
+        (SPEC_VALID, agg["non_empty_rows"], agg["field_items"]),
         (SPEC_SLOW, speed.get(SPEED_SLOW, 0) + speed.get(SPEED_VERY_SLOW, 0),
          sum(speed.values())),
     ]
@@ -546,7 +547,7 @@ SESSION_RATIO_FIELDS = {
     SPEC_BLOCKED: ("blocked", "responses"),
     SPEC_HTTP_ERR: ("http_err", "responses"),
     SPEC_EMPTY: ("empty", "responses"),
-    SPEC_VALID: ("complete_rows", "field_items"),
+    SPEC_VALID: ("non_empty_rows", "field_items"),
     SPEC_SLOW: ("slow", "timed"),
 }
 
@@ -903,7 +904,8 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         "  배너와 이 표에 함께 표시합니다",
         "· 진행 중이거나 중단된 수집의 응답은 회차 패턴에 들어가기",
         "  전까지 절대 기준으로 판정합니다",
-        "· 데이터 누락 또는 연결 실패가 100%이면 횟수와 무관하게 바로 판정합니다",
+        "· 데이터 누락·연결 실패가 100%이거나 모든 행이 빈 행이면",
+        "  횟수와 무관하게 바로 판정합니다",
         f"· 최근 {RECENT_WINDOW}건이 이전보다 눈에 띄게 나빠지면 따로 알립니다",
         "",
         "■ 지금 상태",
@@ -1058,16 +1060,16 @@ _ALL_TIME_FOLDS = {
 
 def _row_facts(row: dict) -> RowFacts:
     """응답 1건의 분류·집계용 값 — 합산 집계(_aggregate_rows)와 회차별 집계(_session_tallies)가
-    같은 분류를 쓰도록 한곳에서 만든다. 필드 채움 기록(worker.count_field_fill)이 없는 과거
-    응답은 채움 값을 0으로 둬 집계에서 빠지게 한다."""
+    같은 분류를 쓰도록 한곳에서 만든다. 새 행 집계 기록이 없는 과거 응답은
+    표본에서 제외한다."""
     code = str(row.get("status_code", ""))
     latency = row.get("pure_latency")
     item_count = row.get("item_count") if isinstance(row.get("item_count"), int) else None
-    has_fill = isinstance(row.get("field_cells"), int)
+    has_fill = isinstance(row.get("non_empty_rows"), int)
     return RowFacts(
         code, _outcome(row, code, code == "200"),
         _speed_bucket(latency) if isinstance(latency, float) else None, item_count,
-        row.get("complete_rows", 0) if has_fill else 0, (item_count or 0) if has_fill else 0)
+        row["non_empty_rows"] if has_fill else 0, (item_count or 0) if has_fill else 0)
 
 
 def _recent_sessions(sessions: list, count: int) -> list:
@@ -1413,15 +1415,15 @@ class StatisticsPageTriggers:
 
     def _refresh_process_kpis(self, agg: dict) -> None:
         """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소·최대 건수+비율)과
-        유효 데이터 비율(모든 항목이 채워진 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
+        유효 데이터 비율(값이 하나라도 있는 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
         수집")만 대상으로 해 데이터 누락이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
-        필드 채움 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
+        새 행 집계 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
         self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
         self.kpi_item_range.update_value(_item_range_text(pages))
 
         field_items = agg["field_items"]
-        self.kpi_valid_rate.update_value(_percent(agg["complete_rows"], field_items) if field_items else "—")
+        self.kpi_valid_rate.update_value(_percent(agg["non_empty_rows"], field_items) if field_items else "—")
 
     def _evaluation_window(self, rows, sessions, running: bool) -> EvalWindow:
         """배너가 판정할 최근 PATTERN_WINDOW회 수집 구간을 집계한다 — 초기화 이후 누적으로 보면
@@ -1448,7 +1450,7 @@ class StatisticsPageTriggers:
         blocked = 0
         extract_errors = 0
         page_items = []
-        complete_rows = field_items = 0
+        non_empty_rows = field_items = 0
         # 최근 악화 감지용 창 — 고정 길이라 행이 아무리 쌓여도 메모리가 늘지 않고,
         # 이전 구간 값은 누계에서 이 창을 빼서 구하므로 순회도 한 번으로 끝난다
         recent_ok = deque(maxlen=RECENT_WINDOW)
@@ -1466,7 +1468,7 @@ class StatisticsPageTriggers:
                 speed[facts.bucket] += 1
             if facts.item_count is not None and facts.outcome == OUTCOME_OK:
                 page_items.append(facts.item_count)
-            complete_rows += facts.complete_rows
+            non_empty_rows += facts.non_empty_rows
             field_items += facts.field_items
 
             if timestamp:
@@ -1476,7 +1478,7 @@ class StatisticsPageTriggers:
             "daily_ok": daily_ok, "daily_err": daily_err,
             "status_group": status_group, "outcome": outcome, "speed": speed, "blocked": blocked,
             "extract_errors": extract_errors,
-            "page_items": page_items, "complete_rows": complete_rows, "field_items": field_items,
+            "page_items": page_items, "non_empty_rows": non_empty_rows, "field_items": field_items,
             "recent_ok": recent_ok,
         }
 

@@ -18,18 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 def count_field_fill(records: list) -> tuple:
-    """추출된 레코드들의 (전체 필드 수, 빈 필드 수, 모든 필드가 채워진 레코드 수)를 센다 —
-    통계 페이지의 필드 채움률·완전한 행 비율용. 값이 None이거나 공백뿐인 문자열이면 빈 값이고,
-    dict가 아닌 레코드는 필드를 알 수 없어 건너뛴다."""
-    cells = empty = complete = 0
+    """추출된 레코드의 (전체 필드, 빈 필드, 값이 하나라도 있는 행) 수를 센다.
+    None·공백·null 표기는 빈 값이며, dict가 아닌 레코드는 건너뛴다."""
+    cells = empty = non_empty = 0
     for record in records:
         if not isinstance(record, dict):
             continue
-        blanks = sum(1 for v in record.values() if v is None or (isinstance(v, str) and not v.strip()))
+        blanks = sum(1 for v in record.values()
+                     if v is None or (isinstance(v, str) and v.strip().lower() in ("", "none", "null", "n/a")))
         cells += len(record)
         empty += blanks
-        complete += blanks == 0 and bool(record)
-    return cells, empty, complete
+        non_empty += len(record) > blanks
+    return cells, empty, non_empty
 
 
 class QueueWriter:
@@ -298,7 +298,7 @@ class MultiprocessWorker(QThread):
         extracted     = resp_info.get("data") or []
         extract_error = resp_info.get("extract_error")
         empty_extract = status_code == 200 and not extracted and not extract_error
-        field_cells, empty_cells, complete_rows = count_field_fill(extracted)
+        field_cells, empty_cells, non_empty_rows = count_field_fill(extracted)
 
         self.store.add_url_map({
             "req_url":       res_url,
@@ -312,7 +312,7 @@ class MultiprocessWorker(QThread):
             "item_count":    len(extracted),
             "field_cells":   field_cells,
             "empty_cells":   empty_cells,
-            "complete_rows": complete_rows,
+            "non_empty_rows": non_empty_rows,
             "seq_no":        self.task.get("seq_no"),
         })
         self._done += 1
