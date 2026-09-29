@@ -1,7 +1,7 @@
 # layout/single/sidebar.py
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, QTimer
 
 from style import NavItem, Divider
 from trigger.common import NAV_MONITOR, NAV_REFINE, NAV_SCHEDULE, NAV_STATS, NAV_SESSION, NAV_AUTH
@@ -20,8 +20,16 @@ class SidebarSingle(QWidget):
     """
     page_changed = pyqtSignal(int)
 
+    _BLINK_INTERVAL_MS = 600
+    _DOT_SIZE = 10
+    _STATUS_TEXT_SIZE = 12
+
     def __init__(self):
         super().__init__()
+        self._dot_lit = True
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(self._BLINK_INTERVAL_MS)
+        self._blink_timer.timeout.connect(self._toggle_dot)
         self._build()
 
     def _nav_items(self) -> list:
@@ -87,10 +95,10 @@ class SidebarSingle(QWidget):
 
         status_row = QHBoxLayout()
         status_row.setContentsMargins(16, 8, 16, 0)
-        dot = parts.make_label("●", GREEN, 10)
-        st = parts.make_label("연결됨", GREEN, 12)
-        status_row.addWidget(dot)
-        status_row.addWidget(st)
+        self._status_dot = parts.make_label("●", TEXT_MUTED, self._DOT_SIZE)
+        self._status_lbl = parts.make_label("대기", TEXT_MUTED, self._STATUS_TEXT_SIZE)
+        status_row.addWidget(self._status_dot)
+        status_row.addWidget(self._status_lbl)
         status_row.addStretch()
         footer_lay.addLayout(status_row)
         footer_lay.addStretch()
@@ -114,3 +122,25 @@ class SidebarSingle(QWidget):
         for b in self._btns:
             b.setChecked(self._nav_idx_by_btn[b] == idx)
         self.page_changed.emit(idx)
+
+    @staticmethod
+    def _status_qss(color: str, size: int) -> str:
+        return f"color: {color}; font-size: {size}px; font-weight: normal; background: transparent; border: none;"
+
+    def _paint_dot(self, color: str):
+        self._status_dot.setStyleSheet(self._status_qss(color, self._DOT_SIZE))
+
+    def _toggle_dot(self):
+        self._dot_lit = not self._dot_lit
+        self._paint_dot(GREEN if self._dot_lit else "transparent")
+
+    def set_collecting(self, collecting: bool):
+        color = GREEN if collecting else TEXT_MUTED
+        self._status_lbl.setText("수집 중" if collecting else "대기")
+        self._status_lbl.setStyleSheet(self._status_qss(color, self._STATUS_TEXT_SIZE))
+        self._dot_lit = True
+        self._paint_dot(color)
+        if collecting:
+            self._blink_timer.start()
+        else:
+            self._blink_timer.stop()
