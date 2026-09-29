@@ -3,40 +3,19 @@
 # 두 서브패키지는 이 파일만 참조하고 서로를 직접 import하지 않는다
 # (단, multi는 single을 상속 목적으로 import).
 
-from conf import DataStore
-from style import THEME, Parts, EqualSpacingTable, StatCard, CenteredHandleSplitter
-from trigger.common import _confirm_destructive_action, _default_dialog_qss
+from style import EqualSpacingTable, StatCard, CenteredHandleSplitter
+from trigger.common import (
+    _confirm_destructive_action, _default_dialog_qss,
+    store, theme, parts,
+    BG_PRIMARY, BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT, ACCENT_HOVER,
+    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, BORDER_LIGHT,
+    GREEN, AMBER, RED, BLUE, PURPLE,
+)
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QSizePolicy, QApplication,
     QDialog, QSplitter, QFrame, QLabel,
 )
-
-store = DataStore()
-
-theme = THEME()
-parts = Parts()
-
-# ── THEME 색상 변수를 모듈 레벨에서 참조할 수 있도록 언패킹 ──────────────
-# style.py의 THEME 클래스가 단일 정의 소스(Single Source of Truth)이며,
-# 이 변수들은 그 인스턴스 속성을 그대로 바인딩한 것입니다.
-# 색상을 변경할 때는 THEME 클래스만 수정하면 됩니다.
-BG_PRIMARY    = theme.BG_PRIMARY
-BG_SECONDARY  = theme.BG_SECONDARY
-BG_HOVER      = theme.BG_HOVER
-ACCENT        = theme.ACCENT
-ACCENT_LIGHT  = theme.ACCENT_LIGHT
-ACCENT_HOVER  = theme.ACCENT_HOVER
-TEXT_PRIMARY  = theme.TEXT_PRIMARY
-TEXT_SECONDARY= theme.TEXT_SECONDARY
-TEXT_MUTED    = theme.TEXT_MUTED
-BORDER        = theme.BORDER
-BORDER_LIGHT  = theme.BORDER_LIGHT
-GREEN         = theme.GREEN
-AMBER         = theme.AMBER
-RED           = theme.RED
-BLUE          = theme.BLUE
-PURPLE        = theme.PURPLE
 
 
 def _blueprint_auth_method(info: dict):
