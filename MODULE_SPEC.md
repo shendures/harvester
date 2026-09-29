@@ -52,7 +52,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | 공용 | `tray.py` | `TrayManager` | 시스템 트레이 아이콘/메뉴 |
 | 공용 | `window_base.py` | `MainWindowBase` | single/multi 메인 윈도우 공통 골격 — 창 기본 설정, 최초 1회 중앙 정렬, "사이드바 \| (툴바/스택/상태바)" 조립(`_assemble_shell`)과 공통 시그널 연결 |
 | single | `main_window.py` | `MainWindowSingle(MainWindowBase)` | 단일 블루프린트용 페이지 생성·스택 등록 |
-| single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) |
+| single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) / 하단 수집 상태(대기/수집 중) |
 | single | `common.py` | `ActiveBlueprintMixin` | 활성 블루프린트 조회(Multi 확장 지점) |
 | single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 |
 | single | `monitor.py` | `MonitorPageSingle` | 원본/정제규칙/정제결과/비교 4탭 |
