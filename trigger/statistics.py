@@ -134,7 +134,6 @@ BANNER_MAX_CAUSES = 2    # 배너에 이어 붙이는 원인 문장 수 — 나�
 # 회차별 패턴 판정 — 여러 번 수집했을 때 결과가 회차마다 일정하면 정상, 들쭉날쭉하면 정상으로 보지 않는다.
 PATTERN_WINDOW = 5              # 배너가 판정하는 최근 수집 회차 수 — 이보다 오래된 이력은 판정에서 뺀다
 PATTERN_MIN_SESSIONS = 3        # 패턴 판정을 시작하는 데 필요한 완료된 수집 회차 수
-MIN_SESSIONS_OK = 2             # "정상"을 매기는 최소 수집(JOB) 횟수 — 1회는 URL이 많아도 관측 1번이라 재현성을 모른다
 YIELD_NOISE_K = 6.0             # 수집량 편차가 회차 간 자체 노이즈의 몇 배를 넘어야 불안정으로 보는지
 PATTERN_SPREAD_WARN = 0.10      # 회차 간 편차가 이 이상이면 불안정("주의") — 비율은 %p 차이, 수집량은 상대 편차
 PATTERN_SPREAD_PROBLEM = 0.30   # 이 이상이면 크게 불안정("문제")
@@ -239,7 +238,7 @@ SPEC_SLOW = MetricSpec(
     "응답 시간이 느린 쪽에 몰려 있습니다.",
     "'응답 속도 구간' 카드에서 지연 비율을 확인하고, "
     "수집 설정의 Delay(s)·Threads를 조정하세요.",
-    min_sessions=2, min_sessions_problem=3)
+    min_sessions_problem=3)
 
 # 도움말 텍스트가 지표별 게이트를 순회할 단일 소스 — 표시 순서는 카드 등장 순서를 따른다.
 METRIC_SPECS = (SPEC_CONN_FAIL, SPEC_BLOCKED, SPEC_HTTP_ERR, SPEC_EMPTY,
@@ -475,14 +474,9 @@ def _session_gated(spec: MetricSpec, sessions: int) -> bool:
     return sessions < spec.min_sessions
 
 
-def _first_ok_session(spec: MetricSpec) -> int:
-    """이 지표에 "정상"을 매길 수 있는 최소 수집 횟수."""
-    return max(spec.min_sessions, MIN_SESSIONS_OK)
-
-
 def _is_gate_pending(verdict: MetricVerdict, sessions: int) -> bool:
     """수집 횟수 게이트 때문에 보류 중인지 — 게이트를 건너뛰고 이미 등급이 매겨진 지표는 제외한다."""
-    return verdict.level == DIAG_HOLD and sessions < _first_ok_session(verdict.spec)
+    return verdict.level == DIAG_HOLD and sessions < verdict.spec.min_sessions
 
 
 def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
@@ -506,8 +500,7 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
     "—"로 비면 카드와 어긋난다. 판정을 시작한 뒤에도 절대 판정이 "문제"인데 min_sessions_problem에
     못 미치면 세션 하나의 이상만으로 최고 등급을 단정하지 않도록 "주의"로 낮추고 capped로 표시한다.
     point_ok 지표는 관측값(hits/sample)이 warn 이상이면 신뢰구간 없이 정상으로 매기고,
-    미만이면 Wilson 신뢰구간으로 문제·주의·보류를 가른다. "정상"은 표본(URL·행 수)이 커도 수집이
-    MIN_SESSIONS_OK회 미만이면 보류한다 — 표본 크기가 아니라 수집(JOB) 횟수로 정상을 판단한다."""
+    미만이면 Wilson 신뢰구간으로 문제·주의·보류를 가른다."""
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     observed = hits / sample
@@ -521,8 +514,6 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
         level = DIAG_OK
     else:
         level = _ratio_level(spec, low, high)
-    if level == DIAG_OK and sessions < MIN_SESSIONS_OK:
-        level = DIAG_HOLD
     capped = (not gated and level == DIAG_PROBLEM
               and sessions < spec.min_sessions_problem and not bypass)
     if capped:
@@ -644,7 +635,7 @@ def _worst_level(verdicts: list) -> str:
 
 def _next_gate(verdicts: list, sessions: int) -> int | None:
     """게이트에 걸려 보류 중인 지표 가운데 가장 먼저 풀리는 기준 수집 횟수. 없으면 None."""
-    pending = [_first_ok_session(v.spec) for v in verdicts if _is_gate_pending(v, sessions)]
+    pending = [v.spec.min_sessions for v in verdicts if _is_gate_pending(v, sessions)]
     return min(pending) if pending else None
 
 
@@ -893,10 +884,7 @@ def diagnosis_help_text(sessions: int, all_sessions: int, regression, session_si
         "■ 어떻게 판정하나요?",
         "· 표본이 적으면 단정하지 않고 \"보류\"합니다",
         "  (95% 신뢰구간으로 판단)",
-        "· 수집 1회는 관측 1번이라 항목마다",
-        "  최소 수집 횟수가 필요합니다",
-        f"  ('정상'은 URL 수와 무관하게 수집 {MIN_SESSIONS_OK}회부터,",
-        "  '주의'·'문제'는 항목별 판정 시작 횟수부터 매깁니다)",
+        "· 수집 1회 이상이면 항목별로 판정을 시작합니다",
         *_min_sessions_lines(),
         "· 일부 지표는 '문제' 확정에 더 기다립니다 —",
         "  그전에는 '주의'로 낮춰 표시합니다",
