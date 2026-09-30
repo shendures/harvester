@@ -1489,7 +1489,7 @@ class StatisticsPageTriggers:
         sessions = self._sessions()
 
         self.session_table.setRowCount(0)
-        for idx, s in enumerate(reversed(sessions), start=1):
+        for idx, s in enumerate(sessions, start=1):
             r = self.session_table.rowCount()
             self.session_table.insertRow(r)
             # title은 세션 레코드에 나중에 추가된 필드라 과거 stats_history.json에는
@@ -1511,6 +1511,8 @@ class StatisticsPageTriggers:
                 self.session_table.setItem(r, col, item)
 
         self.session_badge.setText(f"{len(sessions)}건")
+        if sessions:
+            self.session_table.scrollToBottom()
 
     def _aggregate_all_time(self, period: str) -> AllTimeTrend:
         """이 패널 범위의 URL 응답 기록을 period의 전체 보기 방식으로 접어 합산한다."""
