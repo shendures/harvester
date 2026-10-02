@@ -46,7 +46,7 @@ TREND_LABEL_SAMPLE = "00-00"  # 월별(31칸) 구간 라벨 표본 — trigger/s
 DIAG_LEVEL_FONT_PX = 14
 DIAG_DETAIL_FONT_PX = 13
 DIAG_NOTE_FONT_PX = 12                   # 상세 보기 팝업 하단 참고 줄
-DIAG_TABLE_HEADERS = ["평가 축", "지표", "상태", "관측값", "95% 신뢰구간", "회차 패턴", "절대 기준", "표본"]
+DIAG_TABLE_HEADERS = ["평가 항목", "지표", "상태", "관측값", "95% 신뢰구간", "회차 패턴", "절대 기준", "표본"]
 DIAG_POPUP_SIZE = (1180, 480)       # 폭은 표 8열이 잘리지 않는 값, 높이는 내용에서 다시 잡는다
 DIAG_POPUP_MIN_SIZE = (740, 300)
 
@@ -235,7 +235,7 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         return body_widget
 
     def _build_diagnosis_banner(self) -> QWidget:
-        """수집 상태(정상/주의/문제/대기)와 원인·조치 문장을 보여주는 배너를 만든다.
+        """수집 상태(양호/주의/문제/대기)와 원인·조치 문장을 보여주는 배너를 만든다.
         판정은 trigger/statistics.py의 evaluate()가 하고, 이 위젯은 결과를 그리기만
         한다(_update_diagnosis). 판정 방식·지표별 근거는 상세 보기 버튼(팝업)의
         도움말(?)과 표에서 안내한다."""

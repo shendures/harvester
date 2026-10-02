@@ -106,7 +106,7 @@ STATUS_CODE_MEANINGS = {
     "429": "요청 과다", "500": "서버 오류",
 }
 
-DIAG_OK, DIAG_WARN, DIAG_PROBLEM, DIAG_PENDING = "정상", "주의", "문제", "대기"
+DIAG_OK, DIAG_WARN, DIAG_PROBLEM, DIAG_PENDING = "양호", "주의", "문제", "대기"
 # 지표 단위 등급 — 신뢰구간이 임계값을 걸쳐 어느 쪽으로도 단정할 수 없는 상태
 DIAG_HOLD = "보류"
 DIAG_LEVEL_COLORS = {
@@ -144,17 +144,17 @@ CHECKLIST_ADVICE = f"{DIAG_POPUP_TITLE}의 체크 리스트를 확인하세요."
 # 판정에 쓰지 않고 상세 팝업에 참고값으로만 적는 KPI의 이름
 REF_AVG_LATENCY, REF_THROUGHPUT = "평균 응답", "처리량"
 
-# 평가 축 — 통계 화면의 카드 하나가 축 하나에 대응한다
+# 평가 항목 — 통계 화면의 카드 하나가 항목 하나에 대응한다
 AXIS_CONNECTION = "연결 안정성"
 AXIS_RESPONSE = "응답 정상성"
 AXIS_YIELD = "수집 성과"
 AXIS_QUALITY = "데이터 품질"
 AXIS_PERFORMANCE = "응답 성능"
 
-# 지표별 최소 수집 횟수는 축이 아니라 지표(MetricSpec.min_sessions·min_sessions_problem) 단위로
-# 정의한다 — 같은 축이라도 지표별로 세션 종속성·재현성이 달라 게이트를 다르게 둬야 하기 때문이다.
+# 지표별 최소 수집 횟수는 항목이 아니라 지표(MetricSpec.min_sessions·min_sessions_problem) 단위로
+# 정의한다 — 같은 항목이라도 지표별로 세션 종속성·재현성이 달라 게이트를 다르게 둬야 하기 때문이다.
 
-# 종합 평가 표의 "평가 축" 기본 정렬 순서
+# 종합 평가 표의 "평가 항목" 기본 정렬 순서
 AXIS_DISPLAY_ORDER = (AXIS_PERFORMANCE, AXIS_CONNECTION, AXIS_RESPONSE, AXIS_YIELD, AXIS_QUALITY)
 AXIS_RANK = {axis: i for i, axis in enumerate(AXIS_DISPLAY_ORDER)}
 
@@ -453,12 +453,25 @@ def _noise_scale(values: tuple) -> float:
     return sum(kept) / len(kept)
 
 
+def _items_per_page(tallies: list) -> tuple:
+    """회차별 정상 수집 페이지당 평균 수집량 — 데이터를 가져온 페이지가 있는 회차만 센다."""
+    return tuple(t.ok_items / t.ok_pages for t in tallies if t.ok_pages)
+
+
+def _items_baseline_verdict(tallies: list) -> MetricVerdict:
+    """회차 간 편차를 아직 비교할 수 없는 페이지당 수집량 — 등급은 보류로 두고, 이후 회차와
+    비교할 기준값(지금까지의 평균 수집량)만 보여준다."""
+    per_page = _items_per_page(tallies)
+    observed = sum(per_page) / len(per_page) if per_page else None
+    return MetricVerdict(SPEC_SESSION_ITEMS, DIAG_HOLD, observed, None, None, len(per_page))
+
+
 def _judge_pattern_items(tallies: list) -> PatternResult | None:
     """회차별 정상 수집 페이지당 평균 수집량이 일정한지 판정한다. 비율 지표처럼 통계와 실질
     편차를 모두 넘어야 불안정으로 본다 — 편차가 회차 간 자체 노이즈(_noise_scale)의
     YIELD_NOISE_K배를 넘는지가 통계, PATTERN_SPREAD_WARN 이상인지가 실질이다. 노이즈가 0이면
     (회차마다 값이 같으면) 통계 조건은 저절로 충족된다. 평균이 0이면 편차가 정의되지 않아 보류."""
-    per_page = tuple(t.ok_items / t.ok_pages for t in tallies if t.ok_pages)
+    per_page = _items_per_page(tallies)
     if len(per_page) < PATTERN_MIN_SESSIONS:
         return None
     mean = sum(per_page) / len(per_page)
@@ -475,8 +488,10 @@ def _session_gated(spec: MetricSpec, sessions: int) -> bool:
 
 
 def _is_gate_pending(verdict: MetricVerdict, sessions: int) -> bool:
-    """수집 횟수 게이트 때문에 보류 중인지 — 게이트를 건너뛰고 이미 등급이 매겨진 지표는 제외한다."""
-    return verdict.level == DIAG_HOLD and sessions < verdict.spec.min_sessions
+    """수집 횟수 게이트 때문에 보류 중인지 — 게이트를 건너뛰고 이미 등급이 매겨진 지표와,
+    평가 대상이 아니라 회차 비교 자료를 모으는 중인 회차 패턴 전용 지표는 제외한다."""
+    return (verdict.level == DIAG_HOLD and not verdict.spec.pattern_only
+            and sessions < verdict.spec.min_sessions)
 
 
 def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
@@ -725,7 +740,7 @@ def _banner_diagnosis(verdicts: list, regression, total: int, sessions: int) -> 
                       f"{_absolved_text(absolved)}. 사이트의 원래 특성인지 확인하세요."]
         else:
             # 회차별 패턴으로 판정했다면 확인한 근거가 페이지 수가 아니라 회차의 일정함이다
-            causes = ["수집이 정상적으로 진행되고 있습니다. "
+            causes = ["수집 상태가 양호합니다. "
                       + (f"최근 {runs}회 수집 결과가 일정합니다." if runs
                          else f"확인한 페이지 {total}개에서 이상 신호가 없습니다.")]
         # 정상인데 아직 안 본 축이 남아 있으면 "전부 확인했다"는 오해가 생기므로 함께 밝힌다
@@ -747,15 +762,15 @@ def evaluate(total: int, agg: dict, window: EvalWindow) -> Evaluation:
     if total == 0:
         return Evaluation(
             Diagnosis(DIAG_PENDING, DIAG_LEVEL_COLORS[DIAG_PENDING],
-                      "아직 수집 기록이 없습니다. 상단 ▶ 시작 버튼으로 수집을 실행하세요."),
+                      "아직 수집 기록이 없습니다. 수집을 실행하면 평가가 시작됩니다."),
             [], None, sessions, window.all_sessions, 0.0, window.result_counts)
 
     verdicts = [_judge_ratio(spec, hits, sample, sessions)
                 for spec, hits, sample in _ratio_samples(window.responses, window.agg)]
-    # 절대 기준이 없는 지표라 패턴을 판정하기 전까지는 보류다
-    verdicts.append(MetricVerdict(SPEC_SESSION_ITEMS, DIAG_HOLD, None, None, None, 0))
-    verdicts.sort(key=lambda v: AXIS_RANK[v.spec.axis])
     tallies = window.agg["per_session"]
+    # 절대 기준이 없는 지표라 패턴을 판정하기 전까지는 보류다
+    verdicts.append(_items_baseline_verdict(tallies))
+    verdicts.sort(key=lambda v: AXIS_RANK[v.spec.axis])
     if len(tallies) >= PATTERN_MIN_SESSIONS:
         verdicts = [_with_pattern(v, tallies) for v in verdicts]
     session_size = sum(t.responses for t in tallies) / len(tallies) if tallies else 0.0
@@ -825,6 +840,8 @@ def _pattern_range_text(verdict: MetricVerdict) -> str:
 def metric_pattern_text(verdict: MetricVerdict) -> str:
     """표 한 칸에 들어가는 회차 패턴 문구 — 판정하지 않았으면 "—"."""
     pattern = verdict.pattern
+    if pattern is None and verdict.spec.pattern_only and verdict.sample:
+        return "기준 수집 중"
     if pattern is None or pattern.level == DIAG_HOLD:
         return "—"
     if _is_unstable(verdict):
