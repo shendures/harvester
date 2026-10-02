@@ -1,8 +1,11 @@
 import os
 import ast
+import gzip
 import json
+import zlib
 import shutil
 import logging
+import contextlib
 import importlib.util
 from copy import deepcopy
 from typing import Callable, Optional
@@ -35,6 +38,110 @@ def _report(level: str, message: str) -> None:
         _error_reporter(level, message)
     else:
         _pending_reports.append((level, message))
+
+
+# ══════════════════════════════════════════════════════
+#  통계 이력 파일 (stats_history.json.gz)
+# ══════════════════════════════════════════════════════
+# gzip 압축 JSON. 응답 행(url_maps)은 URL 사전 + 배열로, 세션은 dict 그대로 저장한다.
+#   {"version": 2, "urls": [...], "sessions": [...],
+#    "rows": [[seq_no, url_id, status_code, pure_latency, timestamp, flags, item_count, non_empty_rows], ...]}
+# flags: bit0 = empty_extract, bit1 = extract_error. 메모리의 행은 dict 그대로라 읽는 쪽은 형식을 모른다.
+STATS_HISTORY_FILENAME = "stats_history.json.gz"
+LEGACY_STATS_HISTORY_FILENAME = "stats_history.json"
+BACKUP_SUFFIX = ".bak"
+CORRUPT_SUFFIX = ".corrupt"
+MIGRATED_SUFFIX = ".migrated"
+STATS_HISTORY_VERSION = 2
+STATS_HISTORY_GZIP_LEVEL = 6
+LATENCY_DECIMALS = 3
+FLAG_EMPTY_EXTRACT, FLAG_EXTRACT_ERROR = 1, 2
+STATS_HISTORY_READ_ERRORS = (OSError, EOFError, zlib.error, ValueError, KeyError, TypeError, IndexError)
+
+
+def _round_latency(value):
+    return round(value, LATENCY_DECIMALS) if isinstance(value, float) else value
+
+
+def _round_request_latency(request: dict) -> dict:
+    if "latency" not in request:
+        return request
+    return {**request, "latency": _round_latency(request["latency"])}
+
+
+def _encode_session(session: dict) -> dict:
+    if not session.get("requests"):
+        return session
+    return {**session, "requests": [_round_request_latency(r) for r in session["requests"]]}
+
+
+def _encode_stats_history(url_maps: list, sessions: list) -> dict:
+    url_ids = {}
+    rows = [[
+        row.get("seq_no"), url_ids.setdefault(row.get("req_url"), len(url_ids)),
+        row.get("status_code"), _round_latency(row.get("pure_latency")), row.get("timestamp"),
+        (FLAG_EMPTY_EXTRACT if row.get("empty_extract") else 0)
+        | (FLAG_EXTRACT_ERROR if row.get("extract_error") else 0),
+        row.get("item_count"), row.get("non_empty_rows"),
+    ] for row in url_maps]
+    return {"version": STATS_HISTORY_VERSION, "urls": list(url_ids), "rows": rows,
+            "sessions": [_encode_session(s) for s in sessions]}
+
+
+def _decode_row(urls: list, row: list) -> dict:
+    seq_no, url_id, status_code, latency, timestamp, flags, item_count, non_empty_rows = row
+    return {
+        "seq_no": seq_no, "req_url": urls[url_id], "status_code": status_code,
+        "pure_latency": latency, "timestamp": timestamp,
+        "empty_extract": bool(flags & FLAG_EMPTY_EXTRACT),
+        "extract_error": bool(flags & FLAG_EXTRACT_ERROR),
+        "item_count": item_count, "non_empty_rows": non_empty_rows,
+    }
+
+
+def _decode_stats_history(data: dict) -> tuple:
+    """(url_maps, sessions)를 돌려준다. version이 없으면 gzip 도입 전의 dict 행 형식이다."""
+    version = data.get("version")
+    if version is None:
+        return data.get("url_maps", []), data.get("sessions", [])
+    if version != STATS_HISTORY_VERSION:
+        raise ValueError(f"지원하지 않는 통계 이력 형식 version={version}")
+    urls = data["urls"]
+    return [_decode_row(urls, row) for row in data["rows"]], data["sessions"]
+
+
+def _read_stats_history(path: str) -> tuple:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return _decode_stats_history(json.load(f))
+
+
+def _remove_quietly(path: str) -> None:
+    with contextlib.suppress(OSError):
+        os.remove(path)
+
+
+def _write_stats_history(path: str, url_maps: list, sessions: list) -> None:
+    """임시 파일에 완성한 뒤 기존 파일을 .bak으로 한 세대 남기고 교체한다 — 쓰는 도중 실패해도 기존 이력은 그대로다."""
+    tmp_path = path + ".tmp"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with gzip.open(tmp_path, "wt", encoding="utf-8", compresslevel=STATS_HISTORY_GZIP_LEVEL) as f:
+            json.dump(_encode_stats_history(url_maps, sessions), f,
+                      ensure_ascii=False, separators=(",", ":"), default=str)
+        if os.path.exists(path):
+            shutil.copy2(path, path + BACKUP_SUFFIX)
+        os.replace(tmp_path, path)
+    except Exception:
+        _remove_quietly(tmp_path)
+        raise
+
+
+def _quarantine(path: str) -> None:
+    """읽을 수 없는 파일을 지우지 않고 .corrupt로 옮겨 보존한다."""
+    try:
+        os.replace(path, path + CORRUPT_SUFFIX)
+    except OSError as e:
+        logger.error("[DataStore] 손상된 통계 이력 보존 실패: %s", e)
 
 
 # ══════════════════════════════════════════════════════
@@ -148,31 +255,61 @@ class DataStore:
     # ── 통계 이력 영속화 (통계 분석 페이지 전용: url_maps + sessions) ──
     def _stats_history_path(self) -> str:
         app_dir = utility.data_dir(utility.get_app_name())
-        return os.path.join(app_dir, "stats_history.json")
+        return os.path.join(app_dir, STATS_HISTORY_FILENAME)
+
+    def _set_stats_history(self, history: tuple) -> None:
+        self._url_map_list, self._sessions = history
 
     def _load_stats_history(self) -> None:
+        """gzip 이력(.gz → .bak) → gzip 도입 전 stats_history.json(변환) → 빈 상태 순으로 불러온다."""
         path = self._stats_history_path()
+        legacy_path = os.path.join(os.path.dirname(path), LEGACY_STATS_HISTORY_FILENAME)
+        if os.path.exists(path) or os.path.exists(path + BACKUP_SUFFIX):
+            self._load_gzip_history(path)
+        elif os.path.exists(legacy_path):
+            self._migrate_legacy_history(legacy_path, path)
+
+    def _load_gzip_history(self, path: str) -> None:
+        """읽을 수 없는 이력은 .corrupt로 보존하고 .bak에서 복구한다. 둘 다 안 되면 빈 상태로 시작한다."""
         try:
             if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self._url_map_list = data.get("url_maps", [])
-                self._sessions = data.get("sessions", [])
-        except Exception as e:
+                self._set_stats_history(_read_stats_history(path))
+                return
+        except STATS_HISTORY_READ_ERRORS as e:
+            logger.error("[DataStore] 통계 이력 로드 실패: %s", e)
+            _quarantine(path)
+        try:
+            self._set_stats_history(_read_stats_history(path + BACKUP_SUFFIX))
+            _report("warn", "통계 이력 파일을 읽지 못해 백업(.bak)에서 복구했습니다 — 마지막 수집 1회분이 빠졌을 수 있음")
+        except STATS_HISTORY_READ_ERRORS as e:
+            logger.error("[DataStore] 통계 이력 백업 로드 실패: %s", e)
+            _report("err", f"통계 이력 로드 실패 — 통계 페이지 빈 상태로 시작 (손상 파일은 {path + CORRUPT_SUFFIX}에 보존)")
+
+    def _migrate_legacy_history(self, legacy_path: str, path: str) -> None:
+        """기존 stats_history.json을 gzip 형식으로 옮긴다. 새 파일의 행·세션 수가 맞을 때만 원본을 .migrated로 이름 변경한다."""
+        try:
+            with open(legacy_path, "r", encoding="utf-8") as f:
+                history = _decode_stats_history(json.load(f))
+        except STATS_HISTORY_READ_ERRORS as e:
             logger.error("[DataStore] 통계 이력 로드 실패: %s", e)
             _report("err", "통계 이력 로드 실패 — 통계 페이지 빈 상태로 시작")
+            return
+        self._set_stats_history(history)
+        try:
+            _write_stats_history(path, *history)
+            saved = _read_stats_history(path)
+            if tuple(map(len, saved)) != tuple(map(len, history)):
+                raise ValueError("변환한 이력의 행·세션 수가 원본과 다릅니다")
+            os.replace(legacy_path, legacy_path + MIGRATED_SUFFIX)
+            self._set_stats_history(saved)
+        except Exception as e:
+            logger.error("[DataStore] 통계 이력 형식 변환 실패: %s", e)
+            _remove_quietly(path)
+            _report("warn", "통계 이력 형식 변환 실패 — 기존 파일을 그대로 두고 계속 사용합니다")
 
     def save_stats_history(self) -> None:
-        path = self._stats_history_path()
-        tmp_path = path + ".tmp"
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"url_maps": self._url_map_list, "sessions": self._sessions},
-                    f, ensure_ascii=False, indent=2, default=str,
-                )
-            os.replace(tmp_path, path)
+            _write_stats_history(self._stats_history_path(), self._url_map_list, self._sessions)
         except Exception as e:
             logger.error("[DataStore] 통계 이력 저장 실패: %s", e)
             _report("err", "통계 이력 저장 실패 — 다음 실행 시 이번 회차 통계 누락 가능")
