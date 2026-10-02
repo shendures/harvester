@@ -3,114 +3,135 @@ DataCrawler v2.0  —  PyQt6
 대시보드 / 스케줄러 / 모니터링 / 통계 분석 완성본
 """
 
-import sys
 import ctypes
 import multiprocessing
+import os
+import sys
+from typing import NoReturn
+
+from PyQt6.QtGui import QIcon
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QStyleFactory
-from PyQt6.QtGui import QIcon
-from layout import MainWindowSingle, theme
+
 import conf
-from conf import BlueprintStorage
-from style import SpinArrowProxyStyle
 import utility
+from layout import MainWindowSingle, theme
+from style import SpinArrowProxyStyle
 
-# Windows 작업 표시줄 아이콘 해결을 위한 코드
-myappid = 'my.scrapy.collector.v0_8'
-if sys.platform == 'win32':
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+APP_ID = 'my.scrapy.collector.v0_8'
+ICON_FILENAME = "combine-harvester.ico"
+SINGLE_INSTANCE_TIMEOUT_MS = 500
+MULTI_BLUEPRINT_MIN_COUNT = 2
 
-def main():
+FLAG_MULTI = "--multi"
+FLAG_SINGLE = "--single"
 
-    app = QApplication(sys.argv)
-    # Windows 네이티브 스타일(windowsvista/windows11)은 border+padding:0 조합의
-    # 초소형 QPushButton 등에서 QSS의 background-color를 온전히 반영하지 않는
-    # 경우가 있다 — 이 앱은 GLOBAL_QSS로 위젯을 전면 다크 테마 재스타일링하므로
-    # 네이티브 룩에 의존할 이유가 없어, 플랫폼 무관하게 QSS를 그대로 그리는
-    # Fusion 스타일을 고정한다(스타일시트 적용보다 먼저 호출). SpinArrowProxyStyle로
-    # 감싸 스핀박스 화살표만 흰색/회색 삼각형으로 직접 그린다(QSS의 border 기반
-    # 삼각형 기법으로는 진짜 삼각형이 그려지지 않아 우회).
+
+def set_windows_app_id() -> None:
+    # 작업 표시줄 아이콘이 python.exe로 묶이지 않도록 고유 AppUserModelID 등록
+    if sys.platform == 'win32':
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+
+
+def apply_theme(app: QApplication) -> None:
+    # Windows 네이티브 스타일은 초소형 QPushButton 등에서 QSS background-color를
+    # 온전히 반영하지 않아, 플랫폼 무관하게 QSS를 그대로 그리는 Fusion으로 고정한다
+    # (스타일시트 적용보다 먼저 호출). SpinArrowProxyStyle은 스핀박스 화살표만 직접 그린다.
     app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))
     theme.set_pallete(app)
-    # 창/작업 표시줄 아이콘 — 미지정 시 PyInstaller --icon(exe 파일 아이콘)과 무관하게
-    # 실행 중에는 기본 아이콘으로 표시됨(트레이 아이콘은 TrayManager가 별도로 설정 중)
-    app.setWindowIcon(QIcon(utility.resource_path() + "\\" + "combine-harvester.ico"))
+    # 미지정 시 PyInstaller --icon과 무관하게 실행 중 창/작업 표시줄이 기본 아이콘으로 표시됨
+    app.setWindowIcon(QIcon(os.path.join(utility.resource_path(), ICON_FILENAME)))
 
+
+def is_already_running() -> bool:
     socket = QLocalSocket()
-    socket.connectToServer(myappid)
+    socket.connectToServer(APP_ID)
+    if not socket.waitForConnected(SINGLE_INSTANCE_TIMEOUT_MS):
+        return False
+    socket.disconnectFromServer()
+    return True
 
-    if socket.waitForConnected(500):
-        print("이미 실행 중입니다. 기존 프로그램을 활성화합니다.")
-        socket.disconnectFromServer()
-        sys.exit(0)
 
-    local_server = QLocalServer()
-    QLocalServer.removeServer(myappid)  # 이전 소켓 잔재 청소
-    if not local_server.listen(myappid):
+def start_instance_server() -> QLocalServer:
+    server = QLocalServer()
+    QLocalServer.removeServer(APP_ID)  # 이전 소켓 잔재 청소
+    if not server.listen(APP_ID):
         sys.exit(1)
+    return server
 
-    # 레이아웃 선택: request_info.json의 블루프린트 개수로 자동 판단
-    # (1개 = 단일 수집, 2개 이상 = 다중 수집 순차 배치). --multi/--single
-    # 플래그로 수동 오버라이드 가능(크로스체크·디버깅용 — 개수와 무관하게 특정
-    # 레이아웃을 강제 지정)하되, 그 플래그가 실제 블루프린트 개수와 모순되면
-    # (예: 1개인데 --multi, 2개 이상인데 --single) 잘못된 레이아웃으로 조용히
-    # 기동되지 않도록 여기서 즉시 중단한다.
-    forced_multi = "--multi" in sys.argv
-    forced_single = "--single" in sys.argv
-    # 개수만 필요하므로 list_blueprints()(전체 deepcopy)가 아니라
-    # list_seq_nos()(deepcopy 없음)로 가볍게 조회한다.
-    blueprint_count = len(BlueprintStorage().list_seq_nos())
 
-    mismatch = None
-    if forced_multi and blueprint_count < 2:
-        mismatch = (
-            "--multi", blueprint_count,
+def exit_on_flag_mismatch(flag: str, blueprint_count: int, reason: str,
+                          auto_layout: str, correct_flag: str) -> NoReturn:
+    # 터미널 전용 플래그이므로 알림창 없이 콘솔 로그만 남기고 중단한다.
+    print(
+        f"[Harvest] 실행 중단\n"
+        f"[원인] {flag} 플래그를 지정했지만 request_info.json의 블루프린트가 "
+        f"{blueprint_count}개입니다 — {reason}\n"
+        f"  [올바른 실행] python main.py            "
+        f"(플래그 없이 실행 — 개수에 맞춰 자동으로 {auto_layout} 수집 레이아웃 선택)\n"
+        f"               또는 python main.py {correct_flag}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def should_use_multi_layout(blueprint_count: int) -> bool:
+    """블루프린트 개수로 레이아웃을 정하되 --multi/--single 강제 지정을 우선한다.
+
+    플래그가 실제 개수와 모순되면 잘못된 레이아웃으로 조용히 기동되지 않도록 즉시 중단한다.
+    """
+    forced_multi = FLAG_MULTI in sys.argv
+    forced_single = FLAG_SINGLE in sys.argv
+
+    if forced_multi and blueprint_count < MULTI_BLUEPRINT_MIN_COUNT:
+        exit_on_flag_mismatch(
+            FLAG_MULTI, blueprint_count,
             "다중 수집 레이아웃은 블루프린트가 2개 이상일 때만 사용할 수 있습니다.",
-            "단일", "--single",
+            "단일", FLAG_SINGLE,
         )
-    elif forced_single and blueprint_count >= 2:
-        mismatch = (
-            "--single", blueprint_count,
+    if forced_single and blueprint_count >= MULTI_BLUEPRINT_MIN_COUNT:
+        exit_on_flag_mismatch(
+            FLAG_SINGLE, blueprint_count,
             f"단일 수집 레이아웃은 1개만 다룰 수 있어 나머지 {blueprint_count - 1}개가 무시됩니다.",
-            "다중", "--multi",
+            "다중", FLAG_MULTI,
         )
+    return forced_multi or (
+        not forced_single and blueprint_count >= MULTI_BLUEPRINT_MIN_COUNT
+    )
 
-    if mismatch:
-        bad_flag, count, reason, correct_layout, correct_flag = mismatch
-        # --multi/--single은 터미널에서만 쓰는 플래그이므로 알림창 없이
-        # 콘솔 로그만 남기고 중단한다.
-        print(
-            f"[Harvest] 실행 중단\n"
-            f"[원인] {bad_flag} 플래그를 지정했지만 request_info.json의 블루프린트가 "
-            f"{count}개입니다 — {reason}\n"
-            f"  [올바른 실행] python main.py            "
-            f"(플래그 없이 실행 — 개수에 맞춰 자동으로 {correct_layout} 수집 레이아웃 선택)\n"
-            f"               또는 python main.py {correct_flag}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
-    use_multi = forced_multi or (not forced_single and blueprint_count >= 2)
-
-    if use_multi:
+def create_main_window():
+    # 개수만 필요하므로 전체 deepcopy를 하는 list_blueprints() 대신 list_seq_nos()를 쓴다.
+    blueprint_count = len(conf.BlueprintStorage().list_seq_nos())
+    if should_use_multi_layout(blueprint_count):
         from layout.multi import MainWindowMulti
-        win = MainWindowMulti()
-    else:
-        win = MainWindowSingle()
+        return MainWindowMulti()
+    return MainWindowSingle()
 
-    # 창 생성 이전(위 blueprint_count 조회 등)에 conf.py에서 쌓인 경고/오류가
-    # 있으면 여기서 한꺼번에 로그 뷰어로 전달된다.
+
+def main():
+    set_windows_app_id()
+    app = QApplication(sys.argv)
+    apply_theme(app)
+
+    if is_already_running():
+        print("이미 실행 중입니다. 기존 프로그램을 활성화합니다.")
+        sys.exit(0)
+    instance_server = start_instance_server()
+
+    win = create_main_window()
+
+    # 창 생성 이전에 conf.py에서 쌓인 경고/오류를 로그 뷰어로 한꺼번에 전달한다.
     conf.set_error_reporter(win.log_manager.append_log)
-
-    local_server.newConnection.connect(win.tray_manager.restore_window)
+    instance_server.newConnection.connect(win.tray_manager.restore_window)
 
     win.show()
     sys.exit(app.exec())
 
+
 if __name__ == "__main__":
-    # PyInstaller onefile exe + multiprocessing.Process(worker.run_spider) 조합에서
-    # 필수: 없으면 자식 프로세스가 __main__을 처음부터 다시 실행해 GUI를 한 번 더
-    # 띄우려다 QLocalServer 단일 실행 감지에 걸려 조용히 종료됨 — run_spider()가
-    # 아예 호출되지 않아 수집 결과가 에러 없이 0건으로 남는다.
+    # PyInstaller onefile + multiprocessing.Process(worker.run_spider) 조합 필수:
+    # 없으면 자식 프로세스가 GUI를 다시 띄우려다 단일 실행 감지에 걸려 조용히 종료되어
+    # 수집 결과가 에러 없이 0건으로 남는다.
     multiprocessing.freeze_support()
     main()
