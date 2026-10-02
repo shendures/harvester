@@ -110,10 +110,9 @@ class GlobalToolbarTriggers:
             self._set_step_ui(0)
 
     def _full_reset(self):
-        """중지 버튼 클릭 시 호출 — DataStore 및 모든 페이지 UI를 완전히 초기화합니다."""
+        """중지 버튼 클릭 시 호출 — 수집 데이터와 대시보드·모니터링 UI를 초기화합니다. 통계 이력은 유지합니다."""
 
         store.clear_rows()
-        store.clear_url_maps()
 
         _reset_pages(self.dashboard, self.monitor_page)
 
