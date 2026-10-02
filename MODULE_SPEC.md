@@ -153,7 +153,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 
 | 클래스 | 기능 |
 |---|---|
-| `DataStore` | 수집 결과·URL 통계·세션 요약 보관(`stats_history.json` 영속화). **GUI 프로세스 전용** |
+| `DataStore` | 수집 결과·URL 통계·세션 요약 보관(`stats_history.json.gz` gzip 영속화 — 응답 행은 URL 사전+배열, 저장 때 `.bak` 한 세대 보관, 읽을 수 없으면 `.corrupt`로 보존 후 `.bak` 복구, 기존 `stats_history.json`은 첫 실행에서 변환 후 `.migrated`로 보존). **GUI 프로세스 전용** |
 | `BlueprintStorage` | `request_info.json` 로드/저장, `seq_no` 검증, `read()`/`set_active()`/`update_settings()` |
 | `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드 |
 
