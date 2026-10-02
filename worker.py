@@ -149,7 +149,7 @@ class MultiprocessWorker(QThread):
                         # 실행 실패 직전까지 큐에 도착해 있던 정상 결과는 버리지 않고
                         # 처리한다 — 사용자 의도적 중단과 달리 가능한 만큼은 살린다.
                         self._drain_queue_and_process(
-                            url_list, processed_urls, callback_url, total, delay, threads
+                            url_list, processed_urls, total, delay, threads
                         )
                     else:
                         self._drain_queue()
@@ -175,7 +175,7 @@ class MultiprocessWorker(QThread):
                         )
                         pre_drain_done = self._done
                         self._drain_queue_and_process(
-                            url_list, processed_urls, callback_url, total, delay, threads
+                            url_list, processed_urls, total, delay, threads
                         )
                         logger.debug(
                             "[DEBUG][run] drain 완료 — drain 전 _done=%d, drain 후 _done=%d, 추가 수집=%d",
@@ -185,7 +185,7 @@ class MultiprocessWorker(QThread):
                     continue
 
                 self._handle_line(
-                    line, url_list, processed_urls, callback_url, total, delay, threads
+                    line, url_list, processed_urls, total, delay, threads
                 )
 
         except Exception as e:
@@ -213,7 +213,6 @@ class MultiprocessWorker(QThread):
         line: str,
         url_list: set,
         processed_urls: set,
-        callback_url: str,
         total: int,
         delay: float,
         threads: int,
@@ -298,20 +297,16 @@ class MultiprocessWorker(QThread):
         extracted     = resp_info.get("data") or []
         extract_error = resp_info.get("extract_error")
         empty_extract = status_code == 200 and not extracted and not extract_error
-        field_cells, empty_cells, non_empty_rows = count_field_fill(extracted)
+        _, _, non_empty_rows = count_field_fill(extracted)
 
         self.store.add_url_map({
             "req_url":       res_url,
             "status_code":   status_code,
             "pure_latency":  resp_time,
-            "total_latency": result_info["resp_info"].get("total_latency"),
-            "session":       len([callback_url]),
             "timestamp":     result_info["resp_info"]["timestamp"],
             "empty_extract": empty_extract,
             "extract_error": bool(extract_error),
             "item_count":    len(extracted),
-            "field_cells":   field_cells,
-            "empty_cells":   empty_cells,
             "non_empty_rows": non_empty_rows,
             "seq_no":        self.task.get("seq_no"),
         })
@@ -361,7 +356,6 @@ class MultiprocessWorker(QThread):
         self,
         url_list: set,
         processed_urls: set,
-        callback_url: str,
         total: int,
         delay: float,
         threads: int,
@@ -376,7 +370,7 @@ class MultiprocessWorker(QThread):
         while True:
             try:
                 line = self.queue.get_nowait()
-                self._handle_line(line, url_list, processed_urls, callback_url, total, delay, threads)
+                self._handle_line(line, url_list, processed_urls, total, delay, threads)
             except _queue.Empty:
                 break
             except Exception as e:
