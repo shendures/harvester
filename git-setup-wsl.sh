@@ -36,5 +36,5 @@ git config --global --list | grep -E "core.autocrlf|core.fileMode|pull.rebase|in
 
 echo ""
 echo "저장소는 WSL 네이티브 경로(/home/...)에 clone 하는 것을 권장합니다:"
-echo "  mkdir -p ~/projects && cd ~/projects"
+echo "  mkdir -p ~/VibeCoding/projects && cd ~/VibeCoding/projects"
 echo "  git clone <원격저장소_URL>"
