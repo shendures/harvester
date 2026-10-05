@@ -182,7 +182,7 @@ class MainWindowTriggersSingle:
             return
 
         # 모달 허용 여부는 job 라벨이 아니라 실행 성격(task_nm/batch_meta.total)으로
-        # 판정한다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2).
+        # 판정한다(reports/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2).
         is_unattended = not _modal_allowed(task)
 
         if summary.get("aborted"):
@@ -548,7 +548,7 @@ class MainWindowTriggersMulti(MainWindowTriggersSingle):
             return
 
         # 모달 허용 여부는 job 라벨이 아니라 실행 성격(task_nm/batch_meta.total)으로
-        # 판정한다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2). 전체
+        # 판정한다(reports/COLLECTION_EXECUTION_ERROR_HANDLING.md §6 원칙 2). 전체
         # 수집·스케줄·N>1 선택 수집은 모두 차단되어 트레이+배너로, 단건은 모달로 간다.
         is_unattended = not _modal_allowed(task)
         # 정제 규칙 강제 적용 여부는 모달 판정과 무관한 별개 축이다 — SELECT_JOB은

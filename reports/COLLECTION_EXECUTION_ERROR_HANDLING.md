@@ -10,7 +10,7 @@
 - **구현 완료일**: 2026-09-23 (같은 세션에서 1~3순위 전부 구현)
 - **PR**: [#151](https://github.com/shendures/harvester/pull/151) — `develop`에 병합 완료
   (커밋 `da26a78` 설계 문서, `1c23d38` 구현)
-- **관련 문서**: `guidelines/history.md` 2026-09-23 항목
+- **관련 문서**: `docs/HISTORY.md` 2026-09-23 항목
 
 ---
 
@@ -383,5 +383,5 @@ job 라벨 4개가 아니라 "단건 유인" vs "그 외" 2분류로 줄어들�
 
 ## 관련 링크
 
-- 작업 이력: `guidelines/history.md` (2026-09-23 항목)
+- 작업 이력: `docs/HISTORY.md` (2026-09-23 항목)
 - PR: https://github.com/shendures/harvester/pull/151

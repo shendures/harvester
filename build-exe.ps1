@@ -7,7 +7,7 @@
 # 내용을 근거로 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
 # (combine-harvester.ico, icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
 # 저장합니다 — render/login/refine 파일의 실제 위치 판별은 conf.CustomModuleStorage.resolve_path()를
-# 그대로 재사용해 앱 런타임과 로직이 어긋나지 않게 합니다(guidelines/preprocess.md §3.1a).
+# 그대로 재사용해 앱 런타임과 로직이 어긋나지 않게 합니다(docs/DEV_ENV.md "커스텀 규칙 개발·검증·배포").
 #
 # render/·login/·refine/은 여러 고객의 규칙 파일을 함께 보관하는 "개발자용" 폴더입니다 — 그대로
 # 통째로 번들에 넣으면 다른 고객의 정제/렌더링/로그인 로직까지 이번 exe에 함께 유출됩니다.

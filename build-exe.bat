@@ -45,7 +45,7 @@ echo.
 echo [오류] 빌드에 필요한 python/pyinstaller를 실행할 수 없습니다.
 echo   %SCRIPT_DIR%.venv\Scripts\ 또는 %SCRIPT_DIR%.venv-win\Scripts\ 에서
 echo   가상환경을 찾지 못했거나, 찾았어도 pyinstaller가 설치돼 있지 않습니다.
-echo   guidelines\build_guide.md "0. 전제 조건"을 참고해 가상환경을 준비하세요:
+echo   docs\DEV_ENV.md "설치 및 설정"을 참고해 가상환경을 준비하세요:
 echo     python -m venv .venv
 echo     .venv\Scripts\activate.bat
 echo     pip install -r requirements.txt

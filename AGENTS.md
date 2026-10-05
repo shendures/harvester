@@ -1,24 +1,27 @@
-# AGENTS.md
+# 프로젝트 작업 지침
 
-## Priority
+## 기본 원칙
 
-- Before working on any request, consult `MODULE_SPEC.md` to identify the module(s) that
-  match the instructed task, then proceed with the work based on that module scope.
-- Respond to all requests or questions in Korean.
+- 사용자에게는 한국어로 답한다. 코드·명령·식별자는 프로젝트의 표기를 따른다.
+- 요청의 목표와 완료 기준을 확인하고, 불명확한 부분은 기존 코드와 문서에서 먼저 확인한다. 중요한 결정에 필요한 정보가 없으면 질문하거나 가정을 명시한다.
+- 요청 범위에 필요한 부분만 수정한다. 기존 구조와 스타일을 따르고, 근거 없는 기능·추상화·의존성을 추가하지 않는다.
+- 변경 후 관련된 검사만 실행한다. 실행하지 못한 검사는 결과를 추측하지 말고 이유를 알린다.
+- 비밀값을 코드·문서·로그에 넣지 않는다. 삭제, 강제 푸시, 배포처럼 되돌리기 어렵거나 외부에 영향을 주는 작업은 범위와 권한을 확인한다.
 
+## 프로젝트 문서
 
-## Required Skill Invocations
+프로젝트를 진행하며 확인된 사실을 문서별 성격에 맞는 파일에 기록한다. 같은 내용을 여러 문서에 중복해 쓰지 말고 관련 문서 링크로 연결한다.
 
-- Invoke the `clean-code-standards` skill whenever you write new code or modify/edit existing code, and if that work also involves PyQt (widgets, layouts, signals/slots, threading in a GUI, stylesheets, etc.), additionally invoke the `pyqt-uiux` skill on top of `clean-code-standards` — but not for requests that merely discuss or plan the project at large without touching code.
-- Invoke the `code-housekeeping` skill when optimizing or cleaning up code within the project, and do not invoke it merely because one implementation, library, or tool is being swapped for another with equivalent behavior (e.g., porting a script from one language/tool to another).
-- For commits/branches/PRs and WSL↔Windows sync work, invoke the `git-workflow` skill.
+- `docs/README.md`: 프로젝트 목적, 사용자, 기능을 파악할 때 읽는다. 목적, 대상 사용자, 제공·비제공 범위, 사용자 관점의 주요 기능을 쓰고 설치·구현 세부는 쓰지 않는다. 목적·범위·기능이 바뀔 때 갱신한다.
+- `docs/DEV_ENV.md`: 설치, 실행, 테스트 명령이나 환경 설정이 필요할 때 읽는다. 도구와 버전, 설치 순서, 환경 변수·설정 파일(값이 아닌 준비 방법만), 기대 결과가 있는 실행·테스트 명령을 쓰며, 직접 실행해 확인한 명령만 기록한다. 의존성·설정·명령이 바뀔 때 갱신한다.
+- `docs/ARCHITECTURE.md`: 구성 요소 경계나 데이터 흐름을 바꿀 때 읽는다. 시스템 경계, 구성 요소와 역할, 실행·데이터 흐름, 외부 연동, 설계 결정과 이유를 쓰고 파일 단위 설명은 쓰지 않는다. 경계·흐름·외부 연동·설계 결정이 바뀔 때 갱신한다.
+- `docs/MODULE_SPEC.md`: 진입점, 파일 책임, 호출 관계를 바꿀 때 읽는다. 진입점, 파일·모듈별 책임, 호출·의존 관계, 대표 실행 순서를 쓰며 경로와 이름은 코드에서 확인해 기록한다. 파일 추가·삭제·이동이나 책임·호출 관계가 바뀔 때 갱신한다.
+- `docs/HISTORY.md`: 완료된 주요 작업의 배경·수정·검증을 확인할 때 읽는다. 작업 단위 하나를 표 한 행(날짜 | PR/커밋 | 항목 | 배경·원인 | 수정·내용 | 검증)으로 쓰고, 릴리스·아키텍처 변경·보안·심각 버그급 작업만 남긴다. 해당 작업이 끝날 때 갱신한다.
+- `docs/ISSUES.md`: 알려진 이슈, 보류 항목, 보안·운영 관찰을 확인할 때 읽는다. 해결 이슈는 §1 표에, 미해결·보류는 §2에 쓰고 해결되면 §2에서 §1로 옮긴 뒤 현황 건수를 맞춘다.
+- `docs/WORK_FLOW.md`: 수집 의뢰 접수부터 유지보수까지의 사업 프로세스를 확인할 때 읽는다. 코드 변경과 무관하며 프로세스가 바뀔 때만 갱신한다.
+- 구분 기준: 시스템 전체는 ARCHITECTURE, 개별 파일은 MODULE_SPEC, 사용자 관점은 README, 실행 방법은 DEV_ENV, 완료된 작업은 HISTORY, 남은 문제는 ISSUES에 쓴다.
+- 문서의 `[작성]`과 예시 명령은 미확정 정보다. 실제 프로젝트에서 확인한 내용으로만 채우고, 채운 항목은 `[작성]`과 예시 문구를 지운다. 해당 없는 항목은 "해당 없음"으로 표기하고, 제목의 "프로젝트 이름"은 실제 이름으로 바꾼다. 구현과 달라진 관련 문서는 함께 갱신한다.
 
+## 작업 마무리
 
-## Project References
-
-- Project Report: 'guidelines/project_report.md'
-- Architecture: 'guidelines/architecture.md'
-- Documentation Guide: 'guidelines/documentation_guide.md'
-- History: 'guidelines/history.md'
-- Issues & Backlog: 'guidelines/issues.md'
-
+- 변경 내용, 확인한 결과, 남은 제한 사항을 간결하게 보고한다.
