@@ -2,9 +2,9 @@
 
 > 이 문서는 Harvest 크롤링 프로그램의 핵심 모듈이 각각 어떤 기능을 담당하며 서로
 > 어떻게 상호작용하는지를 정리한 기능서입니다. 전체 아키텍처(프로세스 경계·계층
-> 구조·핵심 설계 원칙)는 `guidelines/architecture.md`, 신규 합류자용 프로젝트 개요·
-> 디렉터리 맵은 `guidelines/project_report.md`에서 별도 관리되므로 중복 없이 모듈
-> 단위 책임과 모듈 간 의존·연동 관계에 집중합니다.
+> 구조·핵심 설계 원칙)는 [ARCHITECTURE.md](ARCHITECTURE.md), 프로젝트 개요는
+> [README.md](README.md)에서 별도 관리되므로 중복 없이 모듈 단위 책임과 모듈 간
+> 의존·연동 관계에 집중합니다.
 
 - **작성 기준일**: 2026-09-14 (코드를 직접 읽고 확인한 내용 기준)
 
@@ -155,7 +155,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 |---|---|
 | `DataStore` | 수집 결과·URL 통계·세션 요약 보관(`stats_history.json.gz` gzip 영속화 — 응답 행은 URL 사전+배열, 저장 때 `.bak` 한 세대 보관, 읽을 수 없으면 `.corrupt`로 보존 후 `.bak` 복구, 기존 `stats_history.json`은 첫 실행에서 변환 후 `.migrated`로 보존). **GUI 프로세스 전용** |
 | `BlueprintStorage` | `request_info.json` 로드/저장, `seq_no` 검증, `read()`/`set_active()`/`update_settings()` |
-| `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드 |
+| `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드. 경로 해석·시딩·로드(`resolve_path()`, `has_*()`, `load_*()`)를 전담하며, 존재 확인은 AST로 해 `exec` 없이 안전하다. 번들 리소스 경로의 `{kind}/{seq_no}.py`를 앱 데이터 폴더에 최초 1회 복사하고 이후 사본을 우선한다. 파일명은 `seq_no`와 문자열 그대로 일치해야 한다 |
 
 `customized_settings.py`는 GUI·worker가 공유하는 **기본값 팩토리**로, 요청/작업/
 출력/스케줄 설정의 기본 구조와 프록시·미들웨어 설정 변환(`set_ip_settings`,
@@ -169,7 +169,38 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 수집 완료 후 **GUI 프로세스에서** 원시 데이터를 정제하는 엔진입니다.
 `DataRefiner`가 정해진 순서로 규칙을 적용합니다: ①null 행 제거 → ②커스텀 규칙
 → ③공백 정리 → ④중복 제거 → ⑤컬럼 삭제 → ⑥null 채움 → ⑦숫자형 변환(원본은
-불변, 통계는 `RefineStats`로 반환).
+불변, 통계는 `RefineStats`로 반환). 순서를 정한 이유와 실행 경로는
+[ARCHITECTURE.md](ARCHITECTURE.md) §3.2를 참고하세요.
+
+- **규칙 기본값**: `DEFAULT_RULES`(①②③④ 활성, ⑤⑥⑦ 비활성). 빈 리스트나 `list[dict]`가
+  아닌 입력은 `run()` 진입 시 즉시 예외로 실패해 조용한 유실을 막습니다.
+- **커스텀 규칙(②)**: `refine(data)` 또는 `refine_row(row)`를 정의한 `refine/{seq_no}.py`를
+  `load_custom_rule()`이 읽어 `DataRefiner(custom_rule=...)`에 전달합니다. 호출 중 예외나
+  입력과 길이가 다른 반환값은 원본으로 폴백하고 `RefineStats.custom_rule_error`에 담으며,
+  성공하면 `custom_rule_applied`가 `True`입니다. 로드 실패는 `trigger/monitor.py`의
+  `_run_refine()`이 로그만 남기고 범용 규칙으로 진행합니다. `exec`로 로드하므로 샌드박스가
+  없고 검수된 코드만 써야 합니다.
+- **적용 조건**: `needs_cleaning=True`이고 `seq_no`가 있으며 `rules["custom_rule"]`이 켜져야
+  실행됩니다. 하나라도 어긋나면 조용히 건너뛰고 범용 규칙만 적용합니다. 정제 규칙 설정 탭
+  진입 시 체크박스를 조용히 재동기화하고, 사용자가 켜려는데 파일이 없을 때만 경고합니다.
+- **체크박스 자동 연동**: "커스텀 정제 규칙 적용"을 켜면 ①③④가 자동으로 켜집니다(해제 시
+  영향 없음, ⑤⑥⑦은 제외). 로직은 `trigger/common.py`의 `_handle_custom_rule_toggle`이
+  전담하고 정제 화면과 스케줄 정제 규칙 패널이 공유합니다.
+- **규칙 UI**: `style.build_refine_rule_rows()`가 체크박스 행을 만드는 공유 빌더입니다.
+  정제 화면은 7개 전부, 스케줄 등록 패널은 `drop_columns`를 뺀 6개를 씁니다(스케줄 등록
+  시점에는 Raw 수집 결과가 없어 제외 필드를 고를 수 없기 때문).
+- **제외 필드(⑤)**: `⚙ 필드 선택` 버튼이 `_open_drop_columns_dialog()`로 선택 다이얼로그를
+  엽니다. 선택은 `_drop_column_names`가 기준이며 [적용] 때만 반영합니다. 수집 결과가 없으면
+  `_has_collected_data_or_warn()`이 안내하고 체크 자체를 되돌립니다. 스케줄 경로는
+  `drop_columns`를 항상 비웁니다.
+- **Before/After 비교**: `_update_compare_tab()`이 `RefineStats`로 제거된 행과 바뀐 셀을
+  강조합니다. 수동 정제에서만 갱신되며 `skip_ui_update=True`인 스케줄 경로는 건드리지
+  않습니다.
+- **스케줄 자동 저장**: `trigger/main_window.py`의 `_on_finished()`가 `auto_save_source`가
+  `"refined"`이고 job이 `"스케줄 실행"`일 때 스케줄에 저장된 `refine_rules`·`fill_null_value`로
+  `_run_refine(rules_override=...)`를 호출합니다. 이 키가 없는 구버전 스케줄은
+  `SCHEDULED_REFINE_RULES`로 폴백합니다. 규칙은 `trigger/scheduler.py`의
+  `_apply_schedule()`이 등록 시점의 체크 상태를 스냅샷해 저장합니다.
 
 **의존**: `conf.py`(커스텀 규칙 로드)만 · **피의존**: `trigger/common.py`(규칙 UI 초기화), `trigger/monitor.py`(`DataRefiner` 실행).
 
@@ -250,5 +281,5 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 ## 4. 참고
 
-- **전체 아키텍처 개요**: `guidelines/architecture.md`
-- **정제 규칙(refine) 서브시스템 심화 문서**: `guidelines/preprocess.md`
+- **전체 아키텍처**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **정제·플러그인 개발 절차**: [DEV_ENV.md](DEV_ENV.md)의 "커스텀 규칙 개발·검증·배포"

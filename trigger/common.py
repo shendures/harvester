@@ -346,7 +346,7 @@ def _warn_custom_rule_missing(parent, title) -> None:
 def _modal_allowed(task: dict | None) -> bool:
     """모달을 띄워도 되는지("사람이 직접 시작했고(task_nm 없음) 뒤에 대기 작업이 없는
     단건 실행(batch_meta.total<=1)"인지) 판정한다. job 라벨을 늘어놓고 비교하는 대신
-    task 자체의 두 속성만 본다(guidelines/COLLECTION_EXECUTION_ERROR_HANDLING.md §6
+    task 자체의 두 속성만 본다(reports/COLLECTION_EXECUTION_ERROR_HANDLING.md §6
     원칙 2). EXTRACT 버튼처럼 task를 안 넘기는 호출부는 무조건 허용(task=None)."""
     if task is None:
         return True

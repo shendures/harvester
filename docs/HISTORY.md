@@ -1,14 +1,13 @@
 # DataCrawler v2.0 (Harvest) — 진행 이력
 
-> `project_report.md`에서 분리된 작업 이력 문서입니다.
-> 프로젝트 구조는 `project_report.md`, 미해결 이슈·백로그는 `issues.md` 참고.
+> 완료된 작업의 이력 문서입니다. 프로젝트 구조는 [README.md](README.md)와 [ARCHITECTURE.md](ARCHITECTURE.md), 미해결 이슈·백로그는 [ISSUES.md](ISSUES.md) 참고.
 > 이 문서는 아키텍처 재구조화·develop→main 릴리즈·보안·심각 버그(대량/전체 데이터 유실,
 > 영구적 상태 손상·서비스 정지, 공통 경로 크래시)급 항목만 남긴 엄격 기준 정리본입니다
-> (2026-09-28, 185건→26건). 경미한 작업의 전체 이력은 git 이력(이 파일의 이전 커밋)으로
-> 복구 가능합니다.
+> (2026-09-28, 185건→26건). 경미한 작업의 전체 이력은 git 이력으로 복구 가능합니다.
+> 표 안의 파일 경로·문서명은 작성 시점의 기록이므로 보존합니다(옛 `guidelines/` 문서는 2026-10-05에 `docs/`로 통합됐습니다).
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04 (조사 범위: 전체 소스 코드 약 16,200줄, 문서, Git 이력, 의존성, 보안)
-- **최신 갱신**: 2026-10-03
+- **최신 갱신**: 2026-10-05
 
 ---
 
@@ -50,6 +49,7 @@
 | 2026-10-03 | `<PR 예정>` | 수집 현황 종합 평가 — "문제" 확정 기준 1회화 및 1회차 일시 장애 안내 | 3.9의 "문제" 확정 기준 2~3회를 모두 1회로 통일. 1회차 "문제"는 세션 단위 일시 장애(프록시·네트워크)일 가능성이 있어 배너에 안내 추가. 리스크는 사용자에게 명확히 알리는 것으로 관리 | `MetricSpec.min_sessions_problem` 필드 제거, 모든 스펙의 `min_sessions_problem` 인자 제거. `_judge_ratio()`의 `capped` 계산·강등 로직 제거. `_capped_note()` 함수 제거, `metric_status_text()`·`_cause_only_text()` 단순화. 신규 상수 `FIRST_SESSION_PROBLEM_NOTE`(일시 장애 안내 문구) 추가, `_banner_diagnosis()`에서 `level == DIAG_PROBLEM and sessions <= 1`일 때 causes에 추가. `_min_sessions_lines()` 단순화(판정 시작 회차만 표시), 도움말에서 "'문제' 확정에 더 기다립니다" 2줄 제거. `statistics_evaluation_session.md`: §2.1 표 "문제 확정" 열 삭제, §2.2 ③ 내용 갱신, §2.3 상태 칸·배너 문구 갱신, §3.9 불변식 문단·검증 수정, 신규 §3.16 추가, 사용자 결정 사항 표 갱신, 최신 갱신 일자. `history.md` 본 행 추가 | `python3 -m py_compile trigger/statistics.py layout/statistics.py` 통과. PyQt6·scrapy 스텁으로 `_judge_ratio` 직접 호출 — 1회차 "문제"는 게이트 없이 즉시 판정, 배너에 일시 장애 안내 붙음. GUI 표시는 Windows 확인 필요 |
 | 2026-10-03 | `<PR 예정>` | 통계 이력 파일 용량 절감 — `stats_history.json` → gzip 단일 파일 `stats_history.json.gz` | 수집할 때마다 `stats_history.json`이 보존 기간 없이 쌓이고 세션 종료마다 `indent=2`로 전체를 다시 썼음(요청 1건당 약 869B). 같은 요청이 `url_maps`와 `sessions[].requests`에 중복 저장되고, 통계가 읽지 않는 필드와 17자리 지연 시간이 용량을 키웠음. 사용자 결정: 영구 보존 유지(KPI 카드 "초기화 이후 누적" 문구 변경 없음), 단일 파일 + gzip, 지연 시간 3자리 반올림, `sessions[].requests` 중복 제거는 별도 과제 | `conf.py`: 응답 행을 URL 사전 + 배열(`[seq_no, url_id, status_code, pure_latency, timestamp, flags, item_count, non_empty_rows]`)로 인코드·디코드(메모리는 dict 행 그대로라 `trigger/statistics.py` 무수정), `gzip` 레벨 6 + 컴팩트 JSON 저장. 로드 순서 `.gz` → `.bak` → 기존 `stats_history.json`(변환) → 빈 상태. 저장은 임시 파일 완성 후 기존 파일을 `.bak` 한 세대로 복사하고 교체. 읽을 수 없는 파일은 지우지 않고 `.corrupt`로 보존한 뒤 `.bak`에서 복구(이전에는 로드 실패 후 다음 저장이 전체를 덮어씀). 기존 파일은 새 파일의 행·세션 수가 일치할 때만 `.migrated`로 이름 변경. `worker.py`: `url_map`에서 통계가 읽지 않는 `total_latency`/`session`/`field_cells`/`empty_cells` 제거, 그로 인해 쓰이지 않게 된 `_handle_line`·`_drain_queue_and_process`의 `callback_url` 인자 제거. `.gitignore`에 `stats_history.json.*` 추가(고객 수집 데이터 커밋 방지). `MODULE_SPEC.md` DataStore 행 갱신 | `python3 -m py_compile conf.py worker.py` 통과. 임시 폴더 + `QStandardPaths` 스텁으로 DataStore 시나리오 7건 확인 — 실제 이력(102행·8세션) 마이그레이션 시 행·세션 수·사용 필드 동일·`.migrated` 보존(88,673B → 3,063B), 저장·재로드 왕복과 `.bak` 생성, `.gz` 절단 시 `.corrupt` 보존 + `.bak` 복구(보고 warn), `.gz`·`.bak` 모두 손상 시 빈 상태 + 원본 보존(덮어쓰기 없음), 빈 폴더 시작, 필드 누락 과거 행, 손상된 기존 파일 보존. WSL에 PyQt6가 없어 통계 화면 표시와 `_aggregate_rows` 결과 대조는 미실시 — Windows 확인 필요 |
 | 2026-10-03 | `<PR 예정>` | 중지 버튼이 통계 응답 이력을 지우던 문제 수정 | 통계 이력을 영구 보존하기로 한 뒤 점검 중, 단일 레이아웃의 중지(`_toggle_run` → `_full_reset`)가 `store.clear_url_maps()`로 전 블루프린트의 응답 이력을 메모리에서 비우고 직후 워커 `finally`의 `save_stats_history()`가 빈 상태를 파일에 기록하는 흐름을 확인. 이 호출은 이력 영속화(`e9e2af7`) 이전의 화면 초기화 코드가 남은 것으로 보임 | `trigger/toolbar.py` `_full_reset()`에서 `clear_url_maps()` 제거(수집 데이터·대시보드·모니터링 초기화는 유지), 독스트링 정정. 통계 초기화는 통계 페이지 RESET 버튼만 담당. `clear_url_maps` 호출처가 통계 RESET만 남음을 grep으로 확인 | `py_compile` 통과. 코드 흐름 기반 확인이며 중지 버튼 실제 클릭 시나리오(통계 페이지 누적값 유지)는 Windows 확인 필요. 멀티 레이아웃 툴바 중지 경로는 미확인 |
+| 2026-10-05 | `<커밋 예정>` | 문서 통합 — `guidelines/`를 `docs/`로 흡수 | `docs/`(README·DEV_ENV·ARCHITECTURE·MODULE_SPEC 4종)와 `guidelines/` 11건에 같은 내용이 나뉘어 있고 서로 참조했으며, `docs/` 3종은 템플릿(`[작성]`) 상태였음 | `project_report`·`architecture`·`build_guide`·`preprocess`·`statistics_evaluation_session`을 README·ARCHITECTURE·DEV_ENV·MODULE_SPEC에 요약 병합(파일:줄 인용과 작업별 상세·정정 기록은 폐기). `history`·`issues`·`work_flow`는 `docs/HISTORY.md`·`ISSUES.md`·`WORK_FLOW.md`로 이전, `documentation_guide`는 CLAUDE.md·`clean-code-standards` 스킬과 중복이라 삭제, 개인 학습 노트 2건은 `docs/study/`로 이동(git 미추적 유지). 코드·스크립트의 `guidelines/` 참조 경로와 CLAUDE.md·AGENTS.md 문서 목록 갱신. 원문은 이전 커밋에서 복구 가능 | `grep`으로 `guidelines/` 잔존 참조 점검, 문서 간 링크 대상 존재 확인, 수정한 `.py` `py_compile` 통과 |
 
 \* 원문에 날짜가 명시되지 않아 최초 감사 기간(2026-07-03~07-04, 다음 명시적 날짜인 PR #10의 2026-07-05 이전)으로 추정한 값입니다.
 
