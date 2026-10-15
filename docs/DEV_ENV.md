@@ -55,7 +55,7 @@ python main.py --single   # 단일 화면 강제(블루프린트가 1개일 때�
 - 루트의 `main.py`는 `freeze_support()`를 호출하고 `harvest/app.py`의 `main()`을 실행하는 얇은 진입점이다. 개발 중 `harvest` 패키지는 저장소 루트에서 실행할 때만 import된다.
 - 블루프린트 도구는 저장소 루트에서 모듈로 실행한다: `python -m harvest.tools.create_request_info`(DB 접속 필요), `python -m harvest.tools.build_manifest --help`  (후자 확인). `python harvest/tools/<파일>.py`처럼 파일로 직접 실행하면 `harvest` import가 실패한다.
 - 같은 사용자가 이미 앱을 실행 중이면 `QLocalServer`가 두 번째 실행을 막는다.
-- 개발 실행(`.py`)에서 `request_info.json`과 플러그인은 `harvest/config/`를 그대로 읽고 쓴다(사본을 만들지 않는다). 수집 이력(`stats_history.json.gz`)은 저장소 루트에 쓴다. exe는 `%LOCALAPPDATA%\<AppName>\`을 쓰며 최초 실행 때 `request_info.json`과 플러그인 폴더가 그 위치로 복사된다.
+- 개발 실행(`.py`)에서 `request_info.json`과 플러그인은 `harvest/config/`를 그대로 읽고 쓴다(사본을 만들지 않는다). 수집 이력(`stats_history.json.gz`)도 같은 `harvest/config/`에 쓴다. exe는 `%LOCALAPPDATA%\<AppName>\`을 쓰며 최초 실행 때 `request_info.json`과 플러그인 폴더가 그 위치로 복사된다.
 
 ## 테스트 및 검증
 
@@ -85,7 +85,7 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 
 - 탐색기나 `cmd`에서는 `scripts/build-exe.bat`·`scripts/build-installer.bat`을 쓴다. 이 파일들은 `.venv`(없으면 `.venv-win`)를 자동으로 활성화한다. 환경은 미리 만들어 둬야 한다.
 - 결과: `dist\<AppName>.exe` → `dist\<AppName>-Setup.exe`. `build-installer`는 먼저 `build-exe` 결과가 있어야 하고 `-AppName`이 같아야 한다.
-- `scripts/build-exe.ps1`이 하는 일: `harvest/tools/build_manifest.py`가 `request_info.json`을 만들고 활성 seq_no의 `render/login/refine` 파일을 임시 스테이징으로 골라 담는다 → 그 목록을 PyInstaller `--add-data`로 전달 → `--onefile --windowed`로 `main.py`를 빌드(`scrapy.cfg`, `harvest/crawler/scraper/` 패키지, `--hidden-import`, `--copy-metadata`를 함께 지정) → 스테이징 정리.
+- `scripts/build-exe.ps1`이 하는 일: `harvest/tools/build_manifest.py`가 `request_info.json`을 만들고 활성 seq_no의 `render/login/refine` 파일을 임시 스테이징으로 골라 담는다 → 그 목록을 PyInstaller `--add-data`로 전달 → `--onefile --windowed`로 `main.py`를 빌드(`harvest/crawler/scraper/` 패키지(`scrapy.cfg` 포함), `--hidden-import`, `--copy-metadata`를 함께 지정) → 스테이징 정리.
 - `-AppName`은 exe 이름과 `%LOCALAPPDATA%\<AppName>\` 폴더명을 정한다. 빌드 후 exe 이름을 바꾸지 않는다. 바꾸면 다음 실행부터 빈 데이터 폴더를 찾는다.
 - 제거 프로그램은 설치 프로그램에 자동으로 포함된다. 앱 데이터 폴더는 고객 수정본을 보호하려고 의도적으로 지우지 않는다.
 - ISCC.exe는 PATH → `Program Files\Inno Setup 6` → `Program Files (x86)\Inno Setup 6` → `%LOCALAPPDATA%\Programs\Inno Setup 6` 순으로 찾는다.
@@ -97,7 +97,7 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 | pyinstaller가 첫 로그에서 `NativeCommandError`로 중단 | PowerShell 5.1이 stderr의 정상 INFO 로그를 오류로 본다. 스크립트가 해당 구간만 `$ErrorActionPreference`를 낮추고 `$LASTEXITCODE`로 판정한다(이슈㉗). 스크립트가 최신인지 확인 |
 | exe 실행 시 `ModuleNotFoundError` | `--copy-metadata` 목록 밖의 의존성이다. 모듈명을 pyinstaller 호출에 `--hidden-import` 또는 `--collect-all`로 추가 |
 | exe에서 수집이 에러 없이 0건 | `multiprocessing.freeze_support()`가 빠지면 자식이 GUI를 재기동하다 단일 실행 감지로 즉시 종료된다. 현재는 `main.py`에 있다 |
-| exe에서 Scrapy가 동작하지 않음 | `scrapy.cfg`·`harvest/crawler/scraper/`는 문자열 경로로 동적 import돼 자동 분석에 잡히지 않는다. 기동 로그의 `Enabled downloader middlewares:`·`Enabled item pipelines:`에 `harvest.crawler.scraper.` 항목이 보이는지 확인 |
+| exe에서 Scrapy가 동작하지 않음 | `harvest/crawler/scraper/`는 문자열 경로로 동적 import돼 자동 분석에 잡히지 않는다. 기동 로그의 `Enabled downloader middlewares:`·`Enabled item pipelines:`에 `harvest.crawler.scraper.` 항목이 보이는지 확인 |
 | `harvest/tools/build_manifest.py`가 "DB 접속 정보를 읽지 못했습니다"로 중단 | `harvest/config/env/database.ini`가 없거나 `[PostgreSQL]` 섹션명이 다르다 |
 | "active=True인 블루프린트를 하나도 가져오지 못했습니다" | 연결 실패와 0건을 `db_conn.read_db_data()`가 구분하지 않는다. `tb_blueprint`를 직접 조회해 확인 |
 | "DB에서 active 블루프린트를 조회하는 중" 문구에서 오래 멈춤 | PostgreSQL 연결에 `connect_timeout`이 없어 OS 기본 TCP 타임아웃까지 기다린다. host·포트·방화벽을 확인 |

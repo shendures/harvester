@@ -22,11 +22,10 @@
 ```
 Harvest/
 ├─ main.py                  # 실행 진입점(freeze_support + harvest.app.main). PyInstaller 진입 스크립트 겸용
-├─ scrapy.cfg               # 루트 고정. default = harvest.crawler.scraper.settings
 ├─ harvest/
 │  ├─ app.py                # QApplication 구성, 단일 실행 감지, 레이아웃 선택
 │  ├─ core/                 # 공용·데이터 계층: conf, customized_settings, utility, preprocess, db_conn
-│  ├─ crawler/              # 크롤링: engine, glean, worker, scraper/(settings·items·middlewares·pipelines·spiders/)
+│  ├─ crawler/              # 크롤링: engine, glean, worker, scraper/(scrapy.cfg·settings·items·middlewares·pipelines·spiders/)
 │  ├─ gui/                  # GUI: style.py, layout/(single·multi), trigger/
 │  ├─ tools/                # 오프라인·빌드 전용: build_manifest, create_request_info
 │  ├─ assets/               # combine-harvester.ico, icon/, generator_conditions.html
