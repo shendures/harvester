@@ -1,0 +1,306 @@
+# layout/single/dashboard.py
+
+from harvest.core import customized_settings
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QProgressBar,
+)
+from PyQt6.QtCore import Qt
+
+from harvest.core.conf import get_spider_mode, DEFAULT_COLLECT_SETTINGS
+from harvest.gui.trigger import DashboardPageTriggers
+from harvest.gui.trigger.common import _build_collect_settings_fields
+from harvest.gui.style import EqualSpacingTable, apply_render_safety_limits
+from ..common import (
+    parts, build_scroll_body, build_stat_summary_card, build_status_banner,
+    BG_SECONDARY, BG_HOVER, ACCENT, ACCENT_LIGHT,
+    TEXT_PRIMARY, TEXT_MUTED, BORDER, RED, GREEN,
+)
+from .common import ActiveBlueprintMixin
+
+
+class DashboardPageSingle(QWidget, DashboardPageTriggers, ActiveBlueprintMixin):
+
+    # ── 단계 표시기("작업 진행 상태" 카드) 치수 ──────────────────────
+    # 이 표시기는 카드 안에서만 쓰이는 전용 위젯이라 다른 화면과 공유하는
+    # 여백 규칙이 없다 — 카드 폭 안에서 4단계가 보기 좋게 퍼지도록 튜닝된
+    # 값이므로, 매직 넘버로 흩어놓지 않고 이름 붙여 한 곳에서 관리한다.
+    _EXTRACT_STEP_IDX = 3                  # "결과 처리" — steps 목록의 마지막 단계
+    _STEP_CIRCLE_SIZE = 34
+    _STEP_ROW_H_MARGIN = 60                # 좌우 여백 — 카드 폭 대비 4단계를 중앙에 모아 배치
+    _STEP_ROW_V_MARGIN = 20
+    _STEP_LINE_V_OFFSET = 25               # 연결선을 원 중심 높이로 끌어올리는 하단 여백
+    # (원 34px + 아래 텍스트 라벨 높이만큼 행이 원보다 커서, 연결선을 상단
+    # 정렬 그대로 두면 원의 위쪽에 붙어버린다. 원의 시각적 중심에 맞춘 값.)
+
+    def __init__(self):
+        super().__init__()
+        self.step_circles = []
+        self.step_labels = []
+        self._step_idx = None
+        self._running = False
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
+        self._build()
+
+    def _build(self):
+
+        bl = build_scroll_body(self, spacing=12)
+        self._configure_body_margins(bl)
+
+        cfg = QHBoxLayout()
+        cfg.setSpacing(10)
+
+        stw, stl = parts.card_widget("작업 진행 상태")
+        step_container = QWidget()
+        step_layout = QHBoxLayout(step_container)
+        step_layout.setContentsMargins(
+            self._STEP_ROW_H_MARGIN, self._STEP_ROW_V_MARGIN,
+            self._STEP_ROW_H_MARGIN, self._STEP_ROW_V_MARGIN,
+        )
+
+        steps = ["수집 대기", "수집 세팅", "데이터 수집", "결과 처리"]
+
+        for i, text in enumerate(steps):
+            circle = QLabel(str(i + 1))
+            circle.setFixedSize(self._STEP_CIRCLE_SIZE, self._STEP_CIRCLE_SIZE)
+            circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            circle.setStyleSheet(f"""
+                        background: {BG_SECONDARY}; border: 2px solid {BORDER}; 
+                        border-radius: 14px; color: {TEXT_MUTED}; font-weight: bold;
+                    """)
+            self.step_circles.append(circle)
+
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; font-weight: bold;")
+            self.step_labels.append(lbl)
+
+            step_unit = QVBoxLayout()
+            step_unit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            step_unit.addWidget(circle, 0, Qt.AlignmentFlag.AlignCenter)
+            step_unit.addWidget(lbl, 0, Qt.AlignmentFlag.AlignCenter)
+            step_layout.addLayout(step_unit)
+
+            if i < len(steps) - 1:
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                line.setFixedHeight(2)
+                line.setStyleSheet(f"background: {BORDER}; margin-bottom: {self._STEP_LINE_V_OFFSET}px;")
+                step_layout.addWidget(line, 1)  # 라인이 공간을 채우도록 가중치 1 부여
+
+        stl.addWidget(step_container)
+
+        self.status_banner, self._show_status_banner, self._hide_status_banner = build_status_banner(parts)
+        stl.addWidget(self.status_banner)
+
+        cfg.addWidget(stw, 1)  # 상태창이 조금 더 넓게 배치 (비율 3)
+
+        self._update_step_ui(0)  # 초기 실행 시 "수집 대기" 상태로 불이 들어오게 설정
+
+        self._build_collect_settings_card(cfg)
+
+        # "작업 진행 상태"(+단일의 "수집 & 저장 설정") 행을 별도 위젯으로 감싸 둔다 —
+        # DashboardPageMulti가 _place_step_card를 오버라이드해 이 위젯을 이 페이지의
+        # 스크롤 영역 밖(main_window의 별도 스택)으로 떼어내 배치할 수 있게 하기 위함.
+        self.step_card_widget = QWidget()
+        self.step_card_widget.setLayout(cfg)
+        self._place_step_card(bl)
+
+        pb_card = QWidget()
+        pb_card.setFixedHeight(41)
+        pb_card.setStyleSheet(
+            f"background:{BG_SECONDARY}; border-radius:8px; border:1px solid {BORDER};"
+        )
+        pbl = QHBoxLayout(pb_card)
+        pbl.setContentsMargins(14, 0, 14, 0)
+        pbl.setSpacing(10)
+
+        self.prog_lbl = parts.make_label("대기 중", TEXT_MUTED, 11)
+        pbl.addWidget(self.prog_lbl)
+
+        self.prog_bar = QProgressBar()
+        self.prog_bar.setRange(0, 100)
+        self.prog_bar.setValue(0)
+        self.prog_bar.setTextVisible(False)
+        self.prog_bar.setFixedHeight(4)
+        self.prog_bar.setStyleSheet(f"""
+            QProgressBar{{background:{BG_HOVER};border-radius:2px;border:none;}}
+            QProgressBar::chunk{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+                stop:0 {ACCENT},stop:1 {ACCENT_LIGHT});border-radius:2px;}}
+        """)
+        pbl.addWidget(self.prog_bar, 1)
+
+        self.prog_pct = parts.make_label("0%", TEXT_MUTED, 11)
+        self.prog_pct.setMinimumWidth(36)
+        pbl.addWidget(self.prog_pct)
+
+        # pb_card 자체가 테두리를 가진 리프 위젯이라, 다중 레이아웃이 좌우 여백을
+        # 보정하려면(_place_progress_card 참고) 여백 없는 투명 래퍼가 하나 더
+        # 필요하다 — step_card_widget이 stw를 감싸는 것과 동일한 구조.
+        progress_wrap = QWidget()
+        progress_wrap_layout = QHBoxLayout(progress_wrap)
+        progress_wrap_layout.setContentsMargins(0, 0, 0, 0)
+        progress_wrap_layout.addWidget(pb_card)
+
+        self.progress_card_widget = progress_wrap
+        self._place_progress_card(bl)
+
+        stw, (self.s_total, self.s_err, self.s_pages, self.s_speed) = build_stat_summary_card(
+            parts, "세션 현황",
+            [("요청 완료", "0"), ("오류", "0", RED), ("총 수집 항목", "0", ACCENT_LIGHT), ("평균 응답", "—", GREEN)],
+        )
+        bl.addWidget(stw)
+
+        # 수집 모니터링 테이블 (MonitorPageSingle에서 이동)
+        mon_tcw, mon_tc = parts.card_widget("수집 모니터링")
+        mon_tcw.setMinimumHeight(300)
+        mon_tbl_ctrl = QHBoxLayout()
+        mon_tbl_ctrl.addStretch()
+        self.mon_row_count_lbl = parts.count_badge("0 rows", ACCENT_LIGHT)
+        mon_tbl_ctrl.addWidget(self.mon_row_count_lbl)
+        mon_tbl_ctrl.addSpacing(10)
+        mon_exp_csv = parts.outline_btn("내보내기")
+        mon_exp_csv.clicked.connect(self._export_monitor_csv)
+        mon_tbl_ctrl.addWidget(mon_exp_csv)
+        mon_tc.addLayout(mon_tbl_ctrl)
+
+        self.monitor_table = EqualSpacingTable(parent=self, row_height=28, col_padding=10, hscroll_handle=50)
+        self.monitor_table.setColumnCount(9)
+        self.monitor_table.setHorizontalHeaderLabels(
+            ["NO", "URL", "Status", "IP Address", "User Agent", "Cookies", "Latency (Pure)", "Latency (Total)", "Job Name"])
+        mon_tc.addWidget(self.monitor_table)
+        bl.addWidget(mon_tcw, 1)
+
+    def _place_step_card(self, bl: QVBoxLayout) -> None:
+        """"작업 진행 상태" 행(self.step_card_widget)을 배치한다. 기본은 다른 카드들과
+        같은 세로 스택(이 페이지 자체의 스크롤 영역)에 그대로 넣는다(단일 레이아웃).
+        DashboardPageMulti는 이 훅을 오버라이드해 아무것도 하지 않는다 — 그 대신
+        main_window가 step_card_widget을 "수집 목록" 위쪽의 별도 스택에 직접
+        마운트한다(요구사항: 대시보드 페이지 카드 순서를 "대기중 상태바 → 작업 진행
+        상태 → 수집 목록 → …"로 만들기 위함)."""
+        bl.addWidget(self.step_card_widget)
+
+    def _place_progress_card(self, bl: QVBoxLayout) -> None:
+        """"대기중 상태바" 행(self.progress_card_widget — 마진 없는 래퍼 안에 실제
+        카드 pb_card가 들어있음)을 배치한다. 기본은 다른 카드들과 같은 세로
+        스택에 그대로 넣는다(단일 레이아웃 — "작업 진행 상태" 바로 다음, "세션
+        현황" 바로 앞) — 이 경우 래퍼의 마진이 0이므로 bl 자체의 좌우 14px 마진이
+        그대로 적용된다. DashboardPageMulti는 이 훅을 오버라이드해 bl에 넣는 대신
+        래퍼의 마진을 직접 14px로 보정한다 — main_window가 progress_card_widget을
+        "작업 진행 상태"보다 더 위쪽의 별도 스택(bl과 무관한 여백 0인 컨테이너)에
+        직접 마운트하기 때문이다."""
+        bl.addWidget(self.progress_card_widget)
+
+    def _configure_body_margins(self, bl: QVBoxLayout) -> None:
+        """bl(스크롤 영역 내부 콘텐츠)의 여백을 조정하는 훅. 기본은 그대로 둔다(단일
+        레이아웃 — 이 페이지가 독립된 화면이라 4면 여백이 모두 필요함). DashboardPageMulti는
+        위쪽 여백만 0으로 줄인다 — "수집 목록" 카드와의 경계 여백은 main_window의
+        상위 레이아웃 spacing이 대신 공급하므로, 여기서 위쪽까지 14px를 더하면
+        카드 사이 간격이 다른 카드 쌍보다 두 배 가까이 벌어진다."""
+        pass
+
+    def _build_collect_settings_card(self, cfg: QHBoxLayout) -> None:
+        """"수집 & 저장 설정" 카드(Delay/Threads/Timeout/Retry/Auto Save) — 위젯
+        구성 자체는 _build_collect_settings_fields()(trigger/common.py)를 재사용한다.
+        DashboardPageMulti는 이 훅을 오버라이드해 카드를 만들지 않는다(다중 레이아웃은
+        같은 설정을 "⚙" 다이얼로그 쪽으로 옮겼으므로 대시보드에는 필요 없음)."""
+        c1w, c1 = parts.card_widget("수집 & 저장 설정")
+
+        content, widgets = _build_collect_settings_fields(
+            self._active_blueprint_info().get("collect_settings") or DEFAULT_COLLECT_SETTINGS
+        )
+        # _build_collect_settings_fields()는 다중 레이아웃의 "⚙ 수집 설정" 다이얼로그와도
+        # 공유되므로 여백은 거기서 건드리지 않고, 단일 대시보드 카드에서만 덮어쓴다.
+        content.layout().setContentsMargins(8, 6, 8, 6)
+        c1.addWidget(content)
+
+        self.delay_spin       = widgets["delay_spin"]
+        self.thread_spin      = widgets["thread_spin"]
+        self.timeout_spin     = widgets["timeout_spin"]
+        self.retry_spin       = widgets["retry_spin"]
+        self.auto_save_chk    = widgets["auto_save_chk"]
+        self.auto_src_ref_btn = widgets["auto_src_ref_btn"]
+
+        # 렌더링(Selenium) 수집은 대시보드/스케줄 UI에서만 Threads/Delay 안전
+        # 상한/하한을 강제한다(spirenderer.py는 더 이상 런타임 보정을 하지 않음).
+        # 상한/하한을 넘으려는 시도는 상시 문구 대신 QToolTip 말풍선으로만 안내한다.
+        if self._get_active_spider_mode() == "html_render":
+            apply_render_safety_limits(
+                self.thread_spin, self.delay_spin,
+                customized_settings.get_render_safety_limits(),
+            )
+
+        # 카드 폭을 매직넘버로 고정하지 않고, 어떤 폰트/환경에서도 라벨이 잘리지 않도록
+        # content의 실제 sizeHint(현재 패딩 포함)에 카드 테두리 여백을 더해 계산한다.
+        margins = c1.contentsMargins()
+        c1w.setFixedWidth(content.sizeHint().width() + margins.left() + margins.right())
+        cfg.addWidget(c1w, 1)
+
+    def _update_step_ui(self, step_idx):
+        """
+        현재 인덱스에 해당하는 단계만 주인공으로 만들고,
+        나머지는 과거/미래 상관없이 모두 배경으로 보냅니다.
+        """
+        self._step_idx = step_idx
+        for i in range(len(self.step_circles)):
+            if i == step_idx:
+                circle_style = f"""
+                    background: {ACCENT};
+                    border: 2px solid {ACCENT_LIGHT};
+                    color: white;
+                """
+                label_style = f"color: {TEXT_PRIMARY}; font-weight: bold;"
+
+            else:
+                circle_style = f"""
+                    background: {BG_SECONDARY};
+                    border: 2px solid {BORDER};
+                    color: {TEXT_MUTED};
+                """
+                label_style = f"color: {TEXT_MUTED}; font-weight: normal;"
+
+            self.step_circles[i].setStyleSheet(circle_style + "border-radius: 14px; font-weight: bold;")
+            self.step_labels[i].setStyleSheet(label_style + "font-size: 11px;")
+
+    def mark_result_displayed(self):
+        """수집이 끝나고 정제·저장 등 후처리가 시작되면 "결과 처리" 단계를 켠다.
+        이미 켜져 있으면 스타일을 다시 적용하지 않는다."""
+        if self._step_idx != self._EXTRACT_STEP_IDX:
+            self._update_step_ui(self._EXTRACT_STEP_IDX)
+
+    def set_status_banner(self, headline: str, detail: str) -> None:
+        """모달을 띄울 수 없는 실행에서 실패 사실을 지속적으로 보여준다."""
+        self._show_status_banner(headline, detail)
+
+    def clear_status_banner(self) -> None:
+        self._hide_status_banner()
+
+    def _reset_dashboard(self):
+        self.s_total.update_value(0)
+        self.s_err.update_value(0)
+        self.s_pages.update_value(0)
+        self.s_speed.update_value("—")
+        self._session_error_count = 0
+        self._session_latency_sum = 0.0
+        self._session_latency_count = 0
+
+        self.monitor_table.setRowCount(0)
+        self.mon_row_count_lbl.setText("0 rows")
+
+        self.prog_bar.setValue(0)
+        self.prog_pct.setText("0%")
+        self.prog_lbl.setText("대기 중")
+
+        self._update_step_ui(0)
+        self.clear_status_banner()
+
+    def set_running(self, v: bool):
+        """GlobalToolbarSingle 에서 상태를 받아 내부 플래그만 동기화합니다."""
+        self._running = v
+
+    def _get_active_spider_mode(self):
+        """이 대시보드가 대상으로 하는 블루프린트의 스파이더 모드.
+        DashboardPageMulti는 _active_blueprint_info() 훅만 오버라이드해
+        이 메서드를 그대로 상속받는다."""
+        return get_spider_mode(self._active_blueprint_info())
