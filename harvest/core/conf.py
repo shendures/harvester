@@ -254,7 +254,7 @@ class DataStore:
 
     # ── 통계 이력 영속화 (통계 분석 페이지 전용: url_maps + sessions) ──
     def _stats_history_path(self) -> str:
-        app_dir = utility.data_dir(utility.get_app_name())
+        app_dir = utility.config_data_dir(utility.get_app_name())
         return os.path.join(app_dir, STATS_HISTORY_FILENAME)
 
     def _set_stats_history(self, history: tuple) -> None:

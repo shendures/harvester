@@ -71,7 +71,7 @@ foreach ($entry in $manifest.add_data) {
 # ── 2. PyInstaller 실행 ────────────────────────────────────────────
 $iconPath = Join-Path $repoRoot "harvest\assets\combine-harvester.ico"
 
-# scrapy.cfg와 harvest/crawler/scraper/ 패키지는 Scrapy가 파일 탐색(scrapy.cfg) 또는 문자열
+# harvest/crawler/scraper/ 패키지(scrapy.cfg 포함)는 Scrapy가 문자열
 # 경로(ITEM_PIPELINES="harvest.crawler.scraper.pipelines.LoadItemPipeline",
 # DOWNLOADER_MIDDLEWARES="harvest.crawler.scraper.middlewares.XXX")로 런타임에 동적
 # import합니다. 코드 어디에도 `import harvest.crawler.scraper.pipelines` 같은 정적 import가
@@ -79,7 +79,6 @@ $iconPath = Join-Path $repoRoot "harvest\assets\combine-harvester.ico"
 # 소스 그대로 번들에 넣어 일반 import 폴백이 찾을 수 있게 합니다.
 # (고객 콘텐츠와 무관한 고정 항목이라 build_manifest.py가 아니라 여기서 직접 추가합니다.)
 $addDataArgs += @(
-    "--add-data", "$(Join-Path $repoRoot 'scrapy.cfg');.",
     "--add-data", "$(Join-Path $repoRoot 'harvest\crawler\scraper');harvest/crawler/scraper"
 )
 
