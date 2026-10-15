@@ -1,0 +1,1848 @@
+import re
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+    QFrame, QCheckBox, QLineEdit,
+    QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
+    QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
+    QSplitter, QSplitterHandle, QProxyStyle,
+    QMenu, QListWidget, QListWidgetItem, QWidgetAction, QSizePolicy,
+)
+
+from PyQt6.QtCore import (
+    Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal, QCoreApplication, QEvent,
+)
+from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
+from PyQt6.QtSvg import QSvgRenderer
+
+from harvest.core import utility
+
+
+# ══════════════════════════════════════════════════════
+#  THEME
+# ══════════════════════════════════════════════════════
+class THEME:
+    def __init__(self):
+        self.BG_PRIMARY = "#0f1117"
+        self.BG_SECONDARY = "#161820"
+        self.BG_HOVER = "#1e2030"
+        self.ACCENT = "#4f46e5"
+        self.ACCENT_LIGHT = "#818cf8"
+        self.ACCENT_HOVER = "#4338ca"
+        self.TEXT_PRIMARY = "#e5e7eb"
+        self.TEXT_SECONDARY = "#9ca3af"
+        self.TEXT_MUTED = "#6b7280"
+        self.BORDER = "#2a2d3a"
+        self.BORDER_LIGHT = "#374151"
+        self.GREEN = "#10b981"
+        self.AMBER = "#fbbf24"
+        self.RED = "#f87171"
+        self.BLUE = "#60a5fa"
+        self.PURPLE = "#a78bfa"
+        self.WHITE = "#ffffff"
+
+    @property
+    def GLOBAL_QSS(self) -> str:
+        return f"""
+        QMainWindow, QWidget {{
+            background-color: {self.BG_PRIMARY};
+            color: {self.TEXT_PRIMARY};
+            font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 13px;
+        }}
+        {self._scrollbar_qss(8, 4)}
+        QToolTip {{
+            background-color: {self.BG_SECONDARY}; color: {self.TEXT_PRIMARY};
+            border: 1px solid {self.BORDER}; padding: 4px 8px;
+            border-radius: 4px; font-size: 12px;
+        }}
+        QHeaderView::section {{
+            background: {self.BG_PRIMARY}; color: {self.TEXT_MUTED};
+            border: none; border-bottom: 1px solid {self.BORDER};
+            padding: 6px 10px; font-size: 10px; letter-spacing: 1px;
+        }}
+        QTableWidget {{
+            background: {self.BG_PRIMARY}; color: {self.TEXT_PRIMARY};
+            border: none; gridline-color: {self.BG_HOVER}; font-size: 12px;
+        }}
+        QTableWidget::item {{ padding: 6px 10px; }}
+        QTableWidget::item:selected {{
+            background: {self.BG_HOVER}; color: {self.TEXT_PRIMARY};
+        }}
+        QComboBox {{
+            background: {self.BG_PRIMARY}; color: {self.TEXT_PRIMARY};
+            border: 1px solid {self.BORDER_LIGHT}; border-radius: 4px;
+            padding: 4px 8px; font-size: 12px;
+        }}
+        QComboBox::drop-down {{ border: none; width: 20px; }}
+        QComboBox QAbstractItemView {{
+            background: {self.BG_SECONDARY}; color: {self.TEXT_PRIMARY};
+            border: 1px solid {self.BORDER}; selection-background-color: {self.BG_HOVER};
+        }}
+        QLineEdit {{
+            background: {self.BG_PRIMARY}; color: {self.TEXT_PRIMARY};
+            border: 1px solid {self.BORDER_LIGHT}; border-radius: 6px;
+            padding: 6px 10px; font-size: 12px;
+        }}
+        QLineEdit:focus {{ border-color: {self.ACCENT}; }}
+        QSpinBox, QDoubleSpinBox, QTimeEdit {{
+            background: {self.BG_PRIMARY}; color: {self.TEXT_PRIMARY};
+            border: 1px solid {self.BORDER_LIGHT}; border-radius: 4px;
+            padding: 3px 6px; font-size: 12px;
+        }}
+        QCheckBox {{ color: {self.TEXT_SECONDARY}; spacing: 6px; }}
+        {self._indicator_qss("QCheckBox::indicator")}
+        QSplitter::handle {{
+            background: {self.BORDER_LIGHT};
+        }}
+        QSplitter::handle:horizontal {{
+            width: 1px; margin: 0 4px;
+        }}
+        /* 세로 스플리터는 :horizontal과 달리 height/margin이 적용되지 않아
+           핸들 영역 전체(setHandleWidth)가 두꺼운 단색 막대로 그려진다(Qt QSS
+           함정) — border로 얇은 선만 그리고 나머지는 투명 처리해 우회한다. */
+        QSplitter::handle:vertical {{
+            background: transparent;
+            border-top: 1px solid {self.BORDER_LIGHT};
+        }}
+        """
+
+    @property
+    def SPINBOX_ARROW_QSS(self) -> str:
+        """화살표 모양·색상 자체는 SpinArrowProxyStyle이 QPainter로 직접 그린다
+        (QSS의 border 기반 삼각형 기법은 이 Qt 버전에서 대각선 모서리를 깎지
+        않고 사각형을 그대로 칠해버려 실제 삼각형이 나오지 않음을 확인했다).
+        이 프로퍼티는 크기만 선언해 서브컨트롤 존재를 "복원"하는 역할만 한다 —
+        bare QWidget 선택자로 감싼 카드 컨테이너(PROXY_CARD_ENABLED_QSS/
+        PROXY_CARD_DISABLED_QSS/card_widget)는 화살표 서브컨트롤에 아무 규칙도
+        없으면 QStyleSheetStyle이 그 서브컨트롤을 아예 그리지 않는 Qt QSS
+        함정이 있어, 크기 선언이 있어야 SpinArrowProxyStyle로 그리기가 위임된다."""
+        return f"""
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            width: 8px; height: 8px;
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            width: 8px; height: 8px;
+        }}
+        """
+
+    def _indicator_qss(self, selector: str) -> str:
+        """14x14 체크박스형 인디케이터(둥근 사각형, 체크 시 ACCENT로 채움) 공유 조각.
+        GLOBAL_QSS의 QCheckBox::indicator와 COLUMN_FILTER_MENU_QSS의
+        QListWidget::indicator가 값이 완전히 동일해 이 헬퍼로 공유한다.
+        (PROXY_CARD_DISABLED_QSS/PROXY_TABLE_INDICATOR_QSS는 색상 구성이
+        달라 별개로 유지한다.)"""
+        return f"""
+        {selector} {{
+            width: 14px; height: 14px; border-radius: 3px;
+            border: 1px solid {self.BORDER_LIGHT}; background: {self.BG_PRIMARY};
+        }}
+        {selector}:checked {{
+            background: {self.ACCENT}; border-color: {self.ACCENT};
+        }}
+        """
+
+    def _scrollbar_qss(
+        self, v_thickness: int, v_radius: int,
+        h_thickness: int = None, h_radius: int = None, h_handle: int = None,
+    ) -> str:
+        """세로/가로 스크롤바 QSS 조각 공유 헬퍼. GLOBAL_QSS와
+        EqualSpacingTable._apply_style()이 각자 사본을 유지하다 커밋
+        906a360("전역 스크롤바 굵기 소폭 증가")에서 두 곳을 함께 손으로
+        고친 이력이 있어(_indicator_qss와 동일한 이유로) 공유한다.
+        h_thickness/h_radius를 생략하면 v_thickness/v_radius와 같은 값을
+        쓰고, h_handle을 주면 가로 핸들 폭을 고정한다(EqualSpacingTable
+        전용 — 스크롤 가능한 콘텐츠 폭에 맞춘 고정 핸들)."""
+        h_thickness = v_thickness if h_thickness is None else h_thickness
+        h_radius = v_radius if h_radius is None else h_radius
+        handle_size_qss = (
+            f"min-width: {h_handle}px; max-width: {h_handle}px;" if h_handle is not None else ""
+        )
+        return f"""
+        QScrollBar:vertical {{
+            background: {self.BG_SECONDARY}; width: {v_thickness}px; border-radius: {v_radius}px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {self.BORDER_LIGHT}; border-radius: {v_radius}px; min-height: 20px;
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar:horizontal {{
+            background: {self.BG_SECONDARY}; height: {h_thickness}px; border-radius: {h_radius}px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {self.BORDER_LIGHT}; border-radius: {h_radius}px;
+            {handle_size_qss}
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+        """
+
+    # ── SessionSettingsPage 전용 QSS 프로퍼티 ────────────
+    @property
+    def PROXY_CARD_ENABLED_QSS(self) -> str:
+        """프록시 카드 — 활성 상태 스타일 (기본 카드 외형). Parts.card_widget()의
+        범용 카드 템플릿으로도 재사용된다(색상·모양이 동일한 어두운 테두리 카드)."""
+        return f"""
+            QWidget {{
+                background: {self.BG_SECONDARY};
+                border: 1px solid {self.BORDER};
+                border-radius: 8px;
+            }}
+            {self.SPINBOX_ARROW_QSS}
+        """
+
+    @property
+    def PROXY_CARD_DISABLED_QSS(self) -> str:
+        """
+        프록시 카드 — 비활성 상태 스타일.
+        전역 프록시 사용 체크박스가 꺼졌을 때 카드 내 모든 위젯을
+        흐린 색상으로 일괄 전환합니다.
+        인라인 setStyleSheet()가 GLOBAL_QSS :disabled 규칙을 덮어쓰는 문제를
+        카드 컨테이너 단위 QSS 주입으로 해결합니다.
+        """
+        return f"""
+            QWidget {{
+                background: {self.BG_PRIMARY};
+                border: 1px solid {self.BORDER};
+                border-radius: 8px;
+                color: {self.TEXT_MUTED};
+            }}
+            QCheckBox {{
+                color: {self.TEXT_MUTED};
+            }}
+            QCheckBox::indicator {{
+                background: {self.BG_HOVER};
+                border: 1px solid {self.BORDER};
+                border-radius: 3px;
+                width: 14px; height: 14px;
+            }}
+            QCheckBox::indicator:checked {{
+                background: {self.BORDER};
+                border-color: {self.BORDER};
+            }}
+            QLabel {{
+                color: {self.TEXT_MUTED};
+                background: transparent;
+                border: none;
+            }}
+            QSpinBox, QDoubleSpinBox {{
+                background: {self.BG_HOVER};
+                color: {self.TEXT_MUTED};
+                border: 1px solid {self.BORDER};
+                border-radius: 4px;
+            }}
+            {self.SPINBOX_ARROW_QSS}
+            QPushButton {{
+                background: {self.BG_HOVER};
+                color: {self.TEXT_MUTED};
+                border: 1px solid {self.BORDER};
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: normal;
+            }}
+            QTableWidget {{
+                background: {self.BG_PRIMARY};
+                color: {self.TEXT_MUTED};
+                border: none;
+                gridline-color: {self.BG_HOVER};
+            }}
+            QTableWidget::item {{
+                color: {self.TEXT_MUTED};
+                padding: 6px 10px;
+            }}
+            QHeaderView::section {{
+                background: {self.BG_PRIMARY};
+                color: {self.BORDER_LIGHT};
+                border: none;
+                border-bottom: 1px solid {self.BORDER};
+                padding: 6px 10px;
+                font-size: 10px;
+            }}
+        """
+
+    @property
+    def PROXY_TABLE_INDICATOR_QSS(self) -> str:
+        """
+        프록시 테이블 — QTableWidget::indicator 체크박스 스타일.
+        setCellWidget(QCheckBox) 없이 기존 체크박스 외형을 재현합니다.
+        EqualSpacingTable의 기존 QSS에 추가(t.styleSheet() +)하여 적용합니다.
+        """
+        return f"""
+            QTableWidget::indicator {{
+                width: 14px;
+                height: 14px;
+                border-radius: 3px;
+                border: 1px solid {self.BORDER};
+                background: {self.BG_HOVER};
+            }}
+            QTableWidget::indicator:unchecked {{
+                background: {self.BG_HOVER};
+                border: 1px solid {self.BORDER};
+            }}
+            QTableWidget::indicator:checked {{
+                background: {self.ACCENT};
+                border: 1px solid {self.ACCENT};
+                image: none;
+            }}
+        """
+
+    @property
+    def PROXY_CONTEXT_MENU_QSS(self) -> str:
+        """프록시 테이블 — 우클릭 컨텍스트 메뉴 스타일"""
+        return f"""
+            QMenu {{
+                background:{self.BG_SECONDARY}; color:{self.TEXT_PRIMARY};
+                border:1px solid {self.BORDER}; border-radius:6px; padding:4px;
+            }}
+            QMenu::item {{ padding:6px 20px; font-size:12px; }}
+            QMenu::item:selected {{ background:{self.BG_HOVER}; color:{self.ACCENT_LIGHT}; }}
+        """
+
+    @property
+    def COLUMN_FILTER_MENU_QSS(self) -> str:
+        """테이블 헤더 고유값 필터 팝업(EqualSpacingTable) — QMenu에 담긴
+        검색창/전체선택/체크리스트 위젯 스타일"""
+        return f"""
+            QMenu {{
+                background:{self.BG_SECONDARY}; border:1px solid {self.BORDER};
+                border-radius:6px;
+            }}
+            QListWidget {{
+                background:{self.BG_PRIMARY}; color:{self.TEXT_PRIMARY};
+                border:1px solid {self.BORDER}; border-radius:4px; outline:none;
+            }}
+            QListWidget::item {{ padding:4px 6px; }}
+            QListWidget::item:hover {{ background:{self.BG_HOVER}; }}
+            {self._indicator_qss("QListWidget::indicator")}
+        """
+
+    def set_pallete(self, app):
+        app.setStyleSheet(self.GLOBAL_QSS)
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(self.BG_PRIMARY))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(self.TEXT_PRIMARY))
+        palette.setColor(QPalette.ColorRole.Base, QColor(self.BG_SECONDARY))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(self.BG_HOVER))
+        palette.setColor(QPalette.ColorRole.Text, QColor(self.TEXT_PRIMARY))
+        palette.setColor(QPalette.ColorRole.Button, QColor(self.BG_SECONDARY))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(self.TEXT_PRIMARY))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(self.ACCENT))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(self.WHITE))
+        app.setPalette(palette)
+
+
+def _draw_filled_triangle(painter, points: list, color) -> None:
+    """3점 폴리곤을 단색으로 채워 그리는 공용 헬퍼 — QSS의 border 기반
+    삼각형 트릭이 이 Qt 버전에서 깨지는 문제를 피해 스핀박스 화살표/정렬
+    화살표를 QPainter로 직접 그릴 때 공유한다(SpinArrowProxyStyle
+    ._draw_spin_arrow, _FilterHeaderView._paint_sort_arrow)."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color))
+    painter.drawPolygon(QPolygon(points))
+    painter.restore()
+
+
+class SpinArrowProxyStyle(QProxyStyle):
+    """QSpinBox/QDoubleSpinBox 위·아래 화살표를 실제 삼각형으로 그린다.
+    QSS의 border 기반 삼각형 기법(border-left/right:transparent + border-top/bottom
+    solid + width:0;height:0)은 이 Qt 버전에서 모서리를 대각선으로 깎지 않고
+    사각형을 그대로 칠해버려(스크린샷으로 실측 확인) 원하는 모양이 나오지 않는다
+    — PE_IndicatorSpinUp/Down 프리미티브를 직접 그려 우회한다. main.py에서
+    app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))로
+    등록해 사용한다. 앱에 스타일을 하나만 등록할 수 있어, 툴팁을 지연 없이
+    표시하는 설정(styleHint)도 이 클래스에 함께 둔다."""
+
+    _HALF_BASE = 4
+    _HALF_HEIGHT = 2
+
+    def __init__(self, base_style, theme):
+        super().__init__(base_style)
+        self._theme = theme
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        if element in (
+            QStyle.PrimitiveElement.PE_IndicatorSpinUp,
+            QStyle.PrimitiveElement.PE_IndicatorSpinDown,
+        ):
+            self._draw_spin_arrow(element, option, painter)
+            return
+        super().drawPrimitive(element, option, painter, widget)
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        """툴팁을 마우스를 올리자마자 지연 없이 띄운다(기본값은 약 700ms 대기)."""
+        if hint in (QStyle.StyleHint.SH_ToolTip_WakeUpDelay,
+                    QStyle.StyleHint.SH_ToolTip_FallAsleepDelay):
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
+
+    def _draw_spin_arrow(self, element, option, painter) -> None:
+        is_enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
+        color = QColor(self._theme.WHITE if is_enabled else self._theme.TEXT_MUTED)
+        cx = option.rect.center().x()
+        cy = option.rect.center().y()
+        if element == QStyle.PrimitiveElement.PE_IndicatorSpinUp:
+            points = [
+                QPoint(cx - self._HALF_BASE, cy + self._HALF_HEIGHT),
+                QPoint(cx + self._HALF_BASE, cy + self._HALF_HEIGHT),
+                QPoint(cx, cy - self._HALF_HEIGHT),
+            ]
+        else:
+            points = [
+                QPoint(cx - self._HALF_BASE, cy - self._HALF_HEIGHT),
+                QPoint(cx + self._HALF_BASE, cy - self._HALF_HEIGHT),
+                QPoint(cx, cy + self._HALF_HEIGHT),
+            ]
+        _draw_filled_triangle(painter, points, color)
+
+
+def _load_svg_icon(name: str, color: str, stroke_width: str, size: int) -> QIcon:
+    """assets/icon/<name>.svg를 읽어 QIcon으로 렌더링한다. lucide.dev에서 개별 내려받은
+    원본 svg들은 색상·굵기가 제각각(currentColor/#ffffff, stroke-width 2/1.5 등
+    혼재)이라, Qt QSvgRenderer가 지원하지 않는 currentColor 대신 렌더링 시점에
+    stroke/stroke-width를 문자열 치환으로 강제 통일한다(6개 아이콘 전부 동일한
+    색상·굵기로 보이도록)."""
+    svg_path = utility.asset_path("icon", f"{name}.svg")
+    with open(svg_path, "r", encoding="utf-8") as f:
+        svg = f.read()
+    svg = re.sub(r'stroke="[^"]*"', f'stroke="{color}"', svg, count=1)
+    svg = re.sub(r'stroke-width="[^"]*"', f'stroke-width="{stroke_width}"', svg, count=1)
+
+    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    # HiDPI에서도 흐려 보이지 않도록 2배 해상도로 그린 뒤 devicePixelRatio로 축소 표시한다.
+    scale = 2
+    pixmap = QPixmap(size * scale, size * scale)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
+
+
+class NavItem(QPushButton):
+    # 사이드바 아이콘 6개(대시보드/데이터 정제/스케줄러/통계 분석/세션 설정/인증
+    # 관리) 전부 이 크기·색상·굵기로 통일해 렌더링한다.
+    _ICON_SIZE = 14
+    _ICON_STROKE_WIDTH = "2"
+
+    def __init__(self, icon_name, label):
+        super().__init__()
+        self.theme = THEME()
+        self.setIcon(_load_svg_icon(icon_name, self.theme.TEXT_SECONDARY, self._ICON_STROKE_WIDTH, self._ICON_SIZE))
+        self.setIconSize(QSize(self._ICON_SIZE, self._ICON_SIZE))
+        self.setText(f"  {label}")
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(38)
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background:transparent; color:{self.theme.TEXT_SECONDARY};
+                text-align:left; padding-left:28px;
+                border:none; border-left:2px solid transparent; font-size:13px;
+            }}
+            QPushButton:hover {{ background:{self.theme.BG_HOVER}; color:{self.theme.TEXT_PRIMARY}; }}
+            QPushButton:checked {{
+                background:{self.theme.BG_HOVER}; color:{self.theme.ACCENT_LIGHT};
+                border-left:2px solid {self.theme.ACCENT_LIGHT};
+            }}
+        """)
+
+class TagButton(QPushButton):
+    def __init__(self, text):
+        super().__init__(text)
+        self.theme = THEME()
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background:#1a1040; color:{self.theme.PURPLE};
+                border:1px solid #312e81; border-radius:4px;
+                padding:3px 10px; font-size:11px;
+            }}
+            QPushButton:hover {{ background:#312e81; }}
+            QPushButton:checked {{ background:{self.theme.ACCENT}; color:white; border-color:{self.theme.ACCENT}; }}
+            QPushButton:disabled {{
+                background:{self.theme.BG_PRIMARY}; color:{self.theme.TEXT_MUTED};
+                border-color:{self.theme.BORDER};
+            }}
+        """)
+
+    def setEnabled(self, enabled: bool):
+        super().setEnabled(enabled)
+        self.setCursor(Qt.CursorShape.PointingHandCursor if enabled else Qt.CursorShape.ArrowCursor)
+
+
+class StatCard(QWidget):
+    theme = THEME()
+    def __init__(self, label, value, color=theme.TEXT_PRIMARY):
+        super().__init__()
+        self.setStyleSheet(f"background:{self.theme.BG_PRIMARY}; border-radius:6px; border:1px solid {self.theme.BORDER};")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(2)
+        self._val = QLabel(value)
+        self._val.setStyleSheet(
+            f"color:{color}; font-size:20px; font-weight:bold; border:none; background:transparent;")
+        self._lbl = QLabel(label)
+        self._lbl.setStyleSheet(f"color:{self.theme.TEXT_MUTED}; font-size:11px; border:none; background:transparent;")
+        lay.addWidget(self._val)
+        lay.addWidget(self._lbl)
+
+    def update_value(self, v):
+        self._val.setText(str(v))
+
+
+# ──────────────────────────────────────────────────────
+#  NoFocusDelegate
+# ──────────────────────────────────────────────────────
+class NoFocusDelegate(QStyledItemDelegate):
+    """셀이 '현재 셀'이 되어도 점선 포커스 사각형을 그리지 않는 델리게이트.
+
+    EqualSpacingTable의 기본 델리게이트로 적용돼 클릭한 셀 하나가 아닌 행 전체만
+    강조되게 하고, 체크박스 컬럼(수집 목록 선택·프록시 활성)에도 쓴다.
+    """
+
+    def paint(self, painter, option, index):
+        option = QStyleOptionViewItem(option)
+        option.state &= ~QStyle.StateFlag.State_HasFocus
+        super().paint(painter, option, index)
+
+
+def _filter_list_items(list_widget: QListWidget, keyword: str) -> None:
+    """검색어와 텍스트가 일치하지 않는 체크리스트 항목을 숨긴다(컬럼 필터
+    팝업의 검색창 전용)."""
+    keyword = keyword.lower()
+    for i in range(list_widget.count()):
+        item = list_widget.item(i)
+        item.setHidden(keyword not in item.text().lower())
+
+
+def _set_all_checked(list_widget: QListWidget, checked: bool) -> None:
+    """컬럼 필터 팝업의 "전체 선택" 체크박스에 연동 — 목록 전체의 체크
+    상태를 한 번에 맞춘다."""
+    state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+    for i in range(list_widget.count()):
+        list_widget.item(i).setCheckState(state)
+
+
+def _build_column_filter_widget(values: list, allowed: set):
+    """컬럼 필터 팝업 내부 위젯(검색창 + 전체선택 + 고유값 체크리스트 +
+    확인/초기화 버튼)을 만들어 (container, list_widget, reset_btn, ok_btn)을
+    반환한다."""
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(8, 8, 8, 8)
+    layout.setSpacing(6)
+
+    search_box = QLineEdit()
+    search_box.setPlaceholderText("값 검색")
+    layout.addWidget(search_box)
+
+    select_all_cb = QCheckBox("전체 선택")
+    select_all_cb.setChecked(len(allowed) == len(values))
+    layout.addWidget(select_all_cb)
+
+    list_widget = QListWidget()
+    list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+    list_widget.setMaximumHeight(220)
+    for value in values:
+        item = QListWidgetItem(value or "(비어 있음)")
+        item.setData(Qt.ItemDataRole.UserRole, value)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if value in allowed else Qt.CheckState.Unchecked)
+        list_widget.addItem(item)
+    layout.addWidget(list_widget)
+
+    search_box.textChanged.connect(lambda text: _filter_list_items(list_widget, text))
+    select_all_cb.toggled.connect(lambda checked: _set_all_checked(list_widget, checked))
+
+    parts = Parts()
+    btn_row = QHBoxLayout()
+    reset_btn = parts.outline_btn("초기화")
+    ok_btn = parts.action_btn("확인")
+    btn_row.addWidget(reset_btn)
+    btn_row.addStretch()
+    btn_row.addWidget(ok_btn)
+    layout.addLayout(btn_row)
+
+    return container, list_widget, reset_btn, ok_btn
+
+
+# ──────────────────────────────────────────────────────
+#  _FilterHeaderView
+#  — 컬럼 헤더 우측의 작은 깔때기 아이콘으로 고유값 필터 팝업을 연다
+# ──────────────────────────────────────────────────────
+class _FilterHeaderView(QHeaderView):
+    """EqualSpacingTable 전용 헤더 — 섹션 좌측에 필터(funnel) 아이콘을, 우측에
+    정렬 방향 화살표(오름차순/내림차순 중이 컬럼만)를 그린다. 필터 아이콘 클릭만
+    filterIconClicked로 가로채고, 아이콘 밖을 클릭하면 그대로 super()에 위임되어
+    기존 드래그 리사이즈 동작과 EqualSpacingTable._on_header_clicked로 연결된
+    sectionClicked 기반 정렬이 그대로 동작한다."""
+
+    ICON_SIZE = 12
+    ICON_MARGIN = 6  # 필터 아이콘과 섹션 좌측 경계 사이 여백(px)
+
+    SORT_ARROW_SIZE = 8
+    SORT_ARROW_MARGIN = 8  # 정렬 화살표와 섹션 우측 경계 사이 여백(px)
+
+    filterIconClicked = pyqtSignal(int)
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._filtered_columns: set = set()
+        self.theme = THEME()
+        self._icon_inactive = _load_svg_icon("funnel", self.theme.TEXT_MUTED, "2", self.ICON_SIZE)
+        self._icon_active = _load_svg_icon("funnel", self.theme.ACCENT_LIGHT, "2", self.ICON_SIZE)
+        self._sort_column = None
+        self._sort_order = None  # Qt.SortOrder.AscendingOrder / DescendingOrder / None(정렬 해제)
+        self._filter_enabled = True  # False면 깔때기 아이콘 자체를 그리지도, 클릭을 가로채지도 않음
+
+    def set_column_filtered(self, logical: int, filtered: bool) -> None:
+        if filtered:
+            self._filtered_columns.add(logical)
+        else:
+            self._filtered_columns.discard(logical)
+        self.updateSection(logical)
+
+    def set_filter_enabled(self, enabled: bool) -> None:
+        """검색창을 자체적으로 가진 카드(EqualSpacingTable.disable_column_filters
+        참고)에서 호출해 컬럼별 필터 아이콘을 완전히 끈다."""
+        self._filter_enabled = enabled
+        self.update()
+
+    def set_sort_indicator(self, column, order) -> None:
+        """현재 정렬 중인 컬럼·방향을 기억해 두고 우측 화살표를 다시 그린다
+        (EqualSpacingTable.apply_sort가 정렬을 바꿀 때마다 호출)."""
+        previous = self._sort_column
+        self._sort_column = column
+        self._sort_order = order
+        if previous is not None and previous != column:
+            self.updateSection(previous)
+        if column is not None:
+            self.updateSection(column)
+
+    def _icon_rect(self, section_rect: QRect) -> QRect:
+        y = section_rect.top() + (section_rect.height() - self.ICON_SIZE) // 2
+        x = section_rect.left() + self.ICON_MARGIN
+        return QRect(x, y, self.ICON_SIZE, self.ICON_SIZE)
+
+    def _sort_arrow_rect(self, section_rect: QRect) -> QRect:
+        size = self.SORT_ARROW_SIZE
+        y = section_rect.top() + (section_rect.height() - size) // 2
+        x = section_rect.right() - self.SORT_ARROW_MARGIN - size
+        return QRect(x, y, size, size)
+
+    def paintSection(self, painter, rect, logical_index) -> None:
+        super().paintSection(painter, rect, logical_index)
+        if self._filter_enabled:
+            icon = self._icon_active if logical_index in self._filtered_columns else self._icon_inactive
+            icon.paint(painter, self._icon_rect(rect))
+        if logical_index == self._sort_column and self._sort_order is not None:
+            self._paint_sort_arrow(painter, self._sort_arrow_rect(rect))
+
+    def _paint_sort_arrow(self, painter, rect: QRect) -> None:
+        """오름차순(▲)/내림차순(▼) 화살표를 직접 그린다 — SpinArrowProxyStyle
+        ._draw_spin_arrow와 동일한 QPainter+QPolygon 기법(이 Qt 버전에서 QSS의
+        border 삼각형 트릭이 깨지는 문제를 피하기 위해 이미 쓰이던 방식)을
+        _draw_filled_triangle 헬퍼로 공유한다."""
+        cx = rect.center().x()
+        half_base = rect.width() // 2
+        if self._sort_order == Qt.SortOrder.AscendingOrder:
+            points = [
+                QPoint(cx - half_base, rect.bottom()),
+                QPoint(cx + half_base, rect.bottom()),
+                QPoint(cx, rect.top()),
+            ]
+        else:
+            points = [
+                QPoint(cx - half_base, rect.top()),
+                QPoint(cx + half_base, rect.top()),
+                QPoint(cx, rect.bottom()),
+            ]
+        _draw_filled_triangle(painter, points, self.theme.ACCENT_LIGHT)
+
+    def mousePressEvent(self, event) -> None:
+        if self._filter_enabled:
+            logical = self.logicalIndexAt(event.pos())
+            if logical >= 0:
+                section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
+                if self._icon_rect(section_rect).contains(event.pos()):
+                    self.filterIconClicked.emit(logical)
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
+
+
+# ──────────────────────────────────────────────────────
+#  EqualSpacingTable
+#  — Initial Equal distribution · Free resize + H-scroll · Double-click auto-fit
+# ──────────────────────────────────────────────────────
+class EqualSpacingTable(QTableWidget):
+    """
+    초기 Equal 분배 + 자유 리사이즈 테이블 (항상 viewport 폭에 정확히 맞춤)
+
+    ─────────────────────────────────────────────────────
+    동작 원칙
+    ─────────
+    • 초기(컬럼 수 확정 / 창 최초 표시): viewport 너비를 균등 분배(단, 어떤
+      컬럼의 최소 폭이 균등폭보다 넓으면 그 컬럼은 최소 폭으로 고정하고
+      나머지를 다시 나눔)
+    • 컬럼 드래그: 해당 컬럼 너비가 바뀐 만큼 그 **오른쪽에 있는 컬럼들
+      에게만** 차액을 비례 배분한다(_rebalance_columns → _distribute) —
+      왼쪽 컬럼들은 전혀 건드리지 않는다(Qt가 경계 왼쪽 컬럼을 resized로
+      보고하므로, 오른쪽이 자연스러운 보정 대상 — 마지막 컬럼처럼 오른쪽에
+      보정할 컬럼이 없을 때만 예외적으로 왼쪽이 보정). 전체 합은 항상
+      viewport 폭과 정확히 같다 — 늘려도 줄여도 가로 스크롤이 생기지
+      않는다. 어떤 컬럼도 자신의 헤더 텍스트나 그 컬럼에 실제로 들어있는
+      조작 위젯(체크박스·버튼 등)이 잘리는 폭 밑으로는 줄지 않으며(컬럼마다
+      다른 최소 폭, _min_col_widths — 헤더와 위젯 중 가장 넓은 것 기준,
+      _measure_min_column_width), 보정 대상 컬럼들이 이미 각자 최소 폭이라
+      더 내줄 공간이 없을 때만 그 이상 커지는 드래그가 막힌다. 단, 일반
+      텍스트 셀 값의 길이는 최소 폭에 영향을 주지 않으므로, 값이 헤더보다
+      길면 컬럼이 헤더 길이까지 좁아졌을 때 Qt 기본 elide로 "…" 표시된다.
+    • 창 리사이즈: 컬럼들이 이미 사용자 지정된 경우 그대로 유지
+      (초기 equal 분배 상태인 경우에만 재분배)
+    • 헤더 구분선 더블클릭: 해당 컬럼의 모든 셀 + 헤더 텍스트 중
+      가장 긴 것에 맞춰 Auto-fit(이때도 위와 동일하게 나머지 컬럼에 재배분)
+      — 드래그 최소 폭과 달리 이 동작은 셀 값까지 모두 고려한다
+
+    Public API
+    ──────────
+    fit_column(logical)          지정 컬럼 Auto-fit (더블클릭과 동일)
+    matches_column_filters(row)  해당 행이 현재 활성 컬럼 필터를 모두 만족하는지
+    clear_all_filters()          모든 컬럼 필터 초기화
+    disable_column_filters()     컬럼별 필터(깔때기 아이콘) 자체를 끔 — 자체 검색창이 있는 테이블용
+    apply_sort(column, order)    지정 컬럼을 order(Qt.SortOrder 또는 정렬 해제 시 None)로 정렬
+    current_sort()               (정렬 중인 컬럼, Qt.SortOrder) — 정렬 없으면 (None, None)
+
+    컬럼 헤더 좌측의 깔때기 아이콘을 클릭하면 해당 컬럼의 고유값 체크리스트로
+    행을 필터링하는 팝업이 열린다(엑셀 AutoFilter와 동일한 동작). 검색창이나
+    별도 필터를 가진 페이지(예: trigger/monitor.py)는 columnFiltersChanged
+    시그널을 구독해 자신의 필터와 AND로 결합하면 된다 — 구독자가 없어도 이
+    테이블 자체가 _apply_own_row_visibility()로 필터를 적용하므로 별도 연동
+    없이 모든 테이블에서 바로 동작한다. 이미 자체 키워드 검색창을 갖고 있어
+    컬럼별 필터가 중복되는 테이블은 생성 직후 disable_column_filters()를
+    호출하면 깔때기 아이콘 자체가 사라진다(예: 모니터링 RAW/정제/비교 탭).
+
+    컬럼 헤더(깔때기 아이콘 제외 영역)를 클릭하면 오름차순 → 내림차순 → 정렬
+    해제 순으로 순환하며, 정렬 방향은 헤더 우측의 삼각형 화살표로 표시된다
+    (_FilterHeaderView 참고). 정렬은 Qt의 sortItems()가 아니라 직접 구현한 행
+    재배치(_reorder_rows)로 처리하는데, setCellWidget으로 채운 컬럼(체크박스·
+    버튼 등)은 Qt의 기본 정렬이 위젯을 행과 함께 옮겨주지 않기 때문이다.
+    "정렬 해제"는 각 행에 자동으로 찍힌 삽입 순번(_NATURAL_ORDER_ROLE)을 기준
+    으로 원래 순서를 복원하며, 이는 테이블이 setRowCount/setHorizontalHeaderLabels
+    로 새로 채워질 때마다 초기화된다(대시보드처럼 insertRow로 한 행씩 실시간
+    추가되는 테이블은 초기화되지 않으므로, 정렬을 걸어둔 채 새 행이 들어오면
+    맨 아래에 추가되고 헤더를 다시 클릭해야 반영된다 — "클릭 시점 스냅샷" 정렬).
+    apply_sort()는 재배치 후 columnFiltersChanged도 함께 emit한다 — 검색창의
+    키워드 필터를 컬럼 필터와 AND로 구독 중인 페이지가 정렬 직후에도 자신의
+    필터를 다시 적용해, 검색으로 숨겨둔 행이 정렬 때문에 되살아나지 않는다.
+    """
+
+    MIN_COL_W = 30  # 컬럼 최소 너비의 절대 하한(px) — 헤더가 아주 짧아도 이 밑으로는 안 내려감
+    H_PADDING = 20  # auto-fit/최소 폭 계산 시 텍스트 양쪽 여유 패딩 (px, 한쪽 10)
+
+    # 행의 원래 삽입 순서를 기록하는 커스텀 role. trigger/common.py의
+    # ROW_ORIGIN_ROLE(UserRole+1)과 겹치지 않도록 오프셋을 충분히 띄운다.
+    _NATURAL_ORDER_ROLE = Qt.ItemDataRole.UserRole.value + 100
+
+    columnFiltersChanged = pyqtSignal()
+    sortStateChanged = pyqtSignal(int, object)  # (logical_column, Qt.SortOrder 또는 None)
+    rowKeyNavigated = pyqtSignal(QTableWidgetItem)  # ↑/↓로 current 행이 바뀐 뒤, 그 행의 아이템
+
+    def __init__(
+            self,
+            parent=None,
+            row_height: int = 28,
+            col_padding: int = 10,
+            hscroll_handle: int = 24,
+    ):
+        super().__init__(parent)
+
+        self._row_height = row_height
+        self._col_padding = col_padding
+        self._hscroll_handle = hscroll_handle
+
+        # True: 아직 사용자가 드래그한 적 없음 → 창 리사이즈 시 재분배
+        self._is_equal_state = True
+        # sectionResized 재진입 방지
+        self._resizing = False
+        # 컬럼별 최소 폭 (헤더 텍스트 + 조작 위젯 크기 기준, _recompute_min_col_widths가 채움)
+        self._min_col_widths = []
+        # True: 헤더/셀 내용이 바뀌어 _min_col_widths를 다시 계산해야 함.
+        # 매번 즉시 다시 스캔하지 않고, 실제로 최소 폭이 필요한 시점
+        # (_min_width_of)에만 한 번 계산한다 — 드래그 중 sectionResized가
+        # 연달아 발생해도, 행이 많은 테이블에 여러 setItem이 연달아 호출돼도
+        # 매번 전체 스캔하지 않도록.
+        self._min_widths_dirty = True
+
+        # 컬럼 인덱스 → 허용된 값 집합(고유값 필터). 컬럼이 dict에 없으면
+        # 필터 없음(전체 허용).
+        self._column_filters: dict = {}
+
+        # 0번 컬럼 아이템에 자동으로 찍는 삽입 순번(단조 증가) — "정렬 해제"
+        # 시 원래 순서를 복원하는 데 쓴다(_NATURAL_ORDER_ROLE 참고).
+        self._next_natural_seq = 0
+        # 현재 정렬 상태. 둘 다 None이면 정렬 해제 상태.
+        self._sort_column: int | None = None
+        self._sort_order = None  # Qt.SortOrder.AscendingOrder / DescendingOrder / None
+        # True인 동안은 _reorder_rows가 자체적으로 옮기는 setItem 호출이며,
+        # 새 데이터 유입이 아니므로 삽입 순번 재스탬프를 건너뛴다.
+        self._reordering = False
+
+        self.theme = THEME()
+
+        self._init_table()
+        self._apply_style()
+
+    # ── 초기 설정 ─────────────────────────────────────
+    def _init_table(self):
+        self.setHorizontalHeader(_FilterHeaderView(Qt.Orientation.Horizontal, self))
+
+        self.verticalHeader().setVisible(False)
+        self.setWordWrap(False)
+        self.setShowGrid(False)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.setItemDelegate(NoFocusDelegate(self))
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.verticalHeader().setDefaultSectionSize(self._row_height)
+
+        # 가로 스크롤바: 컬럼 합산이 viewport 초과 시 자동 표시
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        hdr = self.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(False)
+        hdr.setMinimumSectionSize(self.MIN_COL_W)
+        # QTableWidget이 자체 생성하는 기본 헤더는 sectionsClickable이 True로
+        # 시작하지만, 여기서 새로 만들어 갈아 끼우는 _FilterHeaderView는 그
+        # 기본값을 물려받지 못해 False로 남는다 — 이 상태에서는 마우스로
+        # 헤더를 클릭해도 sectionClicked가 전혀 발생하지 않아 _on_header_clicked
+        # 기반 정렬이 트리거되지 않는다(실측으로 확인한 버그). 명시적으로 켠다.
+        hdr.setSectionsClickable(True)
+
+        # 드래그 리사이즈 — 해당 컬럼만 변경 (다른 컬럼 고정)
+        hdr.sectionResized.connect(self._on_section_resized)
+
+        # 헤더 구분선 더블클릭 → Auto-fit
+        hdr.sectionHandleDoubleClicked.connect(self.fit_column)
+
+        # 필터 아이콘 클릭 → 고유값 필터 팝업
+        hdr.filterIconClicked.connect(self._show_column_filter_menu)
+
+        # 컬럼 헤더(필터 아이콘 영역 제외) 클릭 → 오름차순-내림차순-정렬 해제 순환
+        hdr.sectionClicked.connect(self._on_header_clicked)
+
+    def setSortingEnabled(self, enable: bool) -> None:
+        """Qt 기본 정렬(sortItems 기반)은 쓰지 않는다 — setCellWidget 컬럼(체크박스·
+        버튼 등)이 행과 함께 옮겨지지 않는 Qt 자체 한계 때문에, 정렬은 항상
+        apply_sort()/_reorder_rows()로 직접 처리한다(_on_header_clicked 참고).
+        대량 삽입 전후 setSortingEnabled(True)로 토글하는 기존 코드가 있어도
+        (trigger/monitor.py 등) 항상 비활성 상태를 유지하도록 강제한다."""
+        super().setSortingEnabled(False)
+
+    # ── viewport 총 너비 계산 ─────────────────────────
+    def _viewport_total(self) -> int:
+        vscroll = self.verticalScrollBar()
+        sb_w = vscroll.width() if vscroll.isVisible() else 0
+        return max(1, self.viewport().width() - sb_w)
+
+    # ── 헤더/셀 내용이 바뀌는 지점들 — 최소 폭 재계산이 필요함을 표시만 해둠 ──
+    def setHorizontalHeaderLabels(self, labels) -> None:
+        super().setHorizontalHeaderLabels(labels)
+        self._min_widths_dirty = True
+        # 컬럼 구성 자체가 바뀌면(예: 블루프린트 전환) 기존 컬럼 인덱스 기준
+        # 필터·정렬이 무의미해지므로 초기화한다.
+        self.clear_all_filters()
+        self._reset_sort_state()
+
+    def setItem(self, row, column, item) -> None:
+        super().setItem(row, column, item)
+        self._min_widths_dirty = True
+        # 0번 컬럼에 새 아이템이 들어올 때마다 삽입 순번을 자동으로 찍어 둔다
+        # ("정렬 해제" 복원용, _NATURAL_ORDER_ROLE 참고). _reorder_rows가 기존
+        # 아이템을 그대로 옮길 때는 재스탬프하면 안 되므로 건너뛴다.
+        if column == 0 and item is not None and not self._reordering:
+            item.setData(self._NATURAL_ORDER_ROLE, self._next_natural_seq)
+            self._next_natural_seq += 1
+
+    def setCellWidget(self, row, column, widget) -> None:
+        super().setCellWidget(row, column, widget)
+        self._min_widths_dirty = True
+
+    def setRowCount(self, rows: int) -> None:
+        super().setRowCount(rows)
+        self._min_widths_dirty = True
+        # 테이블이 새 데이터로 통째로 재구성되는 지점이므로 정렬 상태를 초기화한다
+        # (insertRow로 한 행씩 실시간 추가되는 테이블은 이 경로를 타지 않아
+        # 정렬이 유지된다 — 클래스 docstring의 "스냅샷 정렬" 설명 참고).
+        self._reset_sort_state()
+
+    # ── 컬럼별 폭 계산/조회 ───────────────────────────
+    def _measure_column_width(self, col: int) -> int:
+        """col에 있는 헤더 텍스트·모든 행의 셀 텍스트·cellWidget 크기 중
+        가장 넓은 것에 맞춘 너비를 계산한다(fit_column의 Auto-fit 전용 —
+        드래그 최소 폭 계산에는 _measure_min_column_width를 쓴다). 헤더·
+        cellWidget 스캔은 _measure_min_column_width와 공유하고, 텍스트
+        셀 스캔만 이 메서드에서 추가한다."""
+        cell_fm = QFontMetrics(self.font())
+        max_w = self._measure_min_column_width(col)
+
+        for row in range(self.rowCount()):
+            if self.cellWidget(row, col):
+                continue
+            item = self.item(row, col)
+            if item and item.text():
+                tw = cell_fm.horizontalAdvance(item.text()) + self._col_padding * 2 + self.H_PADDING
+                max_w = max(max_w, tw)
+        return max_w
+
+    def _measure_min_column_width(self, col: int) -> int:
+        """드래그로 줄일 때의 하한선을 계산한다. 헤더 텍스트와, 실제 조작
+        위젯(체크박스·버튼 등)의 크기만 보호 대상으로 삼는다 — 일반 텍스트
+        셀 값은 헤더보다 짧아지는 것을 막지 않는다(헤더보다 좁아지면 Qt
+        기본 elide로 "…" 표시)."""
+        hdr_fm = QFontMetrics(self.horizontalHeader().font())
+        header_item = self.horizontalHeaderItem(col)
+        max_w = hdr_fm.horizontalAdvance(header_item.text() if header_item else "") + self.H_PADDING
+
+        for row in range(self.rowCount()):
+            widget = self.cellWidget(row, col)
+            if widget:
+                max_w = max(max_w, widget.sizeHint().width() + self.H_PADDING)
+        return max_w
+
+    def _recompute_min_col_widths(self) -> None:
+        """각 컬럼의 헤더 텍스트와, 그 컬럼에 들어있는 조작 위젯이 잘리지
+        않는 최소 폭을 계산해 둔다 — 드래그로 줄일 때 이 값 밑으로는 못
+        내려가게 해 헤더 이름과 위젯이 화면에서 사라지지 않게 한다(일반
+        텍스트 셀 값은 이 최소 폭에 영향을 주지 않는다)."""
+        self._min_col_widths = [
+            max(self.MIN_COL_W, self._measure_min_column_width(c))
+            for c in range(self.columnCount())
+        ]
+
+    def _min_width_of(self, col: int) -> int:
+        if self._min_widths_dirty:
+            self._recompute_min_col_widths()
+            self._min_widths_dirty = False
+        if 0 <= col < len(self._min_col_widths):
+            return self._min_col_widths[col]
+        return self.MIN_COL_W
+
+    # ── Equal width 초기 분배 ─────────────────────────
+    def _redistribute(self):
+        """
+        viewport 너비를 컬럼 수로 균등 분할합니다. 균등폭이 어떤 컬럼의
+        헤더 최소 폭보다 작으면 그 컬럼은 최소 폭으로 고정하고 나머지를
+        다시 나눕니다(_distribute) — 컬럼이 많아도 초기 상태부터 헤더가
+        잘리지 않습니다.
+        """
+        n = self.columnCount()
+        if n <= 0:
+            return
+
+        total = self._viewport_total()
+        base_w = max(1, total // n)
+        self._resizing = True
+        try:
+            for c in range(n):
+                self.setColumnWidth(c, base_w)
+        finally:
+            self._resizing = False
+
+        self._distribute(list(range(n)), total)
+        self._is_equal_state = True
+
+    # ── 드래그 핸들러 — 해당 컬럼 크기 변경 후 나머지에 재배분 ──
+    def _on_section_resized(self, logical: int, old_w: int, new_w: int):
+        """
+        드래그된 컬럼의 너비를 그 컬럼의 헤더 최소 폭(_min_width_of) 이상으로
+        클램프한 뒤, 나머지 컬럼들에게 차액을 재배분합니다(_rebalance_columns)
+        — 전체 합이 항상 viewport에 정확히 맞아 늘려도 줄여도 가로 스크롤이
+        생기지 않고, 어떤 컬럼도 헤더 텍스트가 잘릴 정도로 좁아지지 않습니다.
+        """
+        if self._resizing:
+            return
+
+        min_w = self._min_width_of(logical)
+        if new_w < min_w:
+            new_w = min_w
+            self._resizing = True
+            try:
+                self.setColumnWidth(logical, new_w)
+            finally:
+                self._resizing = False
+
+        # 사용자가 직접 조작 → equal 상태 해제 (창 리사이즈 시 재분배 안 함)
+        self._is_equal_state = False
+        self._rebalance_columns(logical, new_w)
+
+    # ── 컬럼 크기 변경 후 나머지 전체 컬럼에 차액 재배분 ──────
+    def _rebalance_columns(self, resized_logical: int, new_w: int) -> None:
+        """resized_logical 컬럼이 new_w로 바뀐 뒤, 그 오른쪽에 있는 컬럼들
+        에게만 차액을 재배분한다(_distribute) — 왼쪽 컬럼들은 전혀
+        건드리지 않는다. 마우스로 컬럼 경계를 드래그하면 Qt는 그 경계
+        왼쪽 컬럼을 resized_logical로 보고하므로(오른쪽 컬럼은 폭이 아니라
+        화면 위치만 밀림), 오른쪽이 자연스러운 보정 대상이다 — "경계
+        오른쪽을 드래그하면 오른쪽만, 왼쪽을 드래그하면 왼쪽만 바뀐다"는
+        요구사항과 일치한다. resized_logical이 마지막 컬럼이라 오른쪽에
+        보정할 컬럼이 없는 경우(실제 마우스 드래그로는 발생하지 않고
+        fit_column 같은 프로그램적 호출에서만 발생)에만 예외적으로 왼쪽
+        컬럼들이 대신 보정한다. 전체 합은 항상 viewport 폭과 정확히 같다."""
+        last = self.columnCount() - 1
+        if resized_logical < last:
+            side = list(range(resized_logical + 1, self.columnCount()))
+            fixed_sum = sum(self.columnWidth(c) for c in range(resized_logical))
+        else:
+            side = list(range(resized_logical))
+            fixed_sum = 0
+        if not side:
+            return
+
+        viewport = self._viewport_total()
+        side_min_sum = sum(self._min_width_of(c) for c in side)
+        max_allowed = max(self._min_width_of(resized_logical), viewport - fixed_sum - side_min_sum)
+        if new_w > max_allowed:
+            new_w = max_allowed
+            self._resizing = True
+            try:
+                self.setColumnWidth(resized_logical, new_w)
+            finally:
+                self._resizing = False
+
+        self._distribute(side, viewport - fixed_sum - new_w)
+
+    # ── 여러 컬럼에 목표 폭 합계를 비례 배분(최소 폭 준수) ──
+    def _distribute(self, cols: list, total_w: int) -> None:
+        """cols의 컬럼들에 total_w(정수 px)를 현재 폭 비율대로 나누되,
+        배분받은 폭이 그 컬럼의 최소 폭(_min_width_of)보다 작아지면 그
+        컬럼은 최소 폭으로 고정하고, 남은 만큼을 아직 고정되지 않은
+        컬럼들끼리 다시 비례 배분한다("물 채우기" — 컬럼이 최대 10여 개뿐
+        이라 반복해도 비용이 작다). 반올림 오차는 마지막 컬럼에 몰아
+        합계가 total_w와 정확히 같아지도록 맞춘다. 모든 컬럼을 최소 폭까지
+        줄여도 total_w를 못 맞추는 극단적인 경우(컬럼이 아주 많고 창이
+        아주 좁음)는 결과 합계가 total_w를 넘을 수 있다 — 이때만
+        가로 스크롤이 남는다."""
+        cols = sorted(cols)
+        if not cols:
+            return
+        mins = {c: self._min_width_of(c) for c in cols}
+        current = {c: max(1, self.columnWidth(c)) for c in cols}
+
+        fixed = {}
+        free = list(cols)
+        remaining = total_w
+
+        while free:
+            current_sum = sum(current[c] for c in free) or len(free)
+            violated = [
+                c for c in free
+                if (remaining * current[c] / current_sum if current[c] else remaining / len(free)) < mins[c]
+            ]
+            if not violated:
+                break
+            for c in violated:
+                fixed[c] = mins[c]
+                remaining -= mins[c]
+                free.remove(c)
+
+        if free:
+            current_sum = sum(current[c] for c in free) or len(free)
+            allocated = 0
+            for c in free[:-1]:
+                w = round(remaining * current[c] / current_sum) if current_sum else remaining // len(free)
+                fixed[c] = w
+                allocated += w
+            fixed[free[-1]] = remaining - allocated
+
+        self._resizing = True
+        try:
+            for c, w in fixed.items():
+                self.setColumnWidth(c, w)
+        finally:
+            self._resizing = False
+
+    # ── Auto-fit (더블클릭 / 공개 API) ────────────────
+    def fit_column(self, logical: int):
+        """
+        지정 컬럼의 너비를 해당 컬럼 내 가장 긴 텍스트에 맞춥니다
+        (측정은 _measure_column_width와 공유 — 헤더 텍스트, 모든 행의 셀
+        텍스트, cellWidget이 있으면 그 sizeHint().width()까지 비교).
+        """
+        target_w = max(self._min_width_of(logical), self._measure_column_width(logical))
+
+        self._resizing = True
+        try:
+            self.setColumnWidth(logical, target_w)
+        finally:
+            self._resizing = False
+
+        # auto-fit 도 사용자 조작으로 간주 → equal 상태 해제
+        self._is_equal_state = False
+        self._rebalance_columns(logical, target_w)
+
+    # ── 컬럼 고유값 필터 (엑셀 AutoFilter) ────────────
+    def matches_column_filters(self, row: int) -> bool:
+        """row가 현재 활성화된 모든 컬럼 필터를 만족하는지 여부. 검색창 등
+        자체 필터를 가진 페이지가 자신의 조건과 AND로 결합할 때 사용한다."""
+        for col, allowed in self._column_filters.items():
+            item = self.item(row, col)
+            if (item.text() if item else "") not in allowed:
+                return False
+        return True
+
+    def _apply_own_row_visibility(self) -> None:
+        """컬럼 필터만으로 행 표시 여부를 결정한다 — 검색창이 없는 테이블은
+        이 메서드만으로 완전히 동작한다."""
+        for r in range(self.rowCount()):
+            self.setRowHidden(r, not self.matches_column_filters(r))
+
+    def _unique_values_for_column(self, col: int) -> list:
+        values = {
+            (self.item(r, col).text() if self.item(r, col) else "")
+            for r in range(self.rowCount())
+        }
+        return sorted(values)
+
+    def _on_column_filters_changed(self, logical: int) -> None:
+        self._apply_own_row_visibility()
+        self.horizontalHeader().set_column_filtered(logical, logical in self._column_filters)
+        self.columnFiltersChanged.emit()
+
+    def clear_all_filters(self) -> None:
+        """모든 컬럼 필터를 초기화한다(컬럼 구성이 바뀔 때 자동 호출됨)."""
+        self._column_filters.clear()
+        hdr = self.horizontalHeader()
+        for c in range(self.columnCount()):
+            hdr.set_column_filtered(c, False)
+        self._apply_own_row_visibility()
+
+    def disable_column_filters(self) -> None:
+        """컬럼별 필터(깔때기 아이콘) 자체를 끈다. 이미 자체 키워드 검색창을
+        가진 카드(예: 모니터링 RAW/정제/비교 탭)에서 테이블 생성 직후 호출한다
+        — 검색창과 컬럼 필터가 동시에 있으면 중복이기 때문이다."""
+        self.clear_all_filters()
+        self.horizontalHeader().set_filter_enabled(False)
+
+    # ── 컬럼 헤더 클릭 정렬 (오름차순 → 내림차순 → 정렬 해제) ────
+    def current_sort(self):
+        """(정렬 중인 컬럼, Qt.SortOrder) — 정렬 중이 아니면 (None, None).
+        trigger/monitor.py의 비교 탭 동기화에서 재귀 가드로 사용한다."""
+        return self._sort_column, self._sort_order
+
+    def _reset_sort_state(self) -> None:
+        self._sort_column = None
+        self._sort_order = None
+        self.horizontalHeader().set_sort_indicator(None, None)
+
+    def _on_header_clicked(self, logical: int) -> None:
+        if self._sort_column != logical:
+            new_order = Qt.SortOrder.AscendingOrder
+        elif self._sort_order == Qt.SortOrder.AscendingOrder:
+            new_order = Qt.SortOrder.DescendingOrder
+        elif self._sort_order == Qt.SortOrder.DescendingOrder:
+            new_order = None
+        else:
+            new_order = Qt.SortOrder.AscendingOrder
+        self.apply_sort(logical, new_order)
+
+    def apply_sort(self, column: int, order) -> None:
+        """column 기준으로 order(Qt.SortOrder.AscendingOrder/DescendingOrder)로
+        정렬하거나, order=None이면 정렬을 해제하고 원래 삽입 순서로 되돌린다.
+        헤더 클릭(_on_header_clicked)과 trigger/monitor.py의 비교 탭 동기화
+        (_sync_cmp_sort) 양쪽에서 호출되는 공개 API다."""
+        self._sort_column = column
+        self._sort_order = order
+        self._reorder_rows(self._compute_row_order(column, order))
+        self.horizontalHeader().set_sort_indicator(column, order)
+        self.sortStateChanged.emit(column, order)
+        # _reorder_rows가 재적용하는 _apply_own_row_visibility()는 컬럼 필터만
+        # 고려한다 — 검색창의 키워드 필터를 columnFiltersChanged 구독으로
+        # AND 결합해 둔 페이지(trigger/monitor.py 등)가 정렬 직후에도 자신의
+        # 필터를 다시 적용하도록 함께 emit한다(구독자가 없는 테이블은 무해).
+        self.columnFiltersChanged.emit()
+
+    def _compute_row_order(self, column: int, order) -> list:
+        row_indices = list(range(self.rowCount()))
+        if order is None:
+            row_indices.sort(key=self._natural_order_of)
+            return row_indices
+        key_fn = self._make_sort_key_fn(column)
+        row_indices.sort(key=key_fn, reverse=(order == Qt.SortOrder.DescendingOrder))
+        return row_indices
+
+    def _natural_order_of(self, row: int) -> int:
+        item = self.item(row, 0)
+        value = item.data(self._NATURAL_ORDER_ROLE) if item else None
+        return value if value is not None else row
+
+    def _make_sort_key_fn(self, column: int):
+        """숫자로만 이루어진 컬럼은 숫자 비교, 그 외는 대소문자 구분 없는
+        문자열 비교로 정렬 키를 만든다."""
+        raw_values = [self._sort_value(row, column) for row in range(self.rowCount())]
+        if self._is_numeric_column(raw_values):
+            return lambda row: self._to_sort_float(raw_values[row])
+        return lambda row: raw_values[row].casefold()
+
+    def _sort_value(self, row: int, column: int) -> str:
+        """정렬 키의 원본 문자열. 체크박스 셀 위젯(블루프린트 목록의 선택
+        컬럼 등)은 체크 상태를 값으로 쓰고, 그 외 위젯만 있고 텍스트가 없는
+        컬럼(실행/삭제 버튼 등)은 정렬할 값이 없어 빈 문자열(=순서 불변)을
+        반환한다."""
+        widget = self.cellWidget(row, column)
+        if widget is not None:
+            checkbox = widget if isinstance(widget, QCheckBox) else widget.findChild(QCheckBox)
+            if checkbox is None:
+                return ""
+            return "1" if checkbox.isChecked() else "0"
+        item = self.item(row, column)
+        return item.text() if item else ""
+
+    @staticmethod
+    def _parse_sort_float(value: str):
+        """"0.45s"/"123s" 처럼 숫자 뒤에 단위 접미사가 붙은 셀도 숫자로 인식하도록
+        끝의 비숫자 문자를 떼어낸 뒤 파싱한다(Avg Response/Duration 컬럼 등)."""
+        try:
+            stripped = re.sub(r"[^0-9.\-]+$", "", value.replace(",", ""))
+            return float(stripped)
+        except ValueError:
+            return None
+
+    def _is_numeric_column(self, values: list) -> bool:
+        non_empty = [v for v in values if v != ""]
+        if not non_empty:
+            return False
+        return all(self._parse_sort_float(v) is not None for v in non_empty)
+
+    def _to_sort_float(self, value: str) -> float:
+        if value == "":
+            return float("-inf")
+        parsed = self._parse_sort_float(value)
+        return parsed if parsed is not None else float("-inf")
+
+    def _reorder_rows(self, new_order: list) -> None:
+        """new_order[i] = 새 i번째 행이 될 기존 행 인덱스. QTableWidgetItem과
+        setCellWidget 위젯을 함께 옮긴다 — Qt의 sortItems()는 cellWidget을
+        행과 함께 옮겨주지 않는 한계가 있어(예: 스케줄러 실행 버튼, 블루프린트
+        체크박스가 정렬 후 엉뚱한 행에 남는 문제) 직접 재배치한다."""
+        if new_order == list(range(self.rowCount())):
+            return
+        col_count = self.columnCount()
+        self._reordering = True
+        try:
+            moved = [
+                (
+                    [self.takeItem(old_row, col) for col in range(col_count)],
+                    [self._take_cell_widget(old_row, col) for col in range(col_count)],
+                )
+                for old_row in new_order
+            ]
+            for new_row, (items, widgets) in enumerate(moved):
+                for col, item in enumerate(items):
+                    if item is not None:
+                        self.setItem(new_row, col, item)
+                for col, widget in enumerate(widgets):
+                    if widget is not None:
+                        self.setCellWidget(new_row, col, widget)
+        finally:
+            self._reordering = False
+        self._apply_own_row_visibility()
+
+    def _take_cell_widget(self, row: int, col: int):
+        """cellWidget을 삭제 없이 셀에서 분리한다. QTableWidget.removeCellWidget()은
+        내부적으로 위젯을 deleteLater()로 예약해버려(Qt 자체 동작 — 실측 확인함)
+        같은 위젯 인스턴스를 다른 행에 재배치해도 잠시 후 사라지는 버그가
+        생긴다. 아직 처리되지 않은 삭제 이벤트를 즉시 취소해 재사용을 안전하게
+        한다."""
+        widget = self.cellWidget(row, col)
+        if widget is not None:
+            self.removeCellWidget(row, col)
+            QCoreApplication.removePostedEvents(widget, QEvent.Type.DeferredDelete)
+        return widget
+
+    def _show_column_filter_menu(self, logical: int) -> None:
+        """헤더 필터 아이콘 클릭 시 고유값 체크리스트 팝업을 연다."""
+        values = self._unique_values_for_column(logical)
+        allowed = self._column_filters.get(logical, set(values))
+        container, list_widget, reset_btn, ok_btn = _build_column_filter_widget(values, allowed)
+
+        menu = QMenu(self)
+        menu.setStyleSheet(self.theme.COLUMN_FILTER_MENU_QSS)
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(container)
+        menu.addAction(action)
+
+        def apply_and_close():
+            checked = {
+                list_widget.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(list_widget.count())
+                if list_widget.item(i).checkState() == Qt.CheckState.Checked
+            }
+            if checked == set(values):
+                self._column_filters.pop(logical, None)
+            else:
+                self._column_filters[logical] = checked
+            self._on_column_filters_changed(logical)
+            menu.close()
+
+        def reset_and_close():
+            self._column_filters.pop(logical, None)
+            self._on_column_filters_changed(logical)
+            menu.close()
+
+        ok_btn.clicked.connect(apply_and_close)
+        reset_btn.clicked.connect(reset_and_close)
+
+        hdr = self.horizontalHeader()
+        pos = hdr.mapToGlobal(QPoint(hdr.sectionViewportPosition(logical), hdr.height()))
+        menu.exec(pos)
+
+    # ── Qt 이벤트 오버라이드 ──────────────────────────
+    def keyPressEvent(self, event):
+        """↑/↓로 current 행이 바뀌면 rowKeyNavigated를 emit한다 — NoSelection
+        테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도 같은 핸들러를
+        재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        previous_row = self.currentRow()
+        super().keyPressEvent(event)
+        if event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            return
+        row = self.currentRow()
+        if row == previous_row:
+            return
+        item = self.item(row, max(self.currentColumn(), 0)) or self.item(row, 0)
+        if item is not None:
+            self.rowKeyNavigated.emit(item)
+
+    def resizeEvent(self, event):
+        """
+        창 크기 변경 시:
+          - equal 상태이면 재분배 (초기 상태 유지)
+          - 사용자가 이미 드래그한 경우 컬럼 너비 그대로 유지
+        """
+        super().resizeEvent(event)
+        if self._is_equal_state and self.columnCount() > 0:
+            self._redistribute()
+
+    def setColumnCount(self, count: int):
+        """컬럼 수 확정 직후 Equal 재분배 예약."""
+        super().setColumnCount(count)
+        self._min_widths_dirty = True
+        if count > 0:
+            self._is_equal_state = True
+            QTimer.singleShot(0, self._redistribute)
+
+    # ── StyleSheet ────────────────────────────────────
+    def _apply_style(self):
+        p = self._col_padding
+        self.setShowGrid(False)
+        self.setStyleSheet(f"""
+            QTableWidget::item {{
+                padding-left:  {p}px;
+                padding-right: {p}px;
+                border-right: 1px solid {self.theme.BORDER};
+            }}
+            QTableWidget::item:last-child {{
+                border-right: none;
+            }}
+            QHeaderView::section {{
+                background: {self.theme.BG_PRIMARY}; color: {self.theme.TEXT_MUTED};
+                border: none;
+                border-right: 1px solid {self.theme.BORDER};
+                border-bottom: 1px solid {self.theme.BORDER};
+                padding: 6px {p}px;
+                font-size: 10px; letter-spacing: 1px;
+            }}
+            QHeaderView::section:last {{
+                border-right: none;
+            }}
+            {self.theme._scrollbar_qss(6, 3, 8, 4, h_handle=self._hscroll_handle)}
+        """)
+
+class Divider(QFrame):
+    def __init__(self, orientation="h", parent=None):
+        super().__init__(parent)
+        self.theme = THEME()
+        self.setFrameShape(QFrame.Shape.HLine if orientation == "h" else QFrame.Shape.VLine)
+        self.setStyleSheet(f"color:{self.theme.BORDER}; background:{self.theme.BORDER};")
+        if orientation == "h":
+            self.setFixedHeight(1)
+        else:
+            self.setFixedWidth(1)
+
+
+HELP_ICON_SIZE = 14   # 카드명(12px) 글자 높이에 맞춘 도움말 아이콘 한 변(px)
+
+
+class HelpIcon(QLabel):
+    """카드명 오른쪽에 두는 도움말(?) 아이콘 — 마우스를 올리면 쉬운 말 설명이 뜬다."""
+
+    def __init__(self, help_text: str, parent=None):
+        super().__init__(parent)
+        theme = THEME()
+        self.setPixmap(_load_svg_icon("circle-help", theme.TEXT_MUTED, "2", HELP_ICON_SIZE).pixmap(HELP_ICON_SIZE))
+        self.setToolTip(help_text)
+        self.setAccessibleName("도움말")
+        # 크기를 고정해 제목 행(QHBoxLayout)이 세로로 늘어나 제목선을 밀어내지 않게 한다
+        self.setFixedSize(HELP_ICON_SIZE, HELP_ICON_SIZE)
+        # 카드의 셀렉터 없는 스타일시트(배경·테두리)가 이 라벨에 번지지 않게 한다.
+        # 타입 셀렉터로 좁히는 이유는 툴팁(QTipLabel)이 툴팁을 띄운 위젯의 스타일시트를
+        # 물려받기 때문 — 셀렉터가 없으면 툴팁까지 배경·테두리가 사라진다.
+        self.setStyleSheet("HelpIcon { background:transparent; border:none; }")
+
+
+class _CardLayout(QVBoxLayout):
+    """카드 전용 세로 레이아웃 — 세로로 늘어나는 본문(차트 등)이 없으면 내용을 sizeHint
+    높이로 위쪽에 모아 배치해, 이웃 카드 때문에 카드가 늘어나도 제목선이 밀리지 않게 한다."""
+
+    def setGeometry(self, rect: QRect):
+        if not any(self._grows_vertically(self.itemAt(i)) for i in range(self.count())):
+            rect = QRect(rect.x(), rect.y(), rect.width(), min(rect.height(), self.sizeHint().height()))
+        super().setGeometry(rect)
+
+    @staticmethod
+    def _grows_vertically(item) -> bool:
+        widget = item.widget()
+        if widget is None:
+            return bool(item.expandingDirections() & Qt.Orientation.Vertical)
+        policy = widget.sizePolicy().verticalPolicy().value
+        if widget.layout() is not None and not policy & QSizePolicy.PolicyFlag.ExpandFlag.value:
+            return bool(widget.layout().expandingDirections() & Qt.Orientation.Vertical)
+        can_grow = policy & QSizePolicy.PolicyFlag.GrowFlag.value
+        return bool(can_grow) and widget.maximumHeight() > widget.minimumHeight()
+
+
+class _CenteredLineSplitterHandle(QSplitterHandle):
+    """세로(Vertical) 스플리터 전용 핸들 — Qt QSS의 ``QSplitter::handle:vertical``은
+    ``:horizontal``과 달리 height/margin이 적용되지 않아 handleWidth 영역 전체가
+    두꺼운 단색 막대로 그려진다(Qt 함정, 여러 QSS 조합으로 재현·확인함). 위아래
+    여백이 항상 같도록 직접 paintEvent로 handleWidth 정중앙에 1px 선만 그린다."""
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        y = (self.height() - 1) // 2
+        painter.fillRect(0, y, self.width(), 1, QColor(THEME().BORDER_LIGHT))
+
+
+class CenteredHandleSplitter(QSplitter):
+    """Vertical 방향일 때 _CenteredLineSplitterHandle을 사용하는 QSplitter.
+    Horizontal은 GLOBAL_QSS의 QSplitter::handle:horizontal이 이미 정상 동작하므로
+    기본 핸들을 그대로 쓴다."""
+    def createHandle(self):
+        if self.orientation() == Qt.Orientation.Vertical:
+            return _CenteredLineSplitterHandle(self.orientation(), self)
+        return super().createHandle()
+
+
+class BoundNoticeMixin:
+    """상한/하한에서 더 못 움직일 때 QToolTip 말풍선으로 알려주는 스핀박스 동작.
+    QSpinBox/QDoubleSpinBox 등 stepBy()를 갖는 베이스와 다중 상속으로 합성해서 쓴다.
+    상한 초과와 하한 미만은 서로 별개의 규칙일 수 있으므로 메시지를 방향별로 따로
+    설정한다(set_upper_bound_message/set_lower_bound_message). 메시지를 설정하지
+    않은 방향은 그 경계가 특별히 제한된 게 아니라는 뜻이므로 Qt 기본 동작(경계에서
+    비활성화, 알림 없음)을 그대로 따른다."""
+
+    _upper_bound_message = None
+    _lower_bound_message = None
+
+    def set_upper_bound_message(self, message):
+        self._upper_bound_message = message
+
+    def set_lower_bound_message(self, message):
+        self._lower_bound_message = message
+
+    def stepEnabled(self):
+        # Qt는 value()가 maximum()/minimum()에 닿으면 해당 방향 스텝을 자동으로
+        # 비활성화하는데, 이 플래그는 버튼 클릭·↑/↓ 키·휠 이벤트가 stepBy()를
+        # 호출할지 자체를 막는 게이트다 — 그대로 두면 이미 경계에 있을 때 클릭해도
+        # stepBy()가 호출되지 않아 말풍선을 띄울 기회 자체가 없다. 메시지가 설정된
+        # 방향만 항상 활성 상태로 둬서 클릭이 stepBy()까지 도달하게 한다.
+        flags = super().stepEnabled()
+        if self._upper_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepUpEnabled
+        if self._lower_bound_message:
+            flags |= QAbstractSpinBox.StepEnabledFlag.StepDownEnabled
+        return flags
+
+    def stepBy(self, steps):
+        message = None
+        if steps > 0 and self._upper_bound_message and self.value() >= self.maximum():
+            message = self._upper_bound_message
+        elif steps < 0 and self._lower_bound_message and self.value() <= self.minimum():
+            message = self._lower_bound_message
+        super().stepBy(steps)
+        if message:
+            QToolTip.showText(self.mapToGlobal(QPoint(0, self.height())), message, self)
+
+
+class BoundNoticeSpinBox(BoundNoticeMixin, QSpinBox):
+    pass
+
+
+class BoundNoticeDoubleSpinBox(BoundNoticeMixin, QDoubleSpinBox):
+    """BoundNoticeSpinBox의 실수(Delay) 버전 — 로직 동일."""
+    pass
+
+
+def apply_render_safety_limits(thread_spin, delay_spin, limits: dict) -> None:
+    """thread_spin/delay_spin(둘 다 BoundNoticeMixin 계열)에 렌더링(html_render)
+    안전 상한/하한을 적용한다. limits는 customized_settings.get_render_safety_limits()
+    의 반환값 — style.py는 설정값을 직접 읽지 않고 호출부가 넘겨준 값만 사용한다."""
+    thread_spin.setMaximum(limits['max_threads'])
+    delay_spin.setMinimum(limits['min_delay'])
+    thread_spin.set_upper_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Threads를 최대 {limits['max_threads']}개까지만 허용합니다."
+    )
+    delay_spin.set_lower_bound_message(
+        f"⚠ 렌더링(Selenium) 수집은 안전을 위해 Delay를 최소 {limits['min_delay']}s까지만 허용합니다."
+    )
+
+
+def reset_render_safety_limits(thread_spin, delay_spin, default_max_threads, default_min_delay) -> None:
+    """apply_render_safety_limits()로 좁힌 범위를 원래 기본 범위로 되돌린다."""
+    thread_spin.setMaximum(default_max_threads)
+    delay_spin.setMinimum(default_min_delay)
+    thread_spin.set_upper_bound_message(None)
+    delay_spin.set_lower_bound_message(None)
+
+
+class Parts:
+    def __init__(self):
+        self.theme = THEME()
+
+    def make_label(self, text, color=None, size=13, bold=False):
+        if color is None:
+            color = self.theme.TEXT_SECONDARY
+
+        lbl = QLabel(text)
+        lbl.setContentsMargins(0, 0, 5, 0)
+        weight = "bold" if bold else "normal"
+        lbl.setStyleSheet(f"""
+            color: {color}; 
+            font-size: {size}px; 
+            font-weight: {weight}; 
+            background: transparent; 
+            border: none;
+        """)
+        return lbl
+
+
+    def count_badge(self, text: str, color: str) -> QLabel:
+        """행 수 배지(카운트 라벨) — MonitorPageSingle의 raw/정제/비교 카운트
+        라벨, DashboardPageSingle의 수집 모니터링 카운트 라벨이 공유하는
+        스타일."""
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"color:{color}; background:{self.theme.BG_HOVER}; "
+            f"padding:2px 8px; border-radius:10px; font-size:11px;"
+        )
+        return lbl
+
+
+    def card_widget(self, title="", parent=None, help_text=None):
+        """어두운 테두리 카드. (widget, inner_layout) 반환. help_text를 주면 카드명
+        오른쪽에 도움말 아이콘(HelpIcon)을 두고 그 설명을 툴팁으로 보여준다."""
+        w = QWidget(parent)
+        w.setStyleSheet(self.theme.PROXY_CARD_ENABLED_QSS)
+        outer = _CardLayout(w)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(8)
+        if title:
+            lbl = self.make_label(title.upper(), self.theme.TEXT_SECONDARY, 12)
+            lbl.setStyleSheet(lbl.styleSheet() + " letter-spacing:1px;")
+            # 이웃 카드가 더 커서 이 카드가 강제로 늘어날 때, 여분 공간이 제목
+            # 라벨까지 비례 배분되면 구분선이 아래로 밀린다. 라벨을 고정 높이로
+            # 만들어 여분 공간이 본문 콘텐츠 쪽으로만 흡수되게 한다.
+            lbl.setFixedHeight(lbl.sizeHint().height())
+            if help_text:
+                # 제목 줄을 높이가 고정된 위젯으로 감싸 카드가 늘어날 때 세로로 함께
+                # 늘어나(제목선이 밀림) 않게 한다. 카드의 셀렉터 없는 QWidget 스타일
+                # (배경·테두리)는 이 위젯에 번지지 않도록 개체 이름으로 덮어쓴다.
+                title_bar = QWidget()
+                title_bar.setObjectName("cardTitleBar")
+                title_bar.setStyleSheet("QWidget#cardTitleBar { background:transparent; border:none; }")
+                title_bar.setFixedHeight(lbl.maximumHeight())
+                title_row = QHBoxLayout(title_bar)
+                title_row.setContentsMargins(0, 0, 0, 0)
+                # 카드명과 아이콘 사이 간격은 make_label()의 오른쪽 여백(5px)만 남긴다
+                title_row.setSpacing(0)
+                title_row.addWidget(lbl)
+                title_row.addWidget(HelpIcon(help_text), 0, Qt.AlignmentFlag.AlignVCenter)
+                title_row.addStretch()
+                outer.addWidget(title_bar)
+            else:
+                outer.addWidget(lbl)
+            outer.addWidget(Divider())
+        return w, outer
+
+    def action_btn(self, text, color=None, hover=None, parent=None):
+        """강조형 주요 액션 버튼 생성"""
+        if color is None:
+            color = self.theme.ACCENT
+        if hover is None:
+            hover = self.theme.ACCENT_HOVER
+
+        btn = QPushButton(text, parent)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {color}; color: white;
+                border: none; border-radius: 6px;
+                padding: 6px 14px; font-size: 12px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {hover}; }}
+            QPushButton:disabled {{
+                background: {self.theme.BG_HOVER};
+                color: {self.theme.TEXT_MUTED};
+                border: 1px solid {self.theme.BORDER};
+            }}
+        """)
+        return btn
+
+
+    def outline_btn(self, text, parent=None):
+        btn = QPushButton(text, parent)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background:transparent; color:{self.theme.TEXT_SECONDARY};
+                border:1px solid {self.theme.BORDER_LIGHT}; border-radius:6px;
+                padding:5px 12px; font-size:12px;
+            }}
+            QPushButton:hover {{ color:{self.theme.TEXT_PRIMARY}; border-color:{self.theme.TEXT_MUTED}; }}
+            QPushButton:disabled {{
+                background:{self.theme.BG_HOVER};
+                color:{self.theme.TEXT_MUTED};
+                border:1px solid {self.theme.BORDER};
+            }}
+        """)
+        return btn
+
+    def settings_btn(self, text, parent=None):
+        """보조 설정 버튼(예: "⚙ 추출 설정") — 카드 툴바에서 반복 사용"""
+        btn = QPushButton(text, parent)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background:{self.theme.BG_SECONDARY}; color:{self.theme.TEXT_SECONDARY};
+                border:1px solid {self.theme.BORDER_LIGHT}; border-radius:6px;
+                padding:5px 12px; font-size:12px;
+            }}
+            QPushButton:hover {{
+                background:{self.theme.BG_HOVER}; color:{self.theme.ACCENT_LIGHT};
+                border-color:{self.theme.ACCENT_LIGHT};
+            }}
+        """)
+        return btn
+
+
+# ══════════════════════════════════════════════════════
+#  CLICKABLE RULE ROW  (정제 규칙 체크박스 행 — 블록 클릭으로 토글)
+# ══════════════════════════════════════════════════════
+class ClickableRuleRow(QWidget):
+    """
+    정제 규칙 행 위젯. 블록 어디를 클릭해도 내부 QCheckBox가 토글됩니다.
+    QCheckBox 자체 클릭은 기본 동작을 그대로 사용하고
+    블록의 나머지 영역 클릭 시 checkbox.toggle()을 호출합니다.
+    """
+    def __init__(self, checkbox: QCheckBox, parent=None):
+        super().__init__(parent)
+        self._cb = checkbox
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        """체크박스 영역이 아닌 곳 클릭 시 체크박스 토글"""
+        cb_rect = self._cb.rect().translated(self._cb.pos())
+        if cb_rect.contains(event.pos()):
+            super().mousePressEvent(event)
+            return
+        self._cb.toggle()
+        event.accept()
+
+
+# ══════════════════════════════════════════════════════
+#  정제 규칙 체크박스 행 빌더 — MonitorPageSingle "② 정제 규칙 설정" 탭과
+#  스케줄 등록 다이얼로그의 정제 규칙 설정이 공유하는 빌더
+# ══════════════════════════════════════════════════════
+# 이 리스트 순서는 화면 표시(위→아래) 순서일 뿐, preprocess.DataRefiner의 실제
+# 처리 순서와는 무관하다(2026-07-17, custom_rule 체크 시 remove_null_row가
+# 자동으로 켜지는 흐름이 "위 항목이 아래 항목 때문에 반응"하는 것처럼 보여
+# UX상 어색하다는 피드백으로 custom_rule을 remove_null_row보다 위로 이동 —
+# 실제 처리 순서는 여전히 remove_null_row가 먼저다, preprocess.py 참고).
+REFINE_RULE_DEFS = [
+    ("custom_rule",      "커스텀 정제 규칙 적용",
+     "사용자 정의 정제 함수를 적용합니다."),
+    ("remove_null_row",  "모든 필드 null 행 제거",
+     "모든 필드가 null·빈 값인 행만 삭제합니다."),
+    ("trim_whitespace",  "문자열 공백 trim",
+     "문자열 필드의 앞뒤 공백 및 줄바꿈을 제거합니다."),
+    ("remove_duplicate", "중복 행 제거",
+     "모든 컬럼 값이 동일한 행을 1개만 유지합니다."),
+    ("drop_columns",     "제외 필드 지정",
+     "추출에 불필요한 컬럼을 선택하여 제외합니다."),
+    ("fill_null",        "결측값(N/A) 치환",
+     "삭제 대상 외 결측값을 지정한 값으로 대체합니다."),
+    ("cast_numeric",     "숫자 타입 변환",
+     "문자열로 수집된 숫자 필드를 int / float으로 변환합니다."),
+]
+
+
+def build_refine_rule_rows(
+    parts,
+    container_layout,
+    checkboxes: dict,
+    rules: dict,
+    *,
+    include_keys: list | None = None,
+    on_drop_columns_click=None,
+    on_drop_columns_check=None,
+    on_drop_columns_warn=None,
+    drop_columns_initial_summary: str = "",
+    fit_desc_one_line: bool = False,
+) -> dict:
+    """정제 규칙 체크박스 행들을 container_layout에 추가합니다.
+
+    Args:
+        parts: Parts 인스턴스 (색상은 parts.theme에서 참조).
+        container_layout: 행을 addWidget할 레이아웃.
+        checkboxes: {key: QCheckBox}를 채워 넣을 dict (호출부가 준비해 전달).
+        rules: 초기 체크 상태 {key: bool}.
+        include_keys: None이면 REFINE_RULE_DEFS 전체(7개), 리스트면 그 키만
+            REFINE_RULE_DEFS 순서를 유지해 표시합니다(예: drop_columns 제외).
+        on_drop_columns_click: "⚙ 필드 선택" 버튼 클릭 핸들러
+            (drop_columns가 include_keys에 포함될 때만 사용).
+        on_drop_columns_check: drop_columns 체크박스를 켜기 직전 호출되는
+            부작용 없는 predicate — False면 체크를 되돌립니다.
+        on_drop_columns_warn: 체크가 되돌려진 "직후" 호출되는 안내 콜백
+            (체크박스·버튼·라벨이 이미 꺼진 상태로 반영된 뒤 경고가 뜨도록
+            순서를 맞추기 위해 check와 분리되어 있습니다).
+        drop_columns_initial_summary: drop_columns 요약 라벨의 초기 텍스트.
+        fit_desc_one_line: True면 컨트롤이 text_col과 행 폭을 나눠 쓰는
+            drop_columns의 설명 라벨에 실측 폭만큼 최소폭을 지정해 한 줄로
+            표시되도록 합니다.
+            컨테이너 폭이 넉넉한 호출부(MonitorPageSingle 탭)에서만 켜야 합니다 —
+            폭이 좁게 제한된 호출부(스케줄 등록 패널, 260~400px)에서 켜면
+            최소폭 요구가 패널 최대폭을 넘어 레이아웃이 깨질 수 있습니다.
+
+    Returns:
+        {"fill_null_input": QLineEdit | None,
+         "drop_columns_btn": QPushButton | None,
+         "drop_columns_summary_lbl": QLabel | None}
+    """
+    theme = parts.theme
+    result = {"fill_null_input": None, "drop_columns_btn": None, "drop_columns_summary_lbl": None}
+    rows_with_control = ("drop_columns", "fill_null")
+
+    for key, title, desc_text in REFINE_RULE_DEFS:
+        if include_keys is not None and key not in include_keys:
+            continue
+
+        cb = QCheckBox()
+        cb.setChecked(rules.get(key, False))
+        cb.setFixedSize(18, 18)
+        checkboxes[key] = cb
+
+        row_w = ClickableRuleRow(checkbox=cb)
+        row_w.setStyleSheet(
+            f"background:{theme.BG_PRIMARY}; border-radius:6px; border:1px solid {theme.BORDER};"
+        )
+        row_l = QHBoxLayout(row_w)
+        row_l.setContentsMargins(12, 10, 12, 10)
+        row_l.setSpacing(12)
+        # 정렬 플래그 없이 추가하면 고정크기 위젯은 행 전체 높이의 세로 가운데로
+        # 배치된다 — fill_null처럼 체크 시 text_col 아래에 위젯이 추가되어 행
+        # 높이가 늘어나는 경우, 체크박스가 그 가운데 정렬을 따라 아래로 밀려난다.
+        # 상단 고정으로 체크 상태와 무관하게 위치를 유지한다.
+        row_l.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = parts.make_label(title, theme.TEXT_PRIMARY, 12)
+        title_lbl.setStyleSheet(
+            f"color:{theme.TEXT_PRIMARY}; font-size:12px; font-weight:bold;"
+            f" background:transparent; border:none;"
+        )
+        title_lbl.setWordWrap(True)
+        desc_lbl = parts.make_label(desc_text, theme.TEXT_MUTED, 11)
+        desc_lbl.setStyleSheet(
+            f"color:{theme.TEXT_MUTED}; font-size:11px; background:transparent; border:none;"
+        )
+        # 좁은 컨테이너(스케줄 등록의 정제 규칙 패널 등)에서 텍스트가 잘리지
+        # 않도록 줄바꿈 허용 — MonitorPageSingle 탭처럼 폭이 넉넉한 곳에서도 무해함
+        desc_lbl.setWordWrap(True)
+        text_col.addWidget(title_lbl)
+        text_col.addWidget(desc_lbl)
+
+        has_control = key in rows_with_control
+        # row_l에서 text_col과 폭을 나눠 써야 하는 행은 drop_columns뿐이다(버튼+
+        # 요약 라벨이 text_col 옆에 남아있음) — fill_null의 입력창은 이미 text_col
+        # 안(상세 설명 아래)으로 옮겨졌으므로 더 이상 해당하지 않는다. stretch=0으로
+        # 눌리면 wordWrap 설명 라벨이 가용 폭을 다 쓰지 못하고 일찍 줄바꿈된다.
+        needs_row_space = key == "drop_columns"
+        if needs_row_space and fit_desc_one_line:
+            # 컨트롤이 붙는 행은 text_col의 stretch factor가 0이라 wordWrap
+            # 라벨의 sizeHint()가 좁게 잡혀 컨테이너 폭이 넉넉해도 줄바꿈됨 —
+            # 실측 텍스트 폭을 최소폭으로 지정해 한 줄 렌더링을 강제
+            desc_lbl.setMinimumWidth(QFontMetrics(desc_lbl.font()).horizontalAdvance(desc_text) + 4)
+        row_l.addLayout(text_col, 0 if needs_row_space else 1)
+        if needs_row_space:
+            row_l.addSpacing(16)
+
+        if key == "fill_null":
+            fill_input = QLineEdit()
+            fill_input.setPlaceholderText("비워두면 빈 값으로 채워집니다")
+            fill_input.setFixedWidth(220)
+            fill_input.setVisible(cb.isChecked())
+            fill_input.setStyleSheet(
+                f"background:{theme.BG_SECONDARY}; color:{theme.TEXT_PRIMARY}; "
+                f"border:1px solid {theme.BORDER}; border-radius:4px; padding:3px 8px; font-size:11px;"
+            )
+            cb.stateChanged.connect(
+                lambda state, w=fill_input: w.setVisible(state == Qt.CheckState.Checked.value)
+            )
+            # QVBoxLayout(text_col)에 고정폭 위젯을 직접 addWidget하면 그 위젯의
+            # 고정폭이 text_col 전체의 최대폭으로 전파되어(desc_lbl까지 그 폭 안에서만
+            # 줄바꿈됨) 설명 라벨이 가용 폭을 못 쓰고 일찍 줄바꿈된다 — 가로
+            # 서브레이아웃 + addStretch()로 감싸 폭 제한이 text_col에 전파되지 않게 한다.
+            fill_input_row = QHBoxLayout()
+            fill_input_row.addWidget(fill_input)
+            fill_input_row.addStretch()
+            text_col.addLayout(fill_input_row)
+            result["fill_null_input"] = fill_input
+
+        if key == "drop_columns":
+            drop_btn = parts.settings_btn("⚙  필드 선택")
+            drop_btn.setVisible(cb.isChecked())
+            if on_drop_columns_click is not None:
+                drop_btn.clicked.connect(on_drop_columns_click)
+            row_l.addWidget(drop_btn)
+
+            drop_summary_lbl = parts.make_label(drop_columns_initial_summary, theme.TEXT_MUTED, 11)
+            drop_summary_lbl.setVisible(cb.isChecked())
+            row_l.addWidget(drop_summary_lbl)
+
+            def _on_drop_columns_toggled(state, cb=cb, b=drop_btn, l=drop_summary_lbl):
+                checked = state == Qt.CheckState.Checked.value
+                if checked and on_drop_columns_check is not None and not on_drop_columns_check():
+                    # 경고가 뜨기 전에 체크박스를 먼저 되돌림 — setChecked(False)가
+                    # 이 핸들러를 재귀 호출해 버튼/라벨 숨김까지 먼저 끝낸 뒤에 경고 표시
+                    cb.setChecked(False)
+                    if on_drop_columns_warn is not None:
+                        on_drop_columns_warn()
+                    return
+                b.setVisible(checked)
+                l.setVisible(checked)
+
+            cb.stateChanged.connect(_on_drop_columns_toggled)
+            result["drop_columns_btn"] = drop_btn
+            result["drop_columns_summary_lbl"] = drop_summary_lbl
+
+        if has_control:
+            row_l.addStretch()
+
+        container_layout.addWidget(row_w)
+
+    return result
