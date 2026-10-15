@@ -4,11 +4,11 @@
 > 이 문서는 아키텍처·릴리즈·보안·심각 버그(대량/전체 데이터 유실, 영구적 상태 손상·서비스
 > 정지, 공통 경로 크래시)급 항목만 남긴 엄격 기준 정리본입니다(2026-09-28). 경미한 이슈의
 > 전체 이력은 git 이력으로 복구 가능합니다.
-> 표 안의 파일 경로·문서명은 작성 시점의 기록이므로 보존합니다(옛 `guidelines/` 문서는 2026-10-05에 `docs/`로 통합됐습니다).
+> 표 안의 파일 경로·문서명은 작성 시점의 기록이므로 보존합니다(옛 `guidelines/` 문서는 2026-10-05에 `docs/`로 통합됐고, 최상위 `conf.py`·`layout/`·`trigger/`·`scraper/` 등은 2026-10-15에 `harvest/` 패키지로 옮겨졌습니다. 이전 경로 대응은 [MODULE_SPEC.md](MODULE_SPEC.md) 참고).
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-09-28
-- **현황**: 해결 14건 · 미해결 0건 · 보류 1건
+- **최신 갱신**: 2026-10-15
+- **현황**: 해결 14건 · 미해결 1건 · 보류 1건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -37,12 +37,18 @@
 
 ---
 
-## 2. 미해결·보류 이슈 (1건)
+## 2. 미해결·보류 이슈 (2건)
+
+### ㉚ 이미 배포된 앱의 옛 플러그인 사본이 `import engine`으로 실패 — ❌ 미해결 (2026-10-15)
+
+- **위치**: 고객 PC의 `%LOCALAPPDATA%\<AppName>\login\000021.py`(개발 폴더의 같은 이름 파일은 `from harvest.crawler import engine`으로 수정함)
+- **상세**: 폴더 재구성으로 `engine`이 최상위 모듈이 아니라 `harvest.crawler.engine`이 됐다. 플러그인은 앱 데이터 폴더에 최초 1회 시딩된 뒤 그 사본이 우선하므로, 업그레이드 설치만으로는 옛 사본이 교체되지 않는다. 옛 사본(`import engine`을 쓰는 로그인 플러그인)은 `ModuleNotFoundError`로 로드에 실패해 해당 고객의 로그인 수집이 중단된다. 나머지 플러그인(render·refine·다른 login)은 프로젝트 모듈을 import하지 않아 영향이 없다.
+- **필요 조치**: 해당 seq_no를 쓰는 고객의 앱 데이터 폴더 사본을 새 파일로 교체한다. 호환용 최상위 `engine` 모듈을 두는 방안은 검토했으나 루트에 파일을 남기지 않기로 해 채택하지 않았다.
 
 ### ㉙ 로그인 인증 수집의 스케줄러 연동 미구현 — ⏸ 보류 (2026-07-23)
 
-- **위치**: `trigger/toolbar.py`의 `GlobalToolbarTriggers._actual_start()`(반영됨, `a0be22f`) vs
-  `trigger/scheduler.py`의 `SchedulerPageTriggers._apply_schedule()`/`_run_now()`(미반영)
+- **위치**: `harvest/gui/trigger/toolbar.py`의 `GlobalToolbarTriggers._actual_start()`(반영됨, `a0be22f`) vs
+  `harvest/gui/trigger/scheduler.py`의 `SchedulerPageTriggers._apply_schedule()`/`_run_now()`(미반영)
 - **상세**: 매뉴얼 "시작" 흐름은 인증 관리 페이지(`AuthManagerPage`)에 입력된 로그인 정보
   (`loginUrl`/`id`/`password`)를 `_actual_start()`가 `task["conditions"]["login"]`에 실시간
   반영하도록 구현됨(`request_info.json` 파일에는 쓰지 않고 이번 실행 task에만 반영). 반면

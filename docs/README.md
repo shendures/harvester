@@ -11,7 +11,7 @@
   - 저장 형식: CSV·JSON 파일, MongoDB·MySQL·PostgreSQL
   - Windows용 exe와 설치 프로그램 빌드 스크립트
 - 제공하지 않는 범위
-  - 블루프린트 작성은 앱 밖의 오프라인 도구(`generator_conditions.html`)와 DB가 맡는다. 앱 안에는 작성 화면이 없다.
+  - 블루프린트 작성은 앱 밖의 오프라인 도구(`assets/generator_conditions.html`)와 DB가 맡는다. 앱 안에는 작성 화면이 없다.
   - 로그인이 필요한 사이트는 Selenium 렌더링 수집(`html_render`)에서만 지원한다.
   - 스케줄 실행에서의 로그인 수집은 미구현이다([ISSUES.md](ISSUES.md) ㉙ 보류).
   - 자동화 테스트 코드는 없다.

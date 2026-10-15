@@ -6,7 +6,7 @@
 > [README.md](README.md)에서 별도 관리되므로 중복 없이 모듈 단위 책임과 모듈 간
 > 의존·연동 관계에 집중합니다.
 
-- **작성 기준일**: 2026-09-14 (코드를 직접 읽고 확인한 내용 기준)
+- **작성 기준일**: 2026-09-14 (코드를 직접 읽고 확인한 내용 기준). 파일 경로는 2026-10-15 폴더 재구성을 반영했습니다.
 
 ---
 
@@ -15,30 +15,45 @@
 **목적**: 특정 기능을 수정하려는 개발자가 어떤 모듈을 건드려야 하는지, 그 수정이
 어떤 다른 모듈에 영향을 줄 수 있는지 빠르게 파악하도록 돕습니다.
 
-**범위**: `layout/*`, `trigger/*`, `scraper/*`, `conf.py`, `create_request_info.py`,
-`customized_settings.py`, `db_conn.py`, `engine.py`, `generator_conditions.html`,
-`main.py`, `preprocess.py`, `style.py`, `utility.py`, `worker.py`
+**범위**: `main.py`와 `harvest/` 패키지 전체(`app.py`, `core/`, `crawler/`, `gui/`, `tools/`), `assets/generator_conditions.html`
 
-**표기 안내**: 요청 목록의 `items.py`/`middlewares.py`/`pipelines.py`는 저장소
-루트가 아니라 `scraper/` 패키지 내부 파일이며(2.7절에서 함께 다룸), `customized_
-setting.py`→`customized_settings.py`, `generator_condition.html`→`generator_
-conditions.html`이 실제 파일명(모두 복수형)입니다.
+**폴더 구조**
+
+```
+Harvest/
+├─ main.py                  # 실행 진입점(freeze_support + harvest.app.main). PyInstaller 진입 스크립트 겸용
+├─ scrapy.cfg               # 루트 고정. default = harvest.crawler.scraper.settings
+├─ harvest/
+│  ├─ app.py                # QApplication 구성, 단일 실행 감지, 레이아웃 선택
+│  ├─ core/                 # 공용·데이터 계층: conf, customized_settings, utility, preprocess, db_conn
+│  ├─ crawler/              # 크롤링: engine, glean, worker, scraper/(settings·items·middlewares·pipelines·spiders/)
+│  ├─ gui/                  # GUI: style.py, layout/(single·multi), trigger/
+│  └─ tools/                # 오프라인·빌드 전용: build_manifest, create_request_info
+├─ assets/                  # combine-harvester.ico, icon/, generator_conditions.html
+├─ scripts/                 # build-exe·build-installer(.ps1/.bat), installer.iss, git-setup-*, model-tuner-*
+├─ docs/  reports/
+└─ render/ login/ refine/ env/ request_info.json    # git 미추적 로컬 자원(개발 폴더). 위치 유지
+```
+
+**표기 안내**: 아래 표의 모듈명에서 `harvest.core.`·`harvest.crawler.`·`harvest.gui.` 접두는 생략한 약칭입니다(예: `conf` = `harvest/core/conf.py`, `engine` = `harvest/crawler/engine.py`, `layout`·`trigger`·`style` = `harvest/gui/` 아래). 파일명은 `customized_settings.py`·`generator_conditions.html`처럼 모두 복수형입니다. `items.py`·`middlewares.py`·`pipelines.py`는 저장소 루트가 아니라 `harvest/crawler/scraper/` 내부 파일입니다(2.7절).
 
 ---
 
 ## 2. 모듈별 상세 기능
 
-### 2.1 진입점 — `main.py`
+### 2.1 진입점 — `main.py`, `harvest/app.py`
 
-`QApplication` 생성 → 테마/아이콘 적용 → `QLocalServer`로 중복 실행 방지 →
+루트 `main.py`는 `multiprocessing.freeze_support()`를 호출하고 `harvest.app.main()`을 실행하는 얇은 진입점입니다(PyInstaller 진입 스크립트 겸용, 자식 프로세스가 재import해도 GUI가 뜨지 않도록 `__main__` 가드 안에서만 실행).
+
+`harvest/app.py`의 `main()`: `QApplication` 생성 → 테마/아이콘 적용 → `QLocalServer`로 중복 실행 방지 →
 `conf.BlueprintStorage().list_seq_nos()`로 블루프린트 개수 확인해 `layout.
 MainWindowSingle`(1개) 또는 `layout.multi.MainWindowMulti`(2개 이상) 생성 → 표시.
 
 **의존**: `layout`, `layout.multi`, `conf`, `style`, `utility` · **피의존**: 없음(엔트리포인트).
 
-### 2.2 GUI 레이아웃 — `layout/` 패키지
+### 2.2 GUI 레이아웃 — `harvest/gui/layout/` 패키지
 
-QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger/*` Mixin과
+QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest/gui/trigger/*` Mixin과
 다중상속되어 동작을 위임받습니다. 블루프린트 1개면 `single/*`, 2개 이상이면
 `multi/*`(대부분 `single`을 상속해 훅만 오버라이드)를 사용합니다.
 
@@ -64,10 +79,10 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | multi | `monitor_target_list.py` | `MonitorTargetListPage` | 경량 블루프린트 목록(정제 화면용) |
 | multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택) |
 
-**의존**: `trigger/*`, `style.py`, `conf.py` · **피의존**: `main.py`만 최상위 import.
-**주의**: `scraper/*`·`engine.py`·`worker.py`는 직접 참조하지 않습니다(`trigger/main_window.py` 뒤에 캡슐화).
+**의존**: `harvest/gui/trigger/*`, `harvest/gui/style.py`, `harvest/core/conf.py` · **피의존**: `harvest/app.py`만 최상위 import.
+**주의**: `harvest/crawler/scraper/*`·`harvest/crawler/engine.py`·`harvest/crawler/worker.py`는 직접 참조하지 않습니다(`harvest/gui/trigger/main_window.py` 뒤에 캡슐화).
 
-### 2.3 GUI 이벤트/트리거 — `trigger/` 패키지
+### 2.3 GUI 이벤트/트리거 — `harvest/gui/trigger/` 패키지
 
 각 화면의 "동작 메서드"만 모은 Mixin 패키지로, GUI와 `conf`/`worker`/`engine`/
 `db_conn`/`preprocess` 등 백엔드를 잇는 접점 역할도 겸합니다.
@@ -85,32 +100,32 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `trigger
 | `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 5개 카드 KPI의 신뢰구간·회차별 패턴 기반 수집 상태 평가(`evaluate`, 판정은 최근 5회 수집 창) |
 | `toolbar.py` | `GlobalToolbarTriggers` | 시작/중지 흐름, 수집설정 영속화 후 실행 요청 |
 
-**의존**: `style.py`, `conf.py`, `worker.py`(main_window만), `engine.py`·`db_conn.py`·`preprocess.py`(common/monitor 등), `customized_settings.py`·`utility.py`(monitor·scheduler).
-**피의존**: `layout/*`의 대응 Page 클래스 전부(다중상속).
+**의존**: `harvest/gui/style.py`, `harvest/core/conf.py`, `harvest/crawler/worker.py`(main_window만), `harvest/crawler/engine.py`·`harvest/core/db_conn.py`·`harvest/core/preprocess.py`(common/monitor 등), `harvest/core/customized_settings.py`·`harvest/core/utility.py`(monitor·scheduler).
+**피의존**: `harvest/gui/layout/*`의 대응 Page 클래스 전부(다중상속).
 
-### 2.4 테마·공용 위젯 — `style.py`
+### 2.4 테마·공용 위젯 — `harvest/gui/style.py`
 
 앱의 다크 테마 QSS와 재사용 위젯을 정의하는 유일한 소스입니다(비즈니스 로직
 없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
 `build_refine_rule_rows`(정제 규칙 UI, monitor·scheduler 공유), `HelpIcon`(카드명 옆 도움말 아이콘) 등을 제공합니다.
 
-**의존**: `utility.py`만(아이콘 경로) · **피의존**: `layout/*` 대부분, `trigger/*` 다수, `main.py`.
+**의존**: `harvest/core/utility.py`만(아이콘 경로) · **피의존**: `harvest/gui/layout/*` 대부분, `harvest/gui/trigger/*` 다수, `harvest/app.py`.
 
-### 2.5 수집 실행 브리지 — `worker.py`
+### 2.5 수집 실행 브리지 — `harvest/crawler/worker.py`
 
 GUI(Qt) 스레드와 Scrapy 크롤링(별도 OS 프로세스)을 잇는 다리입니다. Scrapy의
 Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크롤링마다 새 프로세스를
 띄웁니다. `MultiprocessWorker(QThread)`가 `multiprocessing.Process(run_spider)`를
 기동하고 큐를 폴링하며 `progress`/`new_row`/`finished` 시그널을 emit합니다.
-`set_scrapy_settings()`가 `scraper.settings` 위에 `customized_settings.py`의
+`set_scrapy_settings()`가 `scraper.settings` 위에 `harvest/core/customized_settings.py`의
 잡별 오버라이드(프록시, 미들웨어)를 적용합니다.
 
-**의존**: `utility.py`, `engine.py`(`get_spider`만), `customized_settings.py`, `conf.DataStore`.
-**피의존**: `trigger/main_window.py`가 유일한 호출자 — 전체 GUI는 이 클래스로만 크롤링을 시작합니다.
+**의존**: `harvest/core/utility.py`, `harvest/crawler/engine.py`(`get_spider`만), `harvest/core/customized_settings.py`, `conf.DataStore`.
+**피의존**: `harvest/gui/trigger/main_window.py`가 유일한 호출자 — 전체 GUI는 이 클래스로만 크롤링을 시작합니다.
 
-### 2.6 크롤링 유틸리티 — `engine.py`, `glean.py`
+### 2.6 크롤링 유틸리티 — `harvest/crawler/engine.py`, `harvest/crawler/glean.py`
 
-`engine.py`는 스파이더 자체가 아니라 **스파이더 공용 라이브러리**입니다.
+`harvest/crawler/engine.py`는 스파이더 자체가 아니라 **스파이더 공용 라이브러리**입니다.
 
 | 함수 | 기능 |
 |---|---|
@@ -120,15 +135,15 @@ Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크�
 | `set_chrome_webdriver()`, `perform_login/logout()` | Selenium 드라이버·로그인 플로우 |
 | `get_result()`/`set_item_loader()` | 데이터 추출 → `DonasItem`으로 적재 |
 
-`glean.py`는 `utility.generate_combined_urls()`로 URL 목록을 만드는 1-함수 모듈입니다.
+`harvest/crawler/glean.py`는 `utility.generate_combined_urls()`로 URL 목록을 만드는 1-함수 모듈입니다.
 
-**의존**: 둘 다 `utility.py`; `engine.py`는 추가로 `conf.py`, `scraper.items`, `scraper.spiders.*`(전체 import, 순환참조 방지를 위해 `base.py`는 이를 지연 import).
-**피의존**: `worker.py`(`get_spider`), 5개 스파이더 전부, `trigger/common.py`(검증 호출).
+**의존**: 둘 다 `harvest/core/utility.py`; `harvest/crawler/engine.py`는 추가로 `harvest/core/conf.py`, `scraper.items`, `scraper.spiders.*`(전체 import, 순환참조 방지를 위해 `base.py`는 이를 지연 import).
+**피의존**: `harvest/crawler/worker.py`(`get_spider`), 5개 스파이더 전부, `harvest/gui/trigger/common.py`(검증 호출).
 
-### 2.7 Scrapy 패키지 — `scraper/`
+### 2.7 Scrapy 패키지 — `harvest/crawler/scraper/`
 
 Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `__init__.py`는
-독스트링만 있고 하위 모듈을 재-export하지 않습니다(`engine.py`와의 순환참조 방지).
+독스트링만 있고 하위 모듈을 재-export하지 않습니다(`harvest/crawler/engine.py`와의 순환참조 방지).
 
 | 파일 | 클래스/함수 | 기능 |
 |---|---|---|
@@ -143,13 +158,13 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 | `spiders/spidetail.py` | `DetailExtractorSpider` | 목록→상세 페이지 2단계 크롤링 |
 | `spiders/spirenderer.py` | `HtmlSeleniumSpider` | Selenium 렌더링 수집, 로그인/커스텀 렌더 훅 지원 |
 
-**의존**: 모든 스파이더가 `engine.py`·`glean.py`·`utility.py`; `spirenderer.py`는 추가로 `conf.py`.
-**피의존**: `engine.py`만 직접 import. `worker.py`/`customized_settings.py`는 파이프라인·미들웨어를 Scrapy 설정 딕셔너리 안 **문자열 경로**로만 참조(동적 로드).
-**주의**: `layout/*`, `trigger/*`는 `scraper/*`를 전혀 import하지 않습니다.
+**의존**: 모든 스파이더가 `harvest/crawler/engine.py`·`harvest/crawler/glean.py`·`harvest/core/utility.py`; `spirenderer.py`는 추가로 `harvest/core/conf.py`.
+**피의존**: `harvest/crawler/engine.py`만 직접 import. `harvest/crawler/worker.py`/`harvest/core/customized_settings.py`는 파이프라인·미들웨어를 Scrapy 설정 딕셔너리 안 **문자열 경로**로만 참조(동적 로드).
+**주의**: `harvest/gui/layout/*`, `harvest/gui/trigger/*`는 `harvest/crawler/scraper/*`를 전혀 import하지 않습니다.
 
-### 2.8 설정·상태 관리 — `conf.py`, `customized_settings.py`
+### 2.8 설정·상태 관리 — `harvest/core/conf.py`, `harvest/core/customized_settings.py`
 
-`conf.py`는 이름과 달리 정적 상수가 아니라 앱의 **영속 상태 싱글턴 모음**입니다.
+`harvest/core/conf.py`는 이름과 달리 정적 상수가 아니라 앱의 **영속 상태 싱글턴 모음**입니다.
 
 | 클래스 | 기능 |
 |---|---|
@@ -157,14 +172,14 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 | `BlueprintStorage` | `request_info.json` 로드/저장, `seq_no` 검증, `read()`/`set_active()`/`update_settings()` |
 | `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드. 경로 해석·시딩·로드(`resolve_path()`, `has_*()`, `load_*()`)를 전담하며, 존재 확인은 AST로 해 `exec` 없이 안전하다. 번들 리소스 경로의 `{kind}/{seq_no}.py`를 앱 데이터 폴더에 최초 1회 복사하고 이후 사본을 우선한다. 파일명은 `seq_no`와 문자열 그대로 일치해야 한다 |
 
-`customized_settings.py`는 GUI·worker가 공유하는 **기본값 팩토리**로, 요청/작업/
+`harvest/core/customized_settings.py`는 GUI·worker가 공유하는 **기본값 팩토리**로, 요청/작업/
 출력/스케줄 설정의 기본 구조와 프록시·미들웨어 설정 변환(`set_ip_settings`,
 `set_downloader_middlewares`)을 제공합니다.
 
-**의존**: `conf.py`→`customized_settings.py`,`utility.py`; `customized_settings.py`→없음.
-**피의존**: `conf.py`는 거의 전 계층, `customized_settings.py`는 `conf.py`·`worker.py`·`create_request_info.py`·`layout/single/*`·`trigger/monitor.py`·`scheduler.py`.
+**의존**: `harvest/core/conf.py`→`harvest/core/customized_settings.py`,`harvest/core/utility.py`; `harvest/core/customized_settings.py`→없음.
+**피의존**: `harvest/core/conf.py`는 거의 전 계층, `harvest/core/customized_settings.py`는 `harvest/core/conf.py`·`harvest/crawler/worker.py`·`harvest/tools/create_request_info.py`·`harvest/gui/layout/single/*`·`harvest/gui/trigger/monitor.py`·`scheduler.py`.
 
-### 2.9 데이터 정제 — `preprocess.py`
+### 2.9 데이터 정제 — `harvest/core/preprocess.py`
 
 수집 완료 후 **GUI 프로세스에서** 원시 데이터를 정제하는 엔진입니다.
 `DataRefiner`가 정해진 순서로 규칙을 적용합니다: ①null 행 제거 → ②커스텀 규칙
@@ -177,14 +192,14 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 - **커스텀 규칙(②)**: `refine(data)` 또는 `refine_row(row)`를 정의한 `refine/{seq_no}.py`를
   `load_custom_rule()`이 읽어 `DataRefiner(custom_rule=...)`에 전달합니다. 호출 중 예외나
   입력과 길이가 다른 반환값은 원본으로 폴백하고 `RefineStats.custom_rule_error`에 담으며,
-  성공하면 `custom_rule_applied`가 `True`입니다. 로드 실패는 `trigger/monitor.py`의
+  성공하면 `custom_rule_applied`가 `True`입니다. 로드 실패는 `harvest/gui/trigger/monitor.py`의
   `_run_refine()`이 로그만 남기고 범용 규칙으로 진행합니다. `exec`로 로드하므로 샌드박스가
   없고 검수된 코드만 써야 합니다.
 - **적용 조건**: `needs_cleaning=True`이고 `seq_no`가 있으며 `rules["custom_rule"]`이 켜져야
   실행됩니다. 하나라도 어긋나면 조용히 건너뛰고 범용 규칙만 적용합니다. 정제 규칙 설정 탭
   진입 시 체크박스를 조용히 재동기화하고, 사용자가 켜려는데 파일이 없을 때만 경고합니다.
 - **체크박스 자동 연동**: "커스텀 정제 규칙 적용"을 켜면 ①③④가 자동으로 켜집니다(해제 시
-  영향 없음, ⑤⑥⑦은 제외). 로직은 `trigger/common.py`의 `_handle_custom_rule_toggle`이
+  영향 없음, ⑤⑥⑦은 제외). 로직은 `harvest/gui/trigger/common.py`의 `_handle_custom_rule_toggle`이
   전담하고 정제 화면과 스케줄 정제 규칙 패널이 공유합니다.
 - **규칙 UI**: `style.build_refine_rule_rows()`가 체크박스 행을 만드는 공유 빌더입니다.
   정제 화면은 7개 전부, 스케줄 등록 패널은 `drop_columns`를 뺀 6개를 씁니다(스케줄 등록
@@ -196,44 +211,46 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 - **Before/After 비교**: `_update_compare_tab()`이 `RefineStats`로 제거된 행과 바뀐 셀을
   강조합니다. 수동 정제에서만 갱신되며 `skip_ui_update=True`인 스케줄 경로는 건드리지
   않습니다.
-- **스케줄 자동 저장**: `trigger/main_window.py`의 `_on_finished()`가 `auto_save_source`가
+- **스케줄 자동 저장**: `harvest/gui/trigger/main_window.py`의 `_on_finished()`가 `auto_save_source`가
   `"refined"`이고 job이 `"스케줄 실행"`일 때 스케줄에 저장된 `refine_rules`·`fill_null_value`로
   `_run_refine(rules_override=...)`를 호출합니다. 이 키가 없는 구버전 스케줄은
-  `SCHEDULED_REFINE_RULES`로 폴백합니다. 규칙은 `trigger/scheduler.py`의
+  `SCHEDULED_REFINE_RULES`로 폴백합니다. 규칙은 `harvest/gui/trigger/scheduler.py`의
   `_apply_schedule()`이 등록 시점의 체크 상태를 스냅샷해 저장합니다.
 
-**의존**: `conf.py`(커스텀 규칙 로드)만 · **피의존**: `trigger/common.py`(규칙 UI 초기화), `trigger/monitor.py`(`DataRefiner` 실행).
+**의존**: `harvest/core/conf.py`(커스텀 규칙 로드)만 · **피의존**: `harvest/gui/trigger/common.py`(규칙 UI 초기화), `harvest/gui/trigger/monitor.py`(`DataRefiner` 실행).
 
-### 2.10 데이터베이스 연동 — `db_conn.py`
+### 2.10 데이터베이스 연동 — `harvest/core/db_conn.py`
 
 PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Qt/Scrapy 의존
 없음). `_check_db_connect_info()`(연결 검증+실패 원인 분류), `read_db_data()`,
 `save_db(mode=append|overwrite)`를 제공합니다.
 
-**의존**: `sqlalchemy`, `pymongo`(프로젝트 내부 모듈 의존 없음) · **피의존**: `create_request_info.py`, `trigger/common.py`·`monitor.py`(출력 설정 UI).
+**의존**: `sqlalchemy`, `pymongo`(프로젝트 내부 모듈 의존 없음) · **피의존**: `harvest/tools/create_request_info.py`, `harvest/gui/trigger/common.py`·`monitor.py`(출력 설정 UI).
 
-### 2.11 공용 유틸리티 — `utility.py`
+### 2.11 공용 유틸리티 — `harvest/core/utility.py`
 
 프로젝트 내부 의존성이 전혀 없는 최하위 헬퍼 모음입니다. `resource_path()`/
 `data_dir()`(경로), `transform_to_json()`, `generate_combined_urls()`(`${page:...}`/
 `${keywords:...}` 템플릿 전개), `get_target()`(중첩 데이터 탐색)을 제공합니다.
 
-**의존**: 없음(표준 라이브러리만) · **피의존**: 거의 모든 모듈(`conf`, `engine`, `glean`, `worker`, `main`, `style`, 다수 `layout/*`·`trigger/*`).
+**의존**: 없음(표준 라이브러리만) · **피의존**: 거의 모든 모듈(`conf`, `engine`, `glean`, `worker`, `main`, `style`, 다수 `harvest/gui/layout/*`·`harvest/gui/trigger/*`).
 
-### 2.12 블루프린트 저작 도구 — `generator_conditions.html`, `create_request_info.py`
+### 2.12 블루프린트 저작 도구 — `assets/generator_conditions.html`, `harvest/tools/create_request_info.py`
 
-앱 실행 흐름과 무관한 **오프라인 트랙**입니다 — 런타임에 `main.py`/`worker.py`/
-`engine.py`가 호출하지 않습니다.
+앱 실행 흐름과 무관한 **오프라인 트랙**입니다 — 런타임에 `main.py`·`harvest/app.py`/`harvest/crawler/worker.py`/
+`harvest/crawler/engine.py`가 호출하지 않습니다.
 
-- **`generator_conditions.html`**: 서버 없는 순수 브라우저 HTML+JS 도구. 운영자가
+- **`assets/generator_conditions.html`**: 서버 없는 순수 브라우저 HTML+JS 도구. 운영자가
   직접 열어 수집 조건(`conditions` JSON)을 폼으로 생성해 DB에 수동 반영합니다.
   파이썬 코드와 완전히 분리되어 있습니다.
-- **`create_request_info.py`**: `tb_blueprint`(활성 블루프린트)를 조회해
+- **`harvest/tools/create_request_info.py`**: `tb_blueprint`(활성 블루프린트)를 조회해
   `request_info.json`을 재생성하는 수동 실행 스크립트. `map_blueprints_to_
   request_info()`가 DB row를 `customized_settings.get_request_settings()` 스켈레톤에
   채웁니다.
 
-**의존**(후자): `db_conn.py`, `utility.py`, `customized_settings.py` · **피의존**: `build_manifest.py`(쿼리·매핑 재사용). 앱 런타임에서는 미호출.
+**실행**: 저장소 루트에서 `python -m harvest.tools.create_request_info`·`python -m harvest.tools.build_manifest`(파일 경로로 직접 실행하면 `harvest` import 실패).
+
+**의존**(후자): `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` · **피의존**: `harvest/tools/build_manifest.py`(쿼리·매핑 재사용). 앱 런타임에서는 미호출.
 
 ---
 
@@ -243,39 +260,40 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 | 모듈 | 직접 의존하는 모듈 |
 |---|---|
-| `main.py` | `layout`, `layout.multi`, `conf`, `style`, `utility` |
-| `layout/*` | `trigger/*`, `style.py`, `conf.py`, (일부) `customized_settings.py` |
-| `trigger/*` | `style.py`, `conf.py`, `worker.py`(main_window), `engine.py`(common), `db_conn.py`·`preprocess.py`(common/monitor), `customized_settings.py`·`utility.py` |
-| `style.py` | `utility.py` |
-| `worker.py` | `utility.py`, `engine.py`, `customized_settings.py`, `conf.py` |
-| `engine.py` | `utility.py`, `conf.py`, `scraper.items`, `scraper.spiders.*` |
-| `glean.py` | `utility.py` |
-| `scraper/spiders/*` | `engine.py`, `glean.py`, `utility.py`, (renderer만) `conf.py` |
-| `scraper/pipelines.py`·`middlewares.py` | 없음(문자열 경로로 동적 로드) |
-| `conf.py` | `customized_settings.py`, `utility.py` |
-| `customized_settings.py` / `db_conn.py` / `utility.py` | 없음 |
-| `preprocess.py` | `conf.py` |
-| `create_request_info.py` | `db_conn.py`, `utility.py`, `customized_settings.py` |
-| `generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
+| `main.py` | `harvest.app` |
+| `harvest/app.py` | `layout`, `layout.multi`, `conf`, `style`, `utility` |
+| `harvest/gui/layout/*` | `harvest/gui/trigger/*`, `harvest/gui/style.py`, `harvest/core/conf.py`, (일부) `harvest/core/customized_settings.py` |
+| `harvest/gui/trigger/*` | `harvest/gui/style.py`, `harvest/core/conf.py`, `harvest/crawler/worker.py`(main_window), `harvest/crawler/engine.py`(common), `harvest/core/db_conn.py`·`harvest/core/preprocess.py`(common/monitor), `harvest/core/customized_settings.py`·`harvest/core/utility.py` |
+| `harvest/gui/style.py` | `harvest/core/utility.py` |
+| `harvest/crawler/worker.py` | `harvest/core/utility.py`, `harvest/crawler/engine.py`, `harvest/core/customized_settings.py`, `harvest/core/conf.py` |
+| `harvest/crawler/engine.py` | `harvest/core/utility.py`, `harvest/core/conf.py`, `scraper.items`, `scraper.spiders.*` |
+| `harvest/crawler/glean.py` | `harvest/core/utility.py` |
+| `harvest/crawler/scraper/spiders/*` | `harvest/crawler/engine.py`, `harvest/crawler/glean.py`, `harvest/core/utility.py`, (renderer만) `harvest/core/conf.py` |
+| `harvest/crawler/scraper/pipelines.py`·`middlewares.py` | 없음(문자열 경로로 동적 로드) |
+| `harvest/core/conf.py` | `harvest/core/customized_settings.py`, `harvest/core/utility.py` |
+| `harvest/core/customized_settings.py` / `harvest/core/db_conn.py` / `harvest/core/utility.py` | 없음 |
+| `harvest/core/preprocess.py` | `harvest/core/conf.py` |
+| `harvest/tools/create_request_info.py` | `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` |
+| `assets/generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
 
 ### 3.2 대표 흐름
 
 **① GUI 수집 실행 흐름**
-1. 시작 버튼 클릭 → `trigger/toolbar.py._actual_start()`가 설정을 `BlueprintStorage`에 저장 후 `start_requested` emit
-2. `trigger/main_window.py`가 `worker.MultiprocessWorker` 기동 → 별도 프로세스에서 `run_spider()` 실행
+1. 시작 버튼 클릭 → `harvest/gui/trigger/toolbar.py._actual_start()`가 설정을 `BlueprintStorage`에 저장 후 `start_requested` emit
+2. `harvest/gui/trigger/main_window.py`가 `worker.MultiprocessWorker` 기동 → 별도 프로세스에서 `run_spider()` 실행
 3. `engine.get_spider()`로 스파이더 결정 → `glean.get_grains()`(URL 전개) → `engine.get_scrapy_request()` → 스파이더 `parse()`(`engine.get_result()`)
-4. `scraper/pipelines.py`가 `RESULT_INFO:{json}`을 stdout 출력 → `QueueWriter`가 `Queue`로 부모 프로세스에 전달
-5. `worker._handle_line()`이 파싱해 `conf.DataStore` 갱신 + `new_row`/`progress` 시그널 emit → `trigger/dashboard.py`가 `layout` 테이블을 실시간 갱신
+4. `harvest/crawler/scraper/pipelines.py`가 `RESULT_INFO:{json}`을 stdout 출력 → `QueueWriter`가 `Queue`로 부모 프로세스에 전달
+5. `worker._handle_line()`이 파싱해 `conf.DataStore` 갱신 + `new_row`/`progress` 시그널 emit → `harvest/gui/trigger/dashboard.py`가 `layout` 테이블을 실시간 갱신
 
 **② 정제·저장 흐름**
-1. 수집 완료(`worker.finished`) → `trigger/main_window.py._on_finished()`
-2. `trigger/monitor.py._run_refine()` → `preprocess.DataRefiner`(+커스텀 규칙) 실행 → "정제 결과"/"Before-After" 탭 반영
+1. 수집 완료(`worker.finished`) → `harvest/gui/trigger/main_window.py._on_finished()`
+2. `harvest/gui/trigger/monitor.py._run_refine()` → `preprocess.DataRefiner`(+커스텀 규칙) 실행 → "정제 결과"/"Before-After" 탭 반영
 3. `_extract_result_table()`이 CSV/JSON 파일 또는 `db_conn.save_db()`로 저장(사전 `_check_db_connect_info` 검증)
 
 **③ 블루프린트 저작 흐름(오프라인)**
-1. 운영자가 `generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
-2. `create_request_info.py` 수동 실행 → `db_conn.read_db_data()` 조회 → `request_info.json` 재생성
-3. 앱 재시작 시 `conf.BlueprintStorage`가 로드 → `main.py`가 블루프린트 개수로 Single/Multi 결정
+1. 운영자가 `assets/generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
+2. `harvest/tools/create_request_info.py` 수동 실행 → `db_conn.read_db_data()` 조회 → `request_info.json` 재생성
+3. 앱 재시작 시 `conf.BlueprintStorage`가 로드 → `harvest/app.py`가 블루프린트 개수로 Single/Multi 결정
 
 ---
 
