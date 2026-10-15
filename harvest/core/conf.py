@@ -350,9 +350,9 @@ class BlueprintStorage(_LazyInitSingleton):
         if self._initialized:
             return
         self._initialized = True
-        self.app_dir   = utility.data_dir(app_name)
+        self.app_dir   = utility.config_data_dir(app_name)
         self.file_path = os.path.join(self.app_dir, filename)
-        self.default_source = os.path.join(utility.resource_path(), filename)
+        self.default_source = os.path.join(utility.config_dir(), filename)
 
         self._initialize_storage()
 
@@ -593,7 +593,7 @@ class CustomModuleStorage(_LazyInitSingleton):
 
     앱 데이터 폴더(app_dir)는 BlueprintStorage와 동일하게 kind별 서브폴더
     구성이며, seed-on-first-run 정책도 동일합니다. 번들 리소스 경로
-    (default_source)는 실제 소스가 프로젝트 루트의 `{kind}/` 폴더에 있으므로
+    (default_source)는 실제 소스가 `harvest/config/{kind}/` 폴더에 있으므로
     그 하위를 가리킵니다. 파일이 seq_no마다 다르므로 BlueprintStorage처럼
     단일 값을 메모리에 캐싱하지 않고, 매 호출마다 해당 파일을 새로 읽습니다 —
     앱 데이터 폴더의 파일을 직접 수정하면 재시작 없이 바로 다음 호출에
@@ -605,7 +605,7 @@ class CustomModuleStorage(_LazyInitSingleton):
         if self._initialized:
             return
         self._initialized = True
-        self.app_dir = utility.data_dir(app_name)
+        self.app_dir = utility.config_data_dir(app_name)
         # 시딩/파싱 실패는 화면 재진입마다 같은 파일을 다시 건드릴 수 있어
         # (seq_no, kind)별로 세션 중 최초 1회만 GUI에 알린다.
         self._reported_failures: set[tuple[str, str]] = set()
@@ -633,7 +633,7 @@ class CustomModuleStorage(_LazyInitSingleton):
 
         filename       = f"{seq_no}.py"
         file_path      = os.path.join(self.app_dir, kind, filename)
-        default_source = os.path.join(utility.resource_path(), kind, filename)
+        default_source = os.path.join(utility.config_dir(), kind, filename)
 
         # 개발(.py) 환경에선 file_path == default_source(둘 다 저장소)라 시딩 불필요 —
         # 같은 경로 복사(SameFileError) 방지 겸, 저장소 파일을 그대로 사용.

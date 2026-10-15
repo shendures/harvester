@@ -1,8 +1,6 @@
 # layout/tray.py
 # 시스템 트레이 아이콘/메뉴 관리 — Single/Multi가 동일 클래스를 그대로 공유한다(대응 클래스 없음).
 
-import os
-
 from harvest.core import utility
 
 from PyQt6.QtCore import QObject
@@ -20,7 +18,7 @@ class TrayManager(QObject, TrayManagerTriggers):
         self.main_window = main_window
         self.tray_icon = QSystemTrayIcon(self.main_window)
 
-        self.icon_path = os.path.join(utility.resource_path(), "assets", "combine-harvester.ico")
+        self.icon_path = utility.asset_path("combine-harvester.ico")
 
         self.tray_icon.setIcon(QIcon(self.icon_path))
 

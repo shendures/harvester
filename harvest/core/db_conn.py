@@ -26,7 +26,7 @@ from sqlalchemy import (
     create_engine, MetaData, Table, Column, inspect,
     Integer, Float, Text, BigInteger, text,
 )
-from env import config
+from harvest.config.env import config
 
 logger = logging.getLogger(__name__)
 

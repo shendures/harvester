@@ -7,7 +7,7 @@ request_info.json은 매 실행마다 DB(tb_blueprint, active=True)를 조회해
 로직을 재사용 — ACTIVE_BLUEPRINT_QUERY, map_blueprints_to_request_info() 참고).
 
 그 다음 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
-(assets/combine-harvester.ico, assets/icon/)을 찾아 스테이징 폴더에 모으고, build-exe.ps1이 그대로
+(harvest/assets/combine-harvester.ico, harvest/assets/icon/)을 찾아 스테이징 폴더에 모으고, build-exe.ps1이 그대로
 PyInstaller --add-data 인자로 변환할 수 있는 JSON 파일로 저장합니다.
 
 render/login/refine 파일의 실제 위치는 conf.CustomModuleStorage.resolve_path()를 그대로
@@ -19,11 +19,10 @@ import os
 import shutil
 import sys
 
-from harvest.core import db_conn
+from harvest.core import db_conn, utility
 from harvest.core.conf import CustomModuleStorage
 from harvest.tools.create_request_info import ACTIVE_BLUEPRINT_QUERY, map_blueprints_to_request_info
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 KINDS = ("render", "login", "refine")
 
 
@@ -44,7 +43,7 @@ def fetch_active_blueprints() -> tuple:
     except Exception as e:
         fail(
             f"DB 접속 정보를 읽지 못했습니다: {e}\n"
-            "이 빌드 머신의 env/database.ini에 [PostgreSQL] 섹션(대소문자 정확히 일치)이 "
+            "이 빌드 머신의 harvest/config/env/database.ini에 [PostgreSQL] 섹션(대소문자 정확히 일치)이 "
             "올바르게 구성되어 있는지 확인하세요."
         )
 
@@ -104,7 +103,7 @@ def stage_custom_rules(seq_nos: list, staging_dir: str) -> list:
             staged_path = os.path.join(dest_dir, f"{seq_no}.py")
             shutil.copy2(src, staged_path)
             print(f"포함: {kind}\\{seq_no}.py")
-            add_data.append({"src": staged_path, "dest": kind})
+            add_data.append({"src": staged_path, "dest": f"harvest/config/{kind}"})
             seq_has_file = True
             any_found = True
         if not seq_has_file:
@@ -127,12 +126,12 @@ def build_manifest(request_info_path: str, staging_dir: str, requested_seq_nos: 
     if requested_seq_nos:
         validate_seq_no_selection(actual_seq_nos, requested_seq_nos)
 
-    # request_info.json 원본과 고정 아이콘 자산(assets/combine-harvester.ico, assets/icon/)은
+    # request_info.json 원본과 고정 아이콘 자산(harvest/assets/combine-harvester.ico, harvest/assets/icon/)은
     # 고객 콘텐츠와 무관하게 항상 포함한다.
     add_data = [
-        {"src": request_info_path, "dest": "."},
-        {"src": os.path.join(REPO_ROOT, "assets", "combine-harvester.ico"), "dest": "assets"},
-        {"src": os.path.join(REPO_ROOT, "assets", "icon"), "dest": "assets/icon"},
+        {"src": request_info_path, "dest": "harvest/config"},
+        {"src": utility.asset_path("combine-harvester.ico"), "dest": "harvest/assets"},
+        {"src": utility.asset_path("icon"), "dest": "harvest/assets/icon"},
     ]
     add_data.extend(stage_custom_rules(actual_seq_nos, staging_dir))
 
@@ -155,7 +154,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    request_info_path = os.path.join(REPO_ROOT, "request_info.json")
+    request_info_path = os.path.join(utility.config_dir(), "request_info.json")
 
     manifest = build_manifest(request_info_path, args.staging_dir, args.seq_no)
 

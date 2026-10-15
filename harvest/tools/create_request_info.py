@@ -39,7 +39,7 @@ def create_request_info_setting_file(blueprint_list, save_file_nm):
     """
     request_info_setting_list = map_blueprints_to_request_info(blueprint_list)
 
-    save_path_local = os.path.join(os.getcwd(), f"{save_file_nm}.json")
+    save_path_local = os.path.join(utility.config_dir(), f"{save_file_nm}.json")
     with open(save_path_local, "w", encoding="utf-8") as f:
         json.dump(request_info_setting_list, f, ensure_ascii=False, indent=4)
 

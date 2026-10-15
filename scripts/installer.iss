@@ -35,7 +35,7 @@ OutputDir={#RepoRoot}\dist
 OutputBaseFilename={#AppName}-Setup
 Compression=lzma
 SolidCompression=yes
-SetupIconFile={#RepoRoot}\assets\combine-harvester.ico
+SetupIconFile={#RepoRoot}\harvest\assets\combine-harvester.ico
 DisableProgramGroupPage=yes
 
 ; 한국어 설치 화면을 쓰려면 Inno Setup 공식 사이트의 "Islands"(사용자 번역

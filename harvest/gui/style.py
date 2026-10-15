@@ -1,4 +1,3 @@
-import os
 import re
 
 from PyQt6.QtWidgets import (
@@ -405,7 +404,7 @@ def _load_svg_icon(name: str, color: str, stroke_width: str, size: int) -> QIcon
     혼재)이라, Qt QSvgRenderer가 지원하지 않는 currentColor 대신 렌더링 시점에
     stroke/stroke-width를 문자열 치환으로 강제 통일한다(6개 아이콘 전부 동일한
     색상·굵기로 보이도록)."""
-    svg_path = os.path.join(utility.resource_path(), "assets", "icon", f"{name}.svg")
+    svg_path = utility.asset_path("icon", f"{name}.svg")
     with open(svg_path, "r", encoding="utf-8") as f:
         svg = f.read()
     svg = re.sub(r'stroke="[^"]*"', f'stroke="{color}"', svg, count=1)

@@ -4,7 +4,6 @@ DataCrawler v2.0  —  PyQt6
 """
 
 import ctypes
-import os
 import sys
 from typing import NoReturn
 
@@ -39,7 +38,7 @@ def apply_theme(app: QApplication) -> None:
     app.setStyle(SpinArrowProxyStyle(QStyleFactory.create("Fusion"), theme))
     theme.set_pallete(app)
     # 미지정 시 PyInstaller --icon과 무관하게 실행 중 창/작업 표시줄이 기본 아이콘으로 표시됨
-    app.setWindowIcon(QIcon(os.path.join(utility.resource_path(), "assets", ICON_FILENAME)))
+    app.setWindowIcon(QIcon(utility.asset_path(ICON_FILENAME)))
 
 
 def is_already_running() -> bool:

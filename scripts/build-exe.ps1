@@ -6,7 +6,7 @@
 # 무엇을 --add-data로 담을지는 harvest/tools/build_manifest.py가 결정합니다. build_manifest.py는
 # 매 실행마다 DB(tb_blueprint, active=True)를 조회해 request_info.json을 새로 생성한 뒤, 그
 # 내용을 근거로 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
-# (assets/combine-harvester.ico, assets/icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
+# (harvest/assets/combine-harvester.ico, harvest/assets/icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
 # 저장합니다 — render/login/refine 파일의 실제 위치 판별은 conf.CustomModuleStorage.resolve_path()를
 # 그대로 재사용해 앱 런타임과 로직이 어긋나지 않게 합니다(docs/DEV_ENV.md "커스텀 규칙 개발·검증·배포").
 #
@@ -69,7 +69,7 @@ foreach ($entry in $manifest.add_data) {
 }
 
 # ── 2. PyInstaller 실행 ────────────────────────────────────────────
-$iconPath = Join-Path $repoRoot "assets\combine-harvester.ico"
+$iconPath = Join-Path $repoRoot "harvest\assets\combine-harvester.ico"
 
 # scrapy.cfg와 harvest/crawler/scraper/ 패키지는 Scrapy가 파일 탐색(scrapy.cfg) 또는 문자열
 # 경로(ITEM_PIPELINES="harvest.crawler.scraper.pipelines.LoadItemPipeline",

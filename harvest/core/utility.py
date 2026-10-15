@@ -53,6 +53,28 @@ def data_dir(app_name: Optional[str] = None) -> str:
     return resource_path()
 
 
+def asset_path(*parts: str) -> str:
+    '''harvest/assets 아래 정적 자원(아이콘 등)의 경로. 개발과 exe가 같은 상대 구조를 쓴다.'''
+    return os.path.join(resource_path(), "harvest", "assets", *parts)
+
+
+def config_dir() -> str:
+    '''수집 설정(request_info.json, render/login/refine 규칙)의 배포 기본값 위치.'''
+    return os.path.join(resource_path(), "harvest", "config")
+
+
+def config_data_dir(app_name: Optional[str] = None) -> str:
+    '''
+    수집 설정을 실제로 읽고 쓰는 폴더.
+
+    운영(exe)은 data_dir()의 앱 데이터 폴더, 개발은 config_dir() 자체를 써서
+    저장소 파일을 그대로 편집·실행하고 루트에 사본이 생기지 않게 한다.
+    '''
+    if hasattr(sys, '_MEIPASS'):
+        return data_dir(app_name)
+    return config_dir()
+
+
 def transform_to_json(_variable):
     if isinstance(_variable, dict):
         print("데이터가 이미 dict 형태입니다. (Pass)")
