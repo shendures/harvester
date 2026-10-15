@@ -232,3 +232,5 @@ _build_staging/
 
 # 로컬 전용 한국어 지침 사본 (git 미추적)
 /CLAUDE_KR.md
+AGENTS.md
+CLAUDE.md
