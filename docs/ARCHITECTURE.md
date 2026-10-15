@@ -20,8 +20,8 @@
 | 설정·상태(`harvest/core/conf.py`, `harvest/core/customized_settings.py`) | 블루프린트, 수집 이력, 사이트별 플러그인을 싱글턴으로 관리한다 | GUI 프로세스 전용 |
 | 정제(`harvest/core/preprocess.py`) | 수집 후 7단계 규칙으로 데이터를 정제한다 | `harvest/gui/trigger/monitor.py`, `conf` |
 | DB 연동(`harvest/core/db_conn.py`) | 3종 DB 저장·조회와 연결 검증 | `harvest/gui/trigger/`, `harvest/tools/create_request_info.py` |
-| 블루프린트 저작 도구 | `assets/generator_conditions.html`과 `harvest/tools/create_request_info.py`. 앱 실행과 무관한 오프라인 트랙 | `tb_blueprint`, `request_info.json` |
-| 사이트별 플러그인(`render/`, `login/`, `refine/`) | seq_no별 렌더링·로그인·정제 로직 | `conf.CustomModuleStorage`가 파일에서 로드 |
+| 블루프린트 저작 도구 | `harvest/assets/generator_conditions.html`과 `harvest/tools/create_request_info.py`. 앱 실행과 무관한 오프라인 트랙 | `tb_blueprint`, `request_info.json` |
+| 사이트별 플러그인(`harvest/config/render/`, `login/`, `refine/`) | seq_no별 렌더링·로그인·정제 로직 | `conf.CustomModuleStorage`가 파일에서 로드 |
 
 구성 요소 간 경계와 통신 방식:
 - GUI와 크롤러는 서로 다른 프로세스이며 표준출력(stdout)과 `multiprocessing.Queue`로만 통신한다.
@@ -74,7 +74,7 @@
 
 앱 실행 흐름과 무관하며 `main.py`·`harvest/crawler/worker.py`·`harvest/crawler/engine.py`는 이를 호출하지 않는다.
 
-1. 운영자가 `assets/generator_conditions.html`(서버 없는 브라우저 도구)로 `conditions` JSON을 만들고 `tb_blueprint`에 수동 저장한다.
+1. 운영자가 `harvest/assets/generator_conditions.html`(서버 없는 브라우저 도구)로 `conditions` JSON을 만들고 `tb_blueprint`에 수동 저장한다.
 2. `harvest/tools/create_request_info.py`를 수동 실행하면 `db_conn.read_db_data()`로 조회해 `request_info.json`을 재생성한다. 빌드 때는 `harvest/tools/build_manifest.py`가 같은 조회를 수행한다.
 3. 앱 시작 시 `conf.BlueprintStorage`가 로드하고, `main.py`가 블루프린트 개수로 단일(1개)·다중(2개 이상) 화면을 정한다.
 
@@ -86,7 +86,7 @@
 | 수집 결과 행 | 자식 프로세스 파이프라인 | stdout → 큐 → `DataStore` | 한 줄 `RESULT_INFO:{json}` |
 | 통계 응답 이력 | `harvest/crawler/worker.py`가 응답마다 기록 | `stats_history.json.gz` (gzip, 컴팩트 JSON) | URL 사전 + 응답 배열. 저장 때 `.bak` 한 세대, 읽을 수 없으면 `.corrupt`로 보존 후 `.bak` 복구 |
 | 스케줄 | 스케줄 등록 화면 | 앱 데이터 폴더의 `schedules.json` | 스케줄별 규칙·저장 설정 포함. DB 저장 자격증명이 평문으로 들어간다 |
-| 사이트별 플러그인 | 개발자가 작성 | `render/`·`login/`·`refine/`의 `{seq_no}.py` → 앱 데이터 폴더로 최초 1회 복사 | 파일명은 `seq_no`와 문자열 그대로 일치 |
+| 사이트별 플러그인 | 개발자가 작성 | `harvest/config/{render,login,refine}/`의 `{seq_no}.py` → 앱 데이터 폴더로 최초 1회 복사 | 파일명은 `seq_no`와 문자열 그대로 일치 |
 | 수집 대상 사이트 | 스파이더·Selenium | HTTP | `ROBOTSTXT_OBEY=True`이지만 UA·쿠키 랜덤화·프록시 로테이션이 공존한다 |
 | 저장 DB | `db_conn.save_db()` | MongoDB·MySQL·PostgreSQL | `append`·`overwrite` 모드 |
 
@@ -111,7 +111,7 @@
 ]
 ```
 
-`callback_url`은 페이지네이션(`${page:시작:증가:끝}`)과 키워드 확장(`${keywords:...}`)을 지원한다. `spiders`는 수집 방식을, `conditions`는 데이터 형식과 추출 규칙을 정한다. 전체 필드는 `assets/generator_conditions.html`이 정의한다.
+`callback_url`은 페이지네이션(`${page:시작:증가:끝}`)과 키워드 확장(`${keywords:...}`)을 지원한다. `spiders`는 수집 방식을, `conditions`는 데이터 형식과 추출 규칙을 정한다. 전체 필드는 `harvest/assets/generator_conditions.html`이 정의한다.
 
 사이트별 플러그인 계약(`conf.CustomModuleStorage`가 로드):
 
@@ -129,8 +129,8 @@
 | GUI가 `harvest/crawler/worker.py` 하나로만 크롤링과 연결 | 의존 방향을 고정해 한쪽 변경이 다른 쪽에 번지지 않게 한다 | `layout`·`trigger`에서 `scraper`·`engine`을 import하면 안 된다 |
 | 소스를 `harvest/{core,crawler,gui,tools}`로 역할별 분리 | GUI 프로세스, 크롤링 자식 프로세스, 공용 계층의 경계를 디렉터리로 드러내고 루트에는 진입점·설정 파일만 둔다 | `harvest`는 저장소 루트에서 실행할 때만 import된다. 플러그인에서 `import engine`처럼 옛 최상위 이름을 쓰면 실패하므로 `from harvest.crawler import engine`으로 써야 한다. 이미 배포돼 앱 데이터 폴더에 시딩된 옛 플러그인 사본은 교체 전까지 이 이름으로 실패한다([ISSUES.md](ISSUES.md) §2) |
 | 사이트별 로직은 플러그인 파일 | seq_no마다 엔진 코드를 고치지 않으려는 목적이다 | 파일명은 seq_no와 같아야 한다. `exec`로 로드하며 샌드박스가 없어 개발자가 검수한 코드만 써야 한다 |
-| 플러그인 폴더는 git 미추적 | 고객별 규칙 코드는 개발 자체에 필요하지 않다 | 다른 클론이 pull하면 파일이 삭제로 적용될 수 있다. 빌드는 활성 seq_no의 파일만 골라 담아 다른 고객 규칙의 유출을 막는다 |
-| `login()`·`render()`·`refine()`을 폴더별로 분리 | 실행 컨텍스트(자식/GUI 프로세스)와 역할이 달라 한 폴더에 섞으면 구분이 안 된다 | 폴더 구조는 앱 데이터 폴더 레이아웃과 1:1이라 옮기면 배포된 앱의 사용자 수정본이 유실된다 |
+| 수집 설정 폴더(`harvest/config/`)의 플러그인·`env/`·`request_info.json`은 git 미추적 | 고객별 규칙 코드와 접속 정보는 개발 자체에 필요하지 않다. 한 폴더에 모아 `.gitignore`가 경로로 고정한다 | `/harvest/config/{render,refine,login}/` 패턴이 어긋나면 고객 코드가 추적 대상이 된다. 다른 클론이 pull하면 파일이 삭제로 적용될 수 있다. 빌드는 활성 seq_no의 파일만 골라 담아 다른 고객 규칙의 유출을 막는다 |
+| `login()`·`render()`·`refine()`을 폴더별로 분리 | 실행 컨텍스트(자식/GUI 프로세스)와 역할이 달라 한 폴더에 섞으면 구분이 안 된다 | 앱 데이터 폴더 레이아웃(`%LOCALAPPDATA%\<AppName>\{kind}\`)은 이 폴더 구조와 1:1이라 옮기면 배포된 앱의 사용자 수정본이 유실된다. 개발·번들 쪽 원본 위치(`harvest/config/`)만 옮길 수 있다 |
 | 로그인 수집은 `html_render`에만 둔다 | 로그인과 수집이 같은 브라우저 세션이라 세션 일관성이 보장된다. 다른 스파이더에 쿠키를 이식하면 UA 랜덤화·쿠키 미들웨어와 충돌해 세션이 무효화될 위험이 있다 | 다른 스파이더로 확장하려면 이 충돌부터 풀어야 한다 |
 | Scrapy 구성 파일을 `harvest/crawler/scraper/` 패키지로 모음 | GUI와 엔진 파일을 구분하고 PyInstaller 번들 목록을 단순화한다 | 패키지 이름은 `scrapy`가 아니라 `scraper`여야 한다(라이브러리를 가려 기동이 불가능해진다). 미들웨어·파이프라인은 문자열 경로로 로드되므로 틀려도 예외 없이 기본값으로 동작한다. 기동 로그의 `Enabled ...` 목록으로 확인한다 |
 | `__init__.py`는 하위 모듈을 재export하지 않음 | Scrapy 설정 로딩과 `engine ↔ spiders` 순환 import를 피한다 | 앱은 `harvest/crawler/worker.py`가 `import engine`을 `CrawlerProcess` 생성보다 먼저 실행해 우회 중이다 |

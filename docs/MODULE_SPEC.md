@@ -15,7 +15,7 @@
 **목적**: 특정 기능을 수정하려는 개발자가 어떤 모듈을 건드려야 하는지, 그 수정이
 어떤 다른 모듈에 영향을 줄 수 있는지 빠르게 파악하도록 돕습니다.
 
-**범위**: `main.py`와 `harvest/` 패키지 전체(`app.py`, `core/`, `crawler/`, `gui/`, `tools/`), `assets/generator_conditions.html`
+**범위**: `main.py`와 `harvest/` 패키지 전체(`app.py`, `core/`, `crawler/`, `gui/`, `tools/`, `assets/`, `config/`)
 
 **폴더 구조**
 
@@ -28,11 +28,11 @@ Harvest/
 │  ├─ core/                 # 공용·데이터 계층: conf, customized_settings, utility, preprocess, db_conn
 │  ├─ crawler/              # 크롤링: engine, glean, worker, scraper/(settings·items·middlewares·pipelines·spiders/)
 │  ├─ gui/                  # GUI: style.py, layout/(single·multi), trigger/
-│  └─ tools/                # 오프라인·빌드 전용: build_manifest, create_request_info
-├─ assets/                  # combine-harvester.ico, icon/, generator_conditions.html
+│  ├─ tools/                # 오프라인·빌드 전용: build_manifest, create_request_info
+│  ├─ assets/               # combine-harvester.ico, icon/, generator_conditions.html
+│  └─ config/               # 수집 설정(git 미추적): request_info.json, render/ login/ refine/ env/(database.ini)
 ├─ scripts/                 # build-exe·build-installer(.ps1/.bat), installer.iss, git-setup-*, model-tuner-*
 ├─ docs/  reports/
-└─ render/ login/ refine/ env/ request_info.json    # git 미추적 로컬 자원(개발 폴더). 위치 유지
 ```
 
 **표기 안내**: 아래 표의 모듈명에서 `harvest.core.`·`harvest.crawler.`·`harvest.gui.` 접두는 생략한 약칭입니다(예: `conf` = `harvest/core/conf.py`, `engine` = `harvest/crawler/engine.py`, `layout`·`trigger`·`style` = `harvest/gui/` 아래). 파일명은 `customized_settings.py`·`generator_conditions.html`처럼 모두 복수형입니다. `items.py`·`middlewares.py`·`pipelines.py`는 저장소 루트가 아니라 `harvest/crawler/scraper/` 내부 파일입니다(2.7절).
@@ -170,7 +170,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 |---|---|
 | `DataStore` | 수집 결과·URL 통계·세션 요약 보관(`stats_history.json.gz` gzip 영속화 — 응답 행은 URL 사전+배열, 저장 때 `.bak` 한 세대 보관, 읽을 수 없으면 `.corrupt`로 보존 후 `.bak` 복구, 기존 `stats_history.json`은 첫 실행에서 변환 후 `.migrated`로 보존). **GUI 프로세스 전용** |
 | `BlueprintStorage` | `request_info.json` 로드/저장, `seq_no` 검증, `read()`/`set_active()`/`update_settings()` |
-| `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드. 경로 해석·시딩·로드(`resolve_path()`, `has_*()`, `load_*()`)를 전담하며, 존재 확인은 AST로 해 `exec` 없이 안전하다. 번들 리소스 경로의 `{kind}/{seq_no}.py`를 앱 데이터 폴더에 최초 1회 복사하고 이후 사본을 우선한다. 파일명은 `seq_no`와 문자열 그대로 일치해야 한다 |
+| `CustomModuleStorage` | 블루프린트별 `render/login/refine` 커스텀 스크립트 시드·동적 로드. 경로 해석·시딩·로드(`resolve_path()`, `has_*()`, `load_*()`)를 전담하며, 존재 확인은 AST로 해 `exec` 없이 안전하다. 번들 리소스 경로(`harvest/config/{kind}/{seq_no}.py`)를 앱 데이터 폴더에 최초 1회 복사(개발 실행은 이 폴더를 그대로 사용)하고 이후 사본을 우선한다. 파일명은 `seq_no`와 문자열 그대로 일치해야 한다 |
 
 `harvest/core/customized_settings.py`는 GUI·worker가 공유하는 **기본값 팩토리**로, 요청/작업/
 출력/스케줄 설정의 기본 구조와 프록시·미들웨어 설정 변환(`set_ip_settings`,
@@ -230,21 +230,22 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 ### 2.11 공용 유틸리티 — `harvest/core/utility.py`
 
 프로젝트 내부 의존성이 전혀 없는 최하위 헬퍼 모음입니다. `resource_path()`/
-`data_dir()`(경로), `transform_to_json()`, `generate_combined_urls()`(`${page:...}`/
+`data_dir()`(경로), `asset_path()`(`harvest/assets/`), `config_dir()`(`harvest/config/`), `config_data_dir()`
+(수집 설정을 읽고 쓰는 폴더: exe는 앱 데이터 폴더, 개발은 `config_dir()` 자체), `transform_to_json()`, `generate_combined_urls()`(`${page:...}`/
 `${keywords:...}` 템플릿 전개), `get_target()`(중첩 데이터 탐색)을 제공합니다.
 
 **의존**: 없음(표준 라이브러리만) · **피의존**: 거의 모든 모듈(`conf`, `engine`, `glean`, `worker`, `main`, `style`, 다수 `harvest/gui/layout/*`·`harvest/gui/trigger/*`).
 
-### 2.12 블루프린트 저작 도구 — `assets/generator_conditions.html`, `harvest/tools/create_request_info.py`
+### 2.12 블루프린트 저작 도구 — `harvest/assets/generator_conditions.html`, `harvest/tools/create_request_info.py`
 
 앱 실행 흐름과 무관한 **오프라인 트랙**입니다 — 런타임에 `main.py`·`harvest/app.py`/`harvest/crawler/worker.py`/
 `harvest/crawler/engine.py`가 호출하지 않습니다.
 
-- **`assets/generator_conditions.html`**: 서버 없는 순수 브라우저 HTML+JS 도구. 운영자가
+- **`harvest/assets/generator_conditions.html`**: 서버 없는 순수 브라우저 HTML+JS 도구. 운영자가
   직접 열어 수집 조건(`conditions` JSON)을 폼으로 생성해 DB에 수동 반영합니다.
   파이썬 코드와 완전히 분리되어 있습니다.
 - **`harvest/tools/create_request_info.py`**: `tb_blueprint`(활성 블루프린트)를 조회해
-  `request_info.json`을 재생성하는 수동 실행 스크립트. `map_blueprints_to_
+  `harvest/config/request_info.json`을 재생성하는 수동 실행 스크립트. `map_blueprints_to_
   request_info()`가 DB row를 `customized_settings.get_request_settings()` 스켈레톤에
   채웁니다.
 
@@ -274,7 +275,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 | `harvest/core/customized_settings.py` / `harvest/core/db_conn.py` / `harvest/core/utility.py` | 없음 |
 | `harvest/core/preprocess.py` | `harvest/core/conf.py` |
 | `harvest/tools/create_request_info.py` | `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` |
-| `assets/generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
+| `harvest/assets/generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
 
 ### 3.2 대표 흐름
 
@@ -291,7 +292,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 3. `_extract_result_table()`이 CSV/JSON 파일 또는 `db_conn.save_db()`로 저장(사전 `_check_db_connect_info` 검증)
 
 **③ 블루프린트 저작 흐름(오프라인)**
-1. 운영자가 `assets/generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
+1. 운영자가 `harvest/assets/generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
 2. `harvest/tools/create_request_info.py` 수동 실행 → `db_conn.read_db_data()` 조회 → `request_info.json` 재생성
 3. 앱 재시작 시 `conf.BlueprintStorage`가 로드 → `harvest/app.py`가 블루프린트 개수로 Single/Multi 결정
 

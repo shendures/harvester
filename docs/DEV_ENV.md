@@ -27,17 +27,19 @@
    source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
-3. `env/database.ini`를 준비한다(`env/`는 `.gitignore` 대상이라 머신마다 개별 준비).
+3. `harvest/config/env/database.ini`를 준비한다(`env/`는 `.gitignore` 대상이라 머신마다 개별 준비).
 
 | 환경 변수 또는 설정 파일 | 용도 | 준비 방법 |
 |---|---|---|
-| `env/database.ini` | `tb_blueprint` 조회와 DB 연동 | `env/create_ini.py`로 템플릿을 만든 뒤 호스트·계정을 채운다. **섹션명은 정확히 `[PostgreSQL]`(대문자 P)** 이어야 `db_conn.get_params("PostgreSQL")`이 읽는다. 템플릿은 소문자 `[postgresql]`이므로 직접 고쳐야 한다. 비밀번호 같은 값은 문서나 커밋에 넣지 않는다 |
-| `request_info.json` | 블루프린트 목록 | 빌드 시 `harvest/tools/build_manifest.py`가 DB에서 만들어 덮어쓴다. 로컬에서 직접 고치면 다음 빌드에 반영되지 않는다 |
-| `render/`·`login/`·`refine/` | 사이트별 플러그인 | 저장소 루트의 개발 전용 폴더. git 미추적이며 [아래](#커스텀-규칙-개발검증배포) 참고 |
+| `harvest/config/env/database.ini` | `tb_blueprint` 조회와 DB 연동 | `python harvest/config/env/create_ini.py`로 같은 폴더에 템플릿을 만든 뒤 호스트·계정을 채운다. **섹션명은 정확히 `[PostgreSQL]`(대문자 P)** 이어야 `db_conn.get_params("PostgreSQL")`이 읽는다. 템플릿은 소문자 `[postgresql]`이므로 직접 고쳐야 한다. 비밀번호 같은 값은 문서나 커밋에 넣지 않는다 |
+| `harvest/config/request_info.json` | 블루프린트 목록 | 빌드 시 `harvest/tools/build_manifest.py`가 DB에서 만들어 덮어쓴다. 로컬에서 직접 고치면 다음 빌드에 반영되지 않는다 |
+| `harvest/config/render/`·`login/`·`refine/` | 사이트별 플러그인 | 수집 설정 폴더 안의 개발 전용 폴더. git 미추적이며 [아래](#커스텀-규칙-개발검증배포) 참고 |
+
+2026-10-15 폴더 재구성 이전에 만든 클론은 git 미추적 파일이 자동으로 옮겨지지 않는다. 저장소 루트의 `request_info.json`, `render/`, `login/`, `refine/`, `env/`를 `harvest/config/`로 직접 옮긴다. 옮기지 않으면 앱이 기본값으로 기동하고 `build_manifest.py`는 규칙 파일을 찾지 못했다는 경고만 낸다. `env/create_ini.py`는 이제 자기 폴더에 `database.ini`를 쓰도록 고쳐 두었다(이전에는 실행 위치의 `env/`).
 
 WSL 개발 환경 주의:
 - WSL2에서 Windows에 설치된 DB로 접속하는 방법(게이트웨이 IP, 방화벽, 바인드 주소)은 개인 학습 노트 `docs/study/study_wsl_db_connect.md`에 정리돼 있다(git 미추적).
-- `env/database.ini`의 host가 WSL→Windows 게이트웨이 주소(예: `172.22.224.1`)인 경우 그 WSL에서만 유효하다. 배포 빌드를 하는 Windows 머신에서는 그 머신 기준의 host를 따로 쓴다.
+- `harvest/config/env/database.ini`의 host가 WSL→Windows 게이트웨이 주소(예: `172.22.224.1`)인 경우 그 WSL에서만 유효하다. 배포 빌드를 하는 Windows 머신에서는 그 머신 기준의 host를 따로 쓴다.
 - WSL 네이티브 경로의 `.venv`는 이미 WSL용이다. 같은 클론에서 Windows 빌드용 가상환경을 만들지 않는다. Windows 빌드는 `/mnt/c`·`/mnt/d` 같은 Windows 경로의 별도 클론이나 다른 이름(`.venv-win`)의 가상환경에서 한다.
 
 ## 실행
@@ -53,7 +55,7 @@ python main.py --single   # 단일 화면 강제(블루프린트가 1개일 때�
 - 루트의 `main.py`는 `freeze_support()`를 호출하고 `harvest/app.py`의 `main()`을 실행하는 얇은 진입점이다. 개발 중 `harvest` 패키지는 저장소 루트에서 실행할 때만 import된다.
 - 블루프린트 도구는 저장소 루트에서 모듈로 실행한다: `python -m harvest.tools.create_request_info`(DB 접속 필요), `python -m harvest.tools.build_manifest --help`  (후자 확인). `python harvest/tools/<파일>.py`처럼 파일로 직접 실행하면 `harvest` import가 실패한다.
 - 같은 사용자가 이미 앱을 실행 중이면 `QLocalServer`가 두 번째 실행을 막는다.
-- 개발 실행(`.py`)의 데이터 폴더는 저장소 루트이고, exe는 `%LOCALAPPDATA%\<AppName>\`이다. 최초 실행 때 `request_info.json`과 플러그인 폴더가 그 위치로 복사된다.
+- 개발 실행(`.py`)에서 `request_info.json`과 플러그인은 `harvest/config/`를 그대로 읽고 쓴다(사본을 만들지 않는다). 수집 이력(`stats_history.json.gz`)은 저장소 루트에 쓴다. exe는 `%LOCALAPPDATA%\<AppName>\`을 쓰며 최초 실행 때 `request_info.json`과 플러그인 폴더가 그 위치로 복사된다.
 
 ## 테스트 및 검증
 
@@ -71,7 +73,7 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 
 ## 빌드 (Windows 전용)
 
-빌드는 매번 DB(`tb_blueprint`에서 `active = True`인 행 전체)를 조회한다. 어떤 고객을 포함할지는 DB의 `active` 플래그로 정한다. 먼저 `env/database.ini`가 이 머신 기준으로 DB에 접속할 수 있어야 한다.
+빌드는 매번 DB(`tb_blueprint`에서 `active = True`인 행 전체)를 조회한다. 어떤 고객을 포함할지는 DB의 `active` 플래그로 정한다. 먼저 `harvest/config/env/database.ini`가 이 머신 기준으로 DB에 접속할 수 있어야 한다.
 
 ```powershell
 .\scripts\build-exe.ps1 -AppName DataCrawler                  # dist\DataCrawler.exe  (기록: 2026-07-21 Windows 실 빌드, 당시 경로 .\build-exe.ps1)
@@ -96,14 +98,14 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 | exe 실행 시 `ModuleNotFoundError` | `--copy-metadata` 목록 밖의 의존성이다. 모듈명을 pyinstaller 호출에 `--hidden-import` 또는 `--collect-all`로 추가 |
 | exe에서 수집이 에러 없이 0건 | `multiprocessing.freeze_support()`가 빠지면 자식이 GUI를 재기동하다 단일 실행 감지로 즉시 종료된다. 현재는 `main.py`에 있다 |
 | exe에서 Scrapy가 동작하지 않음 | `scrapy.cfg`·`harvest/crawler/scraper/`는 문자열 경로로 동적 import돼 자동 분석에 잡히지 않는다. 기동 로그의 `Enabled downloader middlewares:`·`Enabled item pipelines:`에 `harvest.crawler.scraper.` 항목이 보이는지 확인 |
-| `harvest/tools/build_manifest.py`가 "DB 접속 정보를 읽지 못했습니다"로 중단 | `env/database.ini`가 없거나 `[PostgreSQL]` 섹션명이 다르다 |
+| `harvest/tools/build_manifest.py`가 "DB 접속 정보를 읽지 못했습니다"로 중단 | `harvest/config/env/database.ini`가 없거나 `[PostgreSQL]` 섹션명이 다르다 |
 | "active=True인 블루프린트를 하나도 가져오지 못했습니다" | 연결 실패와 0건을 `db_conn.read_db_data()`가 구분하지 않는다. `tb_blueprint`를 직접 조회해 확인 |
 | "DB에서 active 블루프린트를 조회하는 중" 문구에서 오래 멈춤 | PostgreSQL 연결에 `connect_timeout`이 없어 OS 기본 TCP 타임아웃까지 기다린다. host·포트·방화벽을 확인 |
 | ISCC.exe를 찾을 수 없음 | Inno Setup 미설치이거나 탐색 경로 밖에 설치됐다. 실제 경로를 확인해 스크립트의 후보에 추가 |
 
 ## 커스텀 규칙 개발·검증·배포
 
-사이트별 `render/{seq_no}.py`(렌더링), `login/{seq_no}.py`(로그인), `refine/{seq_no}.py`(정제)는 레포 루트의 개발 전용 폴더에서 관리한다. 이 폴더는 git 미추적이며 로컬 디스크에만 있다. 설계 이유와 함수 계약은 [ARCHITECTURE.md](ARCHITECTURE.md) §4·§5를 본다.
+사이트별 `render/{seq_no}.py`(렌더링), `login/{seq_no}.py`(로그인), `refine/{seq_no}.py`(정제)는 `harvest/config/`의 개발 전용 폴더에서 관리한다. 이 폴더는 git 미추적이며 로컬 디스크에만 있다. 설계 이유와 함수 계약은 [ARCHITECTURE.md](ARCHITECTURE.md) §4·§5를 본다.
 
 정제 규칙을 새로 만드는 순서:
 1. 대상 블루프린트의 `needs_cleaning`을 `true`로 두고, `seq_no`를 문자열 그대로 확인한다(앞자리 0 유실 주의).
