@@ -15,6 +15,7 @@ chcp 65001 >nul
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
+for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI\"
 set "SEQ_NO=%~1"
 set "APP_NAME=%~2"
 
@@ -25,8 +26,8 @@ REM (주의) 하나의 괄호 블록 안에서 set한 값을 같은 블록 안�
 REM 읽으면 cmd가 블록 진입 전 값으로 치환해버리는 함정이 있어, 아래는
 REM 의도적으로 모두 중첩 없는 최상위 단일 줄 문장이다.
 set "VENV_ACTIVATE="
-if not defined VIRTUAL_ENV if exist "%SCRIPT_DIR%.venv\Scripts\activate.bat" set "VENV_ACTIVATE=%SCRIPT_DIR%.venv\Scripts\activate.bat"
-if not defined VIRTUAL_ENV if not defined VENV_ACTIVATE if exist "%SCRIPT_DIR%.venv-win\Scripts\activate.bat" set "VENV_ACTIVATE=%SCRIPT_DIR%.venv-win\Scripts\activate.bat"
+if not defined VIRTUAL_ENV if exist "%ROOT_DIR%.venv\Scripts\activate.bat" set "VENV_ACTIVATE=%ROOT_DIR%.venv\Scripts\activate.bat"
+if not defined VIRTUAL_ENV if not defined VENV_ACTIVATE if exist "%ROOT_DIR%.venv-win\Scripts\activate.bat" set "VENV_ACTIVATE=%ROOT_DIR%.venv-win\Scripts\activate.bat"
 if defined VENV_ACTIVATE call "%VENV_ACTIVATE%"
 if defined VENV_ACTIVATE echo [정보] 가상환경 활성화: %VENV_ACTIVATE%
 
@@ -43,7 +44,7 @@ goto :env_ready
 :env_missing
 echo.
 echo [오류] 빌드에 필요한 python/pyinstaller를 실행할 수 없습니다.
-echo   %SCRIPT_DIR%.venv\Scripts\ 또는 %SCRIPT_DIR%.venv-win\Scripts\ 에서
+echo   %ROOT_DIR%.venv\Scripts\ 또는 %ROOT_DIR%.venv-win\Scripts\ 에서
 echo   가상환경을 찾지 못했거나, 찾았어도 pyinstaller가 설치돼 있지 않습니다.
 echo   docs\DEV_ENV.md "설치 및 설정"을 참고해 가상환경을 준비하세요:
 echo     python -m venv .venv

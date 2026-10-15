@@ -1,11 +1,12 @@
 # 고객 배포용 exe 빌드 스크립트 (Windows PowerShell 전용)
-# 사용법: .\build-exe.ps1                                    (DB의 active 블루프린트 전체 사용)
-#        .\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (특정 seq_no 포함 여부 검증)
+# 사용법: .\scripts\build-exe.ps1                                    (DB의 active 블루프린트 전체 사용)
+#        .\scripts\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (특정 seq_no 포함 여부 검증)
+#        (어느 폴더에서 실행해도 저장소 루트를 기준으로 동작합니다)
 #
-# 무엇을 --add-data로 담을지는 build_manifest.py(레포 루트)가 결정합니다. build_manifest.py는
+# 무엇을 --add-data로 담을지는 harvest/tools/build_manifest.py가 결정합니다. build_manifest.py는
 # 매 실행마다 DB(tb_blueprint, active=True)를 조회해 request_info.json을 새로 생성한 뒤, 그
 # 내용을 근거로 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
-# (combine-harvester.ico, icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
+# (assets/combine-harvester.ico, assets/icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
 # 저장합니다 — render/login/refine 파일의 실제 위치 판별은 conf.CustomModuleStorage.resolve_path()를
 # 그대로 재사용해 앱 런타임과 로직이 어긋나지 않게 합니다(docs/DEV_ENV.md "커스텀 규칙 개발·검증·배포").
 #
@@ -31,7 +32,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = $PSScriptRoot
+$repoRoot = Split-Path $PSScriptRoot -Parent
+# python -m 실행과 PyInstaller 산출물(build/, dist/)이 항상 저장소 루트를 기준으로 생기게 한다.
+Set-Location $repoRoot
 
 # ── 1. 매니페스트 산출 (build_manifest.py) ──────────────────────────
 # request_info.json 생성(DB 조회)과 seq_no별 render/login/refine 스테이징을 Python이 전담합니다
@@ -42,7 +45,7 @@ New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 $manifestPath = Join-Path $stagingRoot "manifest.json"
 
 $manifestScriptArgs = @(
-    (Join-Path $repoRoot "build_manifest.py"),
+    "-m", "harvest.tools.build_manifest",
     "--out", $manifestPath,
     "--staging-dir", $stagingRoot
 )
@@ -66,29 +69,29 @@ foreach ($entry in $manifest.add_data) {
 }
 
 # ── 2. PyInstaller 실행 ────────────────────────────────────────────
-$iconPath = Join-Path $repoRoot "combine-harvester.ico"
+$iconPath = Join-Path $repoRoot "assets\combine-harvester.ico"
 
-# scrapy.cfg와 scraper/ 패키지는 Scrapy가 파일 탐색(scrapy.cfg) 또는 문자열
-# 경로(ITEM_PIPELINES="scraper.pipelines.LoadItemPipeline",
-# DOWNLOADER_MIDDLEWARES="scraper.middlewares.XXX")로 런타임에 동적
-# import합니다. 코드 어디에도 `import scraper.pipelines` 같은 정적 import가
+# scrapy.cfg와 harvest/crawler/scraper/ 패키지는 Scrapy가 파일 탐색(scrapy.cfg) 또는 문자열
+# 경로(ITEM_PIPELINES="harvest.crawler.scraper.pipelines.LoadItemPipeline",
+# DOWNLOADER_MIDDLEWARES="harvest.crawler.scraper.middlewares.XXX")로 런타임에 동적
+# import합니다. 코드 어디에도 `import harvest.crawler.scraper.pipelines` 같은 정적 import가
 # 없어 PyInstaller의 자동 의존성 분석이 이 모듈들을 놓치므로 --add-data로
 # 소스 그대로 번들에 넣어 일반 import 폴백이 찾을 수 있게 합니다.
 # (고객 콘텐츠와 무관한 고정 항목이라 build_manifest.py가 아니라 여기서 직접 추가합니다.)
 $addDataArgs += @(
     "--add-data", "$(Join-Path $repoRoot 'scrapy.cfg');.",
-    "--add-data", "$(Join-Path $repoRoot 'scraper');scraper"
+    "--add-data", "$(Join-Path $repoRoot 'harvest\crawler\scraper');harvest/crawler/scraper"
 )
 
 # 위 --add-data는 "디스크 폴백"이고, 이쪽이 1차 경로입니다. engine.py가
-# scraper.items/scraper.spiders.*를 정적 import해 PyInstaller가 scraper 패키지
+# harvest.crawler.scraper.items/spiders.*를 정적 import해 PyInstaller가 scraper 패키지
 # 자체는 PYZ 아카이브에 넣는데, 정적 import가 없는 아래 3개만 PYZ에서 빠져
 # "패키지는 PYZ, 일부 하위 모듈은 디스크"라는 혼합 상태가 됩니다. 원리상
-# FrozenImporter가 scraper.__path__를 _MEIPASS\scraper로 잡아줘 해결되지만,
+# FrozenImporter가 scraper.__path__를 _MEIPASS\harvest\crawler\scraper로 잡아줘 해결되지만,
 # 조용히 실패하면 커스텀 settings가 무시된 채 수집이 "성공"으로 끝나므로
 # (과거 PR #66/#67의 장애 양상) 혼합에 기대지 않고 명시적으로 PYZ에 넣습니다.
 $hiddenImportArgs = @()
-foreach ($mod in @("scraper.settings", "scraper.middlewares", "scraper.pipelines")) {
+foreach ($mod in @("harvest.crawler.scraper.settings", "harvest.crawler.scraper.middlewares", "harvest.crawler.scraper.pipelines")) {
     $hiddenImportArgs += @("--hidden-import", $mod)
 }
 

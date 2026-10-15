@@ -12,6 +12,7 @@ chcp 65001 >nul
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
+for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI\"
 set "APP_NAME=%~1"
 set "APP_VERSION=%~2"
 set "APP_PUBLISHER=%~3"
@@ -23,10 +24,10 @@ if "%APP_NAME%"=="" set "APP_NAME=DataCrawler"
 
 REM ps1도 이 존재 확인을 하지만, Version/Publisher를 다 입력받은 뒤에야 알려주면
 REM 번거로우므로 여기서 먼저 확인해 빠르게 안내한다(ps1의 검증과 중복이지만 UX상 유익).
-if not exist "%SCRIPT_DIR%dist\%APP_NAME%.exe" (
+if not exist "%ROOT_DIR%dist\%APP_NAME%.exe" (
     echo.
     echo [오류] dist\%APP_NAME%.exe 가 없습니다.
-    echo   먼저 build-exe.bat(또는 .\build-exe.ps1 -AppName %APP_NAME%)로 exe를 빌드하세요.
+    echo   먼저 build-exe.bat(또는 .\scripts\build-exe.ps1 -AppName %APP_NAME%)로 exe를 빌드하세요.
     echo.
     pause
     exit /b 1

@@ -3,10 +3,13 @@
 ; build-exe.ps1이 PyInstaller로 만든 dist\{#AppName}.exe를 감싸 Windows 설치
 ; 프로그램(Setup.exe)으로 패키징합니다. build-installer.ps1이 이 스크립트를
 ; 호출하며, 직접 실행할 때는 아래처럼 값을 넘깁니다:
-;   ISCC installer.iss /DAppName=DataCrawler /DAppVersion=1.0.0 /DAppPublisher="회사명"
+;   ISCC scripts\installer.iss /DRepoRoot=<저장소 루트 절대 경로> /DAppName=DataCrawler /DAppVersion=1.0.0 /DAppPublisher="회사명"
 ;
 ; 전제: build-exe.ps1로 dist\{#AppName}.exe가 이미 빌드돼 있어야 합니다.
 
+#ifndef RepoRoot
+  #error "/DRepoRoot=<저장소 루트 절대 경로>를 넘겨야 합니다. build-installer.ps1이 자동으로 넘깁니다."
+#endif
 #ifndef AppName
   #define AppName "DataCrawler"
 #endif
@@ -28,11 +31,11 @@ AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\{#AppName}.exe
-OutputDir=dist
+OutputDir={#RepoRoot}\dist
 OutputBaseFilename={#AppName}-Setup
 Compression=lzma
 SolidCompression=yes
-SetupIconFile=combine-harvester.ico
+SetupIconFile={#RepoRoot}\assets\combine-harvester.ico
 DisableProgramGroupPage=yes
 
 ; 한국어 설치 화면을 쓰려면 Inno Setup 공식 사이트의 "Islands"(사용자 번역
@@ -49,7 +52,7 @@ DisableProgramGroupPage=yes
 Name: "desktopicon"; Description: "바탕화면에 아이콘 만들기"; GroupDescription: "추가 아이콘:"
 
 [Files]
-Source: "dist\{#AppName}.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\dist\{#AppName}.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppName}.exe"
