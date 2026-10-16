@@ -621,7 +621,7 @@ def _build_output_file_page(defaults: dict, dlg) -> tuple:
     enc_lay.setContentsMargins(0, 0, 0, 0)
     enc_lay.setSpacing(10)
     enc_combo = QComboBox()
-    enc_combo.addItems(["UTF-8", "UTF-8 BOM", "CP949 (EUC-KR)"])
+    enc_combo.addItems(["UTF-8 BOM", "UTF-8", "CP949 (EUC-KR)"])
     enc_combo.setCurrentText(defaults.get("file_encoding") or "")
     enc_lay.addWidget(parts.make_label("인코딩", TEXT_SECONDARY, 12))
     enc_lay.addWidget(enc_combo)
