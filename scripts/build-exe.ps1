@@ -337,6 +337,31 @@ if ($LASTEXITCODE -ne 0) {
 # ── 3. 스테이징 정리 ────────────────────────────────────────────────
 Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
 
+# ── 4. 빌드 PC 앱데이터 정리 ────────────────────────────────────────
+# exe에는 이 PC의 사용자 설정이 들어가지 않지만, 앱은 %LOCALAPPDATA%\<AppName>에 파일이 이미
+# 있으면 번들 기본값으로 시딩하지 않습니다(BlueprintStorage). 직전 테스트의 설정·스케줄·통계
+# 이력이 남지 않도록, 빌드 성공 후 이 폴더를 확인받고 삭제해 첫 실행이 항상 DB 기본값 시딩이 되게 합니다.
+$appDataDir = $null
+if ($env:LOCALAPPDATA -and $AppName -and $AppName -notmatch '[\\/]|\.\.') {
+    $appDataDir = Join-Path $env:LOCALAPPDATA $AppName
+}
+if (-not $appDataDir) {
+    Write-Host "[경고] 앱 데이터 폴더 경로를 안전하게 결정할 수 없어 정리를 건너뜁니다."
+} elseif (Test-Path $appDataDir) {
+    Write-Host ""
+    Write-Host "빌드 PC의 앱 데이터 폴더: $appDataDir"
+    Write-Host "저장된 설정·스케줄·통계 이력이 삭제됩니다."
+    $resetAnswer = Read-Host "삭제하시겠습니까? [Y/n]"
+    if (-not $resetAnswer -or $resetAnswer -match '^[yY]') {
+        Remove-Item $appDataDir -Recurse -Force
+        Write-Host "앱 데이터 폴더를 삭제했습니다."
+    } else {
+        Write-Host "앱 데이터 폴더 삭제를 건너뜁니다."
+    }
+} else {
+    Write-Host "정리할 앱 데이터 폴더가 없습니다: $appDataDir"
+}
+
 Write-Host ""
 Write-Host "빌드 완료: dist\$AppName.exe"
 Write-Host "최초 실행 시 request_info.json / render / login / refine이 %LOCALAPPDATA%\$AppName\ 로 자동 시딩됩니다."
