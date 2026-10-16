@@ -7,8 +7,8 @@
 > 표 안의 파일 경로·문서명은 작성 시점의 기록이므로 보존합니다(옛 `guidelines/` 문서는 2026-10-05에 `docs/`로 통합됐고, 최상위 `conf.py`·`layout/`·`trigger/`·`scraper/` 등은 2026-10-15에 `harvest/` 패키지로 옮겨졌습니다. 이전 경로 대응은 [MODULE_SPEC.md](MODULE_SPEC.md) 참고).
 
 - **최초 감사 일자**: 2026-07-03 ~ 2026-07-04
-- **최신 갱신**: 2026-10-15
-- **현황**: 해결 14건 · 미해결 1건 · 보류 1건
+- **최신 갱신**: 2026-10-16
+- **현황**: 해결 16건 · 미해결 3건 · 보류 1건
 
 > **작성 규칙**: 해결된 이슈(✅)는 §1 표(`# | 이슈 | 위치 | 원인 | 해결 | PR/커밋`)에 한 행으로 추가합니다.
 > 미해결(❌)·보류(⏸) 이슈는 표에 넣지 않고 §2에 `### 항목명 — 상태 (날짜)` 헤딩과 `위치/상세/사유·필요 조치` 불릿 리스트로 작성합니다 — 표 셀에는 진행 중인 원인 분석·대안 검토 같은 긴 서술이 담기지 않기 때문입니다.
@@ -16,7 +16,7 @@
 
 ---
 
-## 1. 해결된 이슈 (14건)
+## 1. 해결된 이슈 (16건)
 
 | # | 이슈 | 위치 | 원인 | 해결 | PR/커밋 |
 |---|---|---|---|---|---|
@@ -34,10 +34,24 @@
 | ㉕ | PyInstaller 배포 파이프라인 부재로 커스텀 규칙 번들 여부 보장 불가 | `guidelines/preprocess.md`, (부재였던) 빌드 스크립트 | `.spec`·빌드 스크립트가 저장소에 전무해 `--add-data` 구성이 수동·비문서화, `preprocess.md` 안내도 구경로 기준이라 실제 조회 경로와 불일치 | `build-exe.ps1` 신설(seq_no 일치 검증, 스테이징 후 번들), `preprocess.md` 경로 안내 갱신 | - |
 | ㉗ | `build-exe.ps1`이 pyinstaller의 정상 INFO 로그를 오류로 오인해 빌드 첫 줄에서 강제 중단 | `build-exe.ps1:28,109` | 스크립트 최상단 `$ErrorActionPreference = "Stop"` 상태에서 `pyinstaller`(native 명령)가 진행 상황을 stderr에 INFO로 기록 — PowerShell 5.1이 stderr 첫 줄을 즉시 종료 오류로 승격시켜 실제로는 정상 진행 중인 빌드를 매번 시작 직후 중단시킴(Windows 실 빌드로 재현 — PR #64 도입 이후 이 스크립트로 완주된 적이 실제로 없었음, 기존 dist 산출물은 스크립트를 거치지 않은 수동 pyinstaller 실행 결과였음) | `pyinstaller` 호출 앞뒤로만 `$ErrorActionPreference`를 `"Continue"`↔`"Stop"`으로 일시 전환하고, 실패 여부는 `$LASTEXITCODE`로 직접 판별해 0이 아니면 명시적으로 중단 | Windows 실 빌드로 수정 전(첫 INFO 줄에서 `NativeCommandError`로 즉시 중단, exe 미생성) → 수정 후(정상 완주, `dist\DataCrawler.exe` 생성, `EXITCODE=0`) 확인. 이어서 `build-installer.ps1`도 검토 — Inno Setup(ISCC.exe) 자체가 이 머신에 미설치라 실행 검증은 보류 |
 | ㉘ | `build-installer.ps1`의 ISCC.exe 탐색 경로에 사용자별 설치 위치 누락 | `build-installer.ps1:33-36` | winget으로 Inno Setup을 설치(관리자 권한 없이 실행하면 기본이 사용자별 설치)하니 `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`에 설치됐는데, 탐색 후보 목록은 시스템 전체 설치 경로(`Program Files`/`Program Files (x86)`)만 확인 — 사용자별 설치 시 항상 "찾을 수 없음"으로 실패 | 탐색 후보 목록에 `$Env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe`를 추가 | Windows 실 빌드 — winget으로 실제 Inno Setup 6.7.3 설치(사용자별 경로 확인) → 수정 전 탐색 실패 재현 → 수정 후 정상 탐색+컴파일, `dist\DataCrawler-Setup.exe`(PE32 GUI, 약 73MB) 생성 확인. `build-exe.ps1`(이슈㉗)→`build-installer.ps1` 전 과정이 실제 Windows 환경에서 처음부터 끝까지 완주됨을 최초로 확인 |
+| ㉛ | 실행 실패가 사용자 중단으로 처리돼 스케줄 영구 정지·대기 큐 잔류 | `harvest/crawler/worker.py`, `harvest/gui/trigger/main_window.py` `_on_finished()` | `interrupted` 플래그가 사용자 중지와 스파이더 실행 실패(`EXECUTOR_STATUS: FAILED`)를 겸했다. 실패가 중지와 같은 분기로 들어가 남은 결과가 폐기되고, `_on_finished()`가 스케줄 재무장(`_mark_schedule_done`)과 대기 큐 소비(`_consume_pending_queue`)를 건너뛰어 스케줄은 "실행 중"으로 고착, 배치 잔여 작업은 큐에 남아 엉뚱한 시점에 실행 | `summary`에 `aborted`/`abort_reason`을 `interrupted`와 배타적으로 분리하고, `_on_finished()`의 조기 return은 사용자 중지에만 적용. aborted도 스케줄 재무장과 큐 소비는 계속 진행 | PR #151 |
+| ㉜ | 선택 수집 N건 순차 실행 중 저장 충돌 모달이 다음 순번을 차단 | `harvest/gui/trigger/main_window.py`, `harvest/gui/trigger/monitor.py` `_extract_result_table()` | 선택 수집은 무인으로 분류되지 않아 저장 방식을 사전 확정하지 않았다. JSON 덮어쓰기·DB 테이블 처리 확인 모달이 1번째 건에서 뜨면 `_on_finished()` 끝의 `_consume_pending_queue()`가 실행되지 않아 사용자가 닫을 때까지 나머지가 시작되지 않음 | 모달 허용 판정을 job 이름이 아닌 `task`의 속성으로 통일(`_modal_allowed()`: `task_nm` 없음 + `batch_meta.total<=1`). 허용되지 않는 실행은 저장 방식을 사전 확정(기본값 새로 저장)해 확인창 없이 저장 | PR #151 |
 
 ---
 
-## 2. 미해결·보류 이슈 (2건)
+## 2. 미해결·보류 이슈 (4건)
+
+### ㉝ 수집 자식 프로세스 행(hang) 감지 없음 — ❌ 미해결 (2026-10-16)
+
+- **위치**: `harvest/crawler/worker.py`(`MultiprocessWorker`의 큐 폴링 루프)
+- **상세**: 전체 수집 타임아웃도, 마지막 메시지 이후 무응답을 감지하는 워치독도 없다. Selenium 세션이 멈추는 등 자식 프로세스가 응답하지 않으면 GUI가 "수집 중"에 고착되고, 대기 큐와 스케줄도 다음으로 넘어가지 못한다.
+- **필요 조치**: 수동 중지 외 복구 경로가 없다. 무응답 시간 기준의 워치독과 강제 종료 후 aborted 처리를 검토한다(수집 실행 에러 처리 작업 범위 밖이라 보류, [ARCHITECTURE.md](ARCHITECTURE.md) §3.5 알려진 한계).
+
+### ㉞ 전역 예외 훅 없음 — Qt 슬롯의 미포착 예외가 사용자에게 안 보임 — ❌ 미해결 (2026-10-16)
+
+- **위치**: `main.py`(`sys.excepthook` 미설정)
+- **상세**: Qt 슬롯 안에서 잡히지 않은 예외는 로그·트레이·배너 어느 쪽으로도 표시되지 않는다. 무인 스케줄에서 발생하면 실패 사실을 알 방법이 없다.
+- **필요 조치**: 전역 예외 훅에서 로그와 트레이 알림으로 남기는 방안을 검토한다([ARCHITECTURE.md](ARCHITECTURE.md) §3.5 알려진 한계).
 
 ### ㉚ 이미 배포된 앱의 옛 플러그인 사본이 `import engine`으로 실패 — ❌ 미해결 (2026-10-15)
 
