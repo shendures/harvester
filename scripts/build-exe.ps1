@@ -1,13 +1,13 @@
 ﻿# 고객 배포용 exe 빌드 스크립트 (Windows PowerShell 전용)
-# 사용법: .\scripts\build-exe.ps1                                    (실행 중 SeqNo/AppName을 직접 입력)
-#        .\scripts\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (특정 seq_no 포함 여부 검증)
+# 사용법: .\scripts\build-exe.ps1                       (실행 중 AppName을 직접 입력)
+#        .\scripts\build-exe.ps1 -AppName DataCrawler
 #        (어느 폴더에서 실행해도 저장소 루트를 기준으로 동작합니다)
 #        cmd에서는: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1 ...
 #
 # 이 스크립트 하나가 가상환경 활성화, python/pyinstaller 사전 점검, 인자 대화형 입력,
 # 빌드 전체를 처리합니다(과거 build-exe.bat 래퍼의 기능을 통합).
-# -SeqNo/-AppName을 명령줄로 주지 않으면 실행 중 입력받습니다(Enter만 치면 SeqNo는 검증 생략,
-# AppName은 DataCrawler). DB의 active 블루프린트 전체가 항상 포함되며 -SeqNo는 검증용입니다.
+# -AppName을 명령줄로 주지 않으면 실행 중 입력받습니다(Enter만 치면 DataCrawler).
+# DB의 active 블루프린트 전체가 항상 배포 대상에 포함됩니다.
 #
 # 무엇을 --add-data로 담을지는 이 파일에 내장된 Python 매니페스트 코드(1단계)가 결정합니다. 이 코드는
 # 매 실행마다 DB(tb_blueprint, active=True)를 조회해 request_info.json을 새로 생성한 뒤, 그
@@ -22,13 +22,8 @@
 # 방지합니다.
 #
 # 이번 빌드에 포함할 고객은 로컬 파일이 아니라 DB에서 active로 표시하는 것으로 결정합니다.
-# -SeqNo는 그 결과를 검증하는 용도입니다 — 지정하면 DB에서 가져온 active seq_no 목록에
-# 지정한 값이 전부 포함되는지(부분집합) 확인해, 하나라도 없으면(예: 다중 사이트 고객인데
-# 사이트 하나를 active 켜는 걸 깜빡한 경우) 즉시 중단합니다. 생략하면 이 검증을 건너뜁니다.
 
 param(
-    [string[]]$SeqNo = @(),
-
     # PyInstaller --name(exe 파일명)뿐 아니라 실행 시 %LOCALAPPDATA%\<AppName>\ 앱
     # 데이터 폴더명도 함께 결정합니다(utility.get_app_name()이 sys.executable의
     # 파일명을 읽어 자동으로 맞춥니다). 빌드 후 exe 파일명을 직접 바꾸면 다음 실행부터
@@ -83,10 +78,6 @@ if (-not $toolsOk) {
     exit 1
 }
 
-if (-not $PSBoundParameters.ContainsKey("SeqNo")) {
-    $seqInput = Read-Host "포함 여부를 검증할 seq_no를 입력하세요(비워두면 검증 생략, 다중이면 쉼표 또는 공백으로 구분)"
-    $SeqNo = @($seqInput -split "[,\s]+" | Where-Object { $_ })
-}
 if (-not $PSBoundParameters.ContainsKey("AppName")) {
     $appInput = Read-Host "AppName을 입력하세요 [Enter=DataCrawler]"
     if ($appInput) { $AppName = $appInput }
@@ -176,21 +167,6 @@ def write_request_info(request_info_list: list, request_info_path: str) -> None:
         json.dump(request_info_list, f, ensure_ascii=False, indent=4)
 
 
-def validate_seq_no_selection(actual_seq_nos: list, requested_seq_nos: list) -> None:
-    """--seq-no로 지정한 값이 모두 DB에서 가져온 active seq_no 목록에 포함되는지
-    확인합니다(부분집합 검사). DB의 active 전체를 그대로 쓰는 것 자체가 목적이므로,
-    --seq-no는 포함 대상을 고르는 필터가 아니라 "기대한 고객이 실제로 이번 빌드에
-    포함됐는지" 검증하는 용도입니다 — 예를 들어 다중 사이트 고객인데 사이트 하나를
-    active로 켜는 걸 깜빡한 경우를 빌드 시점에 잡아냅니다."""
-    missing = sorted(set(requested_seq_nos) - set(actual_seq_nos))
-    if missing:
-        fail(
-            f"--seq-no로 지정한 값 중 DB의 active 목록에 없는 seq_no가 있습니다: "
-            f"{', '.join(missing)} (DB에서 가져온 active seq_no: {', '.join(sorted(actual_seq_nos))}). "
-            "해당 고객이 tb_blueprint에서 active=False로 되어 있지 않은지 확인하세요."
-        )
-
-
 def stage_custom_rules(seq_nos: list, staging_dir: str) -> list:
     """seq_no별 render/login/refine 규칙 파일을 staging_dir로 모으고,
     PyInstaller --add-data 항목({"src", "dest"} 딕셔너리) 목록으로 반환합니다."""
@@ -221,16 +197,13 @@ def stage_custom_rules(seq_nos: list, staging_dir: str) -> list:
     return add_data
 
 
-def build_manifest(request_info_path: str, staging_dir: str, requested_seq_nos: list) -> dict:
+def build_manifest(request_info_path: str, staging_dir: str) -> dict:
     request_info_list, actual_seq_nos = fetch_active_blueprints()
     write_request_info(request_info_list, request_info_path)
     print(
         f"request_info.json을 DB 기준으로 갱신했습니다 (active {len(actual_seq_nos)}건: "
         f"{', '.join(actual_seq_nos)})"
     )
-
-    if requested_seq_nos:
-        validate_seq_no_selection(actual_seq_nos, requested_seq_nos)
 
     # request_info.json 원본과 고정 아이콘 자산(harvest/assets/combine-harvester.ico, harvest/assets/icon/)은
     # 고객 콘텐츠와 무관하게 항상 포함한다.
@@ -248,13 +221,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="고객 배포용 exe에 포함할 --add-data 목록을 산출합니다.")
     parser.add_argument("--out", required=True, help="매니페스트 JSON을 저장할 경로")
     parser.add_argument("--staging-dir", required=True, help="seq_no별 규칙 파일을 모을 스테이징 폴더")
-    parser.add_argument(
-        "--seq-no", nargs="+", default=[],
-        help="이번 빌드에 반드시 포함되어야 할 고객 seq_no 검증용(복수 가능, 생략 시 검증 "
-             "생략). DB에서 가져온 active 블루프린트 전체가 항상 포함되며, 이 값은 포함 "
-             "대상을 고르는 필터가 아니라 지정한 seq_no가 실제로 active 목록에 있는지 "
-             "확인하는 안전장치입니다.",
-    )
     return parser.parse_args()
 
 
@@ -262,7 +228,7 @@ if __name__ == "__main__":
     args = parse_args()
     request_info_path = os.path.join(utility.config_dir(), "request_info.json")
 
-    manifest = build_manifest(request_info_path, args.staging_dir, args.seq_no)
+    manifest = build_manifest(request_info_path, args.staging_dir)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
@@ -278,7 +244,6 @@ $manifestScriptArgs = @(
     "--out", $manifestPath,
     "--staging-dir", $stagingRoot
 )
-if ($SeqNo.Count -gt 0) { $manifestScriptArgs += @("--seq-no") + $SeqNo }
 
 # PyInstaller 호출부와 동일한 이유(아래 2.의 주석 참고)로, 이 native 호출 주변에서만
 # 일시적으로 $ErrorActionPreference를 낮추고 진짜 실패 여부는 $LASTEXITCODE로 판별합니다.

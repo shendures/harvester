@@ -76,12 +76,11 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 
 ```powershell
 .\scripts\build-exe.ps1 -AppName DataCrawler                  # dist\DataCrawler.exe  (기록: 2026-07-21 Windows 실 빌드, 당시 경로 .\build-exe.ps1)
-.\scripts\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler   # -SeqNo는 포함 필터가 아니라 검증용
 ```
 
 - 스크립트는 어느 폴더에서 실행해도 저장소 루트를 기준으로 동작한다. 2026-10-15 폴더 재구성 이후 `scripts/` 경로의 Windows 실빌드는 아직 확인하지 않았다([HISTORY.md](HISTORY.md)).
 
-- `build-exe.ps1` 하나가 빌드 전체를 처리한다. `.venv`(없으면 `.venv-win`)를 자동으로 PATH에 올리고, `python`·`pyinstaller`를 실제로 실행해 점검하며, `-SeqNo`·`-AppName`을 주지 않으면 실행 중 입력받는다. 환경은 미리 만들어 둬야 한다. 탐색기 더블클릭 실행은 지원하지 않으며, cmd에서는 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1`로 실행한다. 이 통합 후 동작(가상환경 활성화·점검·대화형 입력·내장 매니페스트)의 Windows 실 빌드는 아직 확인하지 않았다.
+- `build-exe.ps1` 하나가 빌드 전체를 처리한다. `.venv`(없으면 `.venv-win`)를 자동으로 PATH에 올리고, `python`·`pyinstaller`를 실제로 실행해 점검하며, `-AppName`을 주지 않으면 실행 중 입력받는다. 환경은 미리 만들어 둬야 한다. 탐색기 더블클릭 실행은 지원하지 않으며, cmd에서는 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1`로 실행한다. 이 통합 후 동작(가상환경 활성화·점검·대화형 입력·내장 매니페스트)의 Windows 실 빌드는 아직 확인하지 않았다.
 - 결과: `dist\<AppName>.exe`.
 - `scripts/build-exe.ps1`이 하는 일: 스크립트에 내장된 Python 매니페스트 코드가 `request_info.json`을 만들고 활성 seq_no의 `render/login/refine` 파일을 임시 스테이징으로 골라 담는다 → 그 목록을 PyInstaller `--add-data`로 전달 → `--onefile --windowed`로 `main.py`를 빌드(`harvest/crawler/scraper/` 패키지(`scrapy.cfg` 포함), `--hidden-import`, `--copy-metadata`를 함께 지정) → 스테이징 정리. PyInstaller의 작업 폴더(`build`)와 `.spec`도 임시 스테이징 안에 만들어 함께 지우므로, 빌드 후 저장소 루트에는 `dist\`만 남고 그 안에는 `<AppName>.exe`만 생긴다(Windows 실 빌드로는 아직 확인하지 않음). 빌드 중 `write_manifest_to_executable failed ... EndUpdateResourceW` 경고(error 110)가 재시도 몇 번 뒤 사라지고 `completed successfully`로 끝나면 백신 등이 새 exe를 잠깐 잠근 것으로 무해하다(2026-10-16 빌드 로그 확인). 20회 재시도도 실패해 중단될 때만 `dist\`를 Windows 보안 제외 항목에 추가한다.
 - `-AppName`은 exe 이름과 `%LOCALAPPDATA%\<AppName>\` 폴더명을 정한다. 빌드 후 exe 이름을 바꾸지 않는다. 바꾸면 다음 실행부터 빈 데이터 폴더를 찾는다.
@@ -106,7 +105,7 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 1. 대상 블루프린트의 `needs_cleaning`을 `true`로 두고, `seq_no`를 문자열 그대로 확인한다(앞자리 0 유실 주의).
 2. `refine/{seq_no}.py`에 `refine(data)`(목록 단위) 또는 `refine_row(row)`(행 단위)를 쓴다.
 3. 실제 raw 샘플로 함수를 임시 스크립트에서 단독 실행해 예외 없이 기대한 출력이 나오는지 확인하고, 스크립트는 삭제한다.
-4. `.\scripts\build-exe.ps1 -SeqNo {seq_no}`로 빌드한다. 해당 seq_no의 파일만 exe에 담긴다.
+4. 해당 고객 블루프린트를 DB에서 `active`로 둔 채 `.\scripts\build-exe.ps1`로 빌드한다. active인 seq_no의 파일만 exe에 담긴다.
 5. GUI에서 정제 규칙 설정 탭에 경고가 없는지, "커스텀 정제 규칙 적용"이 켜져 있는지 확인한다. 수집을 한 번 실행해 로그에 "사용자 정의 규칙 적용됨"이 남는지, 결과가 기대대로인지 본다.
 
 주의:
