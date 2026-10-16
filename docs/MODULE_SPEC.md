@@ -30,7 +30,7 @@ Harvest/
 │  ├─ assets/               # combine-harvester.ico, icon/, generator_conditions.html
 │  └─ config/               # 수집 설정(git 미추적 데이터 + create_request_info.py 도구): request_info.json, render/ login/ refine/ env/(database.ini)
 ├─ scripts/                 # build-exe.ps1(exe 빌드 단일 진입점, 매니페스트 산출 Python 내장), model-tuner-*
-├─ docs/  Manual/
+├─ docs/                    # 프로젝트 문서 (Manual/: 사용자 매뉴얼 PDF)
 ```
 
 **표기 안내**: 아래 표의 모듈명에서 `harvest.core.`·`harvest.crawler.`·`harvest.gui.` 접두는 생략한 약칭입니다(예: `conf` = `harvest/core/conf.py`, `engine` = `harvest/crawler/engine.py`, `layout`·`trigger`·`style` = `harvest/gui/` 아래). 파일명은 `customized_settings.py`·`generator_conditions.html`처럼 모두 복수형입니다. `items.py`·`middlewares.py`·`pipelines.py`는 저장소 루트가 아니라 `harvest/crawler/scraper/` 내부 파일입니다(2.7절).
