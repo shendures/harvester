@@ -352,6 +352,9 @@ foreach ($pkg in @(
 $ErrorActionPreference = "Continue"
 pyinstaller `
     --name $AppName `
+    --distpath (Join-Path $repoRoot "dist") `
+    --workpath (Join-Path $stagingRoot "work") `
+    --specpath (Join-Path $stagingRoot "spec") `
     --onefile `
     --windowed `
     --icon $iconPath `
@@ -361,6 +364,7 @@ pyinstaller `
     (Join-Path $repoRoot "main.py")
 $ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) {
+    Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
     Write-Error "pyinstaller가 실패했습니다 (종료 코드 $LASTEXITCODE). 위 로그를 확인하세요."
     exit 1
 }
