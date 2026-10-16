@@ -1,9 +1,15 @@
-# 고객 배포용 exe 빌드 스크립트 (Windows PowerShell 전용)
-# 사용법: .\scripts\build-exe.ps1                                    (DB의 active 블루프린트 전체 사용)
+﻿# 고객 배포용 exe 빌드 스크립트 (Windows PowerShell 전용)
+# 사용법: .\scripts\build-exe.ps1                                    (실행 중 SeqNo/AppName을 직접 입력)
 #        .\scripts\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler  (특정 seq_no 포함 여부 검증)
 #        (어느 폴더에서 실행해도 저장소 루트를 기준으로 동작합니다)
+#        cmd에서는: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1 ...
 #
-# 무엇을 --add-data로 담을지는 harvest/tools/build_manifest.py가 결정합니다. build_manifest.py는
+# 이 스크립트 하나가 가상환경 활성화, python/pyinstaller 사전 점검, 인자 대화형 입력,
+# 빌드 전체를 처리합니다(과거 build-exe.bat 래퍼의 기능을 통합).
+# -SeqNo/-AppName을 명령줄로 주지 않으면 실행 중 입력받습니다(Enter만 치면 SeqNo는 검증 생략,
+# AppName은 DataCrawler). DB의 active 블루프린트 전체가 항상 포함되며 -SeqNo는 검증용입니다.
+#
+# 무엇을 --add-data로 담을지는 이 파일에 내장된 Python 매니페스트 코드(1단계)가 결정합니다. 이 코드는
 # 매 실행마다 DB(tb_blueprint, active=True)를 조회해 request_info.json을 새로 생성한 뒤, 그
 # 내용을 근거로 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
 # (harvest/assets/combine-harvester.ico, harvest/assets/icon/)을 찾아 임시 스테이징 폴더에 모으고 그 결과를 manifest.json으로
@@ -12,7 +18,7 @@
 #
 # render/·login/·refine/은 여러 고객의 규칙 파일을 함께 보관하는 "개발자용" 폴더입니다 — 그대로
 # 통째로 번들에 넣으면 다른 고객의 정제/렌더링/로그인 로직까지 이번 exe에 함께 유출됩니다.
-# build_manifest.py가 DB에서 가져온 active seq_no의 파일만 골라 스테이징하는 방식으로 이를
+# 매니페스트 코드가 DB에서 가져온 active seq_no의 파일만 골라 스테이징하는 방식으로 이를
 # 방지합니다.
 #
 # 이번 빌드에 포함할 고객은 로컬 파일이 아니라 DB에서 active로 표시하는 것으로 결정합니다.
@@ -36,7 +42,57 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 # python -m 실행과 PyInstaller 산출물(build/, dist/)이 항상 저장소 루트를 기준으로 생기게 한다.
 Set-Location $repoRoot
 
-# ── 1. 매니페스트 산출 (build_manifest.py) ──────────────────────────
+# ── 0. 사전 준비: 가상환경 활성화, 도구 점검, 인자 입력 ─────────────
+# Activate.ps1은 ExecutionPolicy에 막힐 수 있어 호출하지 않고, 활성화가 하는 일(PATH 앞에
+# Scripts 추가, VIRTUAL_ENV 설정)만 직접 수행합니다. 이미 활성화돼 있으면 건드리지 않습니다.
+if (-not $env:VIRTUAL_ENV) {
+    foreach ($venvName in @(".venv", ".venv-win")) {
+        $venvDir = Join-Path $repoRoot $venvName
+        $scriptsDir = Join-Path $venvDir "Scripts"
+        if (Test-Path (Join-Path $scriptsDir "activate.bat")) {
+            $env:VIRTUAL_ENV = $venvDir
+            $env:PATH = "$scriptsDir;$env:PATH"
+            Write-Host "[정보] 가상환경 활성화: $venvDir"
+            break
+        }
+    }
+}
+
+# where 대신 --version을 직접 실행한다 — Python 미설치 시 python이 스토어 스텁으로 해석되어
+# 존재 여부만으로는 실제 실행 가능 여부를 알 수 없기 때문이다.
+$toolsOk = $true
+foreach ($tool in @("python", "pyinstaller")) {
+    # 실행 파일이 PATH에 없으면 $LASTEXITCODE가 갱신되지 않아 앞 도구의 0이 남는다.
+    # 그래서 존재 여부를 먼저 확인하고, 있을 때만 --version 종료 코드를 본다.
+    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $toolsOk = $false; continue }
+    $ErrorActionPreference = "Continue"
+    & $tool --version *> $null
+    $toolExit = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($toolExit -ne 0) { $toolsOk = $false }
+}
+if (-not $toolsOk) {
+    Write-Host ""
+    Write-Host "[오류] 빌드에 필요한 python/pyinstaller를 실행할 수 없습니다."
+    Write-Host "  $repoRoot\.venv\Scripts\ 또는 $repoRoot\.venv-win\Scripts\ 에서"
+    Write-Host "  가상환경을 찾지 못했거나, 찾았어도 pyinstaller가 설치돼 있지 않습니다."
+    Write-Host "  docs\DEV_ENV.md `"설치 및 설정`"을 참고해 가상환경을 준비하세요:"
+    Write-Host "    python -m venv .venv"
+    Write-Host "    .venv\Scripts\activate.bat"
+    Write-Host "    pip install -r requirements.txt"
+    exit 1
+}
+
+if (-not $PSBoundParameters.ContainsKey("SeqNo")) {
+    $seqInput = Read-Host "포함 여부를 검증할 seq_no를 입력하세요(비워두면 검증 생략, 다중이면 쉼표 또는 공백으로 구분)"
+    $SeqNo = @($seqInput -split "[,\s]+" | Where-Object { $_ })
+}
+if (-not $PSBoundParameters.ContainsKey("AppName")) {
+    $appInput = Read-Host "AppName을 입력하세요 [Enter=DataCrawler]"
+    if ($appInput) { $AppName = $appInput }
+}
+
+# ── 1. 매니페스트 산출 (내장 Python) ──────────────────────────
 # request_info.json 생성(DB 조회)과 seq_no별 render/login/refine 스테이징을 Python이 전담합니다
 # (conf.py의 기존 경로 판별 로직을 그대로 재사용 — PowerShell에 같은 지식을 따로 두지 않기 위함).
 $stagingRoot = Join-Path $repoRoot "_build_staging"
@@ -44,8 +100,181 @@ if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 $manifestPath = Join-Path $stagingRoot "manifest.json"
 
+# 아래 Python 코드는 과거 harvest/tools/build_manifest.py였던 것을 그대로 내장한 것입니다.
+# harvest.core.db_conn / utility / conf.CustomModuleStorage / tools.create_request_info를 재사용하므로
+# 실행 시 저장소 루트가 import 경로에 있어야 합니다(아래 PYTHONPATH 설정).
+$manifestPy = @'
+"""
+고객 배포용 exe에 PyInstaller --add-data로 포함해야 할 파일 목록(매니페스트)을 산출합니다.
+
+request_info.json은 매 실행마다 DB(tb_blueprint, active=True)를 조회해 새로 생성합니다 —
+로컬에 미리 준비해두는 파일이 아닙니다. 이번 빌드에 어떤 고객을 포함할지는 DB에서 해당
+고객의 active 플래그를 켜두는 것으로 결정합니다(create_request_info.py와 동일한 쿼리·매핑
+로직을 재사용 — ACTIVE_BLUEPRINT_QUERY, map_blueprints_to_request_info() 참고).
+
+그 다음 (1) seq_no별 render/login/refine 규칙 파일과 (2) 고정 아이콘 자산
+(harvest/assets/combine-harvester.ico, harvest/assets/icon/)을 찾아 스테이징 폴더에 모으고, build-exe.ps1이 그대로
+PyInstaller --add-data 인자로 변환할 수 있는 JSON 파일로 저장합니다.
+
+render/login/refine 파일의 실제 위치는 conf.CustomModuleStorage.resolve_path()를 그대로
+재사용합니다 — 앱 런타임과 다른 판별 규칙을 이 스크립트가 따로 갖지 않도록 하기 위함입니다.
+"""
+import argparse
+import json
+import os
+import shutil
+import sys
+
+from harvest.core import db_conn, utility
+from harvest.core.conf import CustomModuleStorage
+from harvest.config.create_request_info import ACTIVE_BLUEPRINT_QUERY, map_blueprints_to_request_info
+
+KINDS = ("render", "login", "refine")
+
+
+def fail(message: str) -> None:
+    print(f"오류: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def fetch_active_blueprints() -> tuple:
+    """DB(tb_blueprint, active=True)를 조회해 (request_info_list, seq_nos)를 반환합니다.
+
+    DB 접속정보를 못 읽거나 조회 결과가 비면 즉시 중단합니다 — db_conn.read_db_data()는
+    연결 실패와 "active인 행이 진짜로 0건"을 구분하지 않고 똑같이 빈 리스트를 반환하므로,
+    둘 다 조용히 넘기지 않고 명확한 오류로 멈추는 쪽을 택했습니다.
+    """
+    try:
+        db_env = db_conn.get_params("PostgreSQL")
+    except Exception as e:
+        fail(
+            f"DB 접속 정보를 읽지 못했습니다: {e}\n"
+            "이 빌드 머신의 harvest/config/env/database.ini에 [PostgreSQL] 섹션(대소문자 정확히 일치)이 "
+            "올바르게 구성되어 있는지 확인하세요."
+        )
+
+    print("DB에서 active 블루프린트를 조회하는 중입니다...")
+    blueprint_rows = db_conn.read_db_data(db_env, ACTIVE_BLUEPRINT_QUERY)
+    if not blueprint_rows:
+        fail(
+            "DB에서 active=True인 블루프린트를 하나도 가져오지 못했습니다. "
+            "DB 연결 실패이거나 실제로 active인 데이터가 0건일 수 있습니다 — "
+            "tb_blueprint를 직접 조회해 원인을 확인한 뒤 다시 시도하세요."
+        )
+
+    request_info_list = map_blueprints_to_request_info(blueprint_rows)
+    seq_nos = []
+    for i, blueprint in enumerate(request_info_list):
+        if not blueprint.get("seq_no"):
+            fail(f"DB에서 가져온 {i}번째 블루프린트에 seq_no가 없습니다.")
+        seq_nos.append(blueprint["seq_no"])
+    return request_info_list, seq_nos
+
+
+def write_request_info(request_info_list: list, request_info_path: str) -> None:
+    with open(request_info_path, "w", encoding="utf-8") as f:
+        json.dump(request_info_list, f, ensure_ascii=False, indent=4)
+
+
+def validate_seq_no_selection(actual_seq_nos: list, requested_seq_nos: list) -> None:
+    """--seq-no로 지정한 값이 모두 DB에서 가져온 active seq_no 목록에 포함되는지
+    확인합니다(부분집합 검사). DB의 active 전체를 그대로 쓰는 것 자체가 목적이므로,
+    --seq-no는 포함 대상을 고르는 필터가 아니라 "기대한 고객이 실제로 이번 빌드에
+    포함됐는지" 검증하는 용도입니다 — 예를 들어 다중 사이트 고객인데 사이트 하나를
+    active로 켜는 걸 깜빡한 경우를 빌드 시점에 잡아냅니다."""
+    missing = sorted(set(requested_seq_nos) - set(actual_seq_nos))
+    if missing:
+        fail(
+            f"--seq-no로 지정한 값 중 DB의 active 목록에 없는 seq_no가 있습니다: "
+            f"{', '.join(missing)} (DB에서 가져온 active seq_no: {', '.join(sorted(actual_seq_nos))}). "
+            "해당 고객이 tb_blueprint에서 active=False로 되어 있지 않은지 확인하세요."
+        )
+
+
+def stage_custom_rules(seq_nos: list, staging_dir: str) -> list:
+    """seq_no별 render/login/refine 규칙 파일을 staging_dir로 모으고,
+    PyInstaller --add-data 항목({"src", "dest"} 딕셔너리) 목록으로 반환합니다."""
+    storage = CustomModuleStorage()
+    add_data = []
+    any_found = False
+
+    for seq_no in seq_nos:
+        seq_has_file = False
+        for kind in KINDS:
+            src = storage.resolve_path(seq_no, kind)
+            if not os.path.isfile(src):
+                continue
+            dest_dir = os.path.join(staging_dir, kind)
+            os.makedirs(dest_dir, exist_ok=True)
+            staged_path = os.path.join(dest_dir, f"{seq_no}.py")
+            shutil.copy2(src, staged_path)
+            print(f"포함: {kind}\\{seq_no}.py")
+            add_data.append({"src": staged_path, "dest": f"harvest/config/{kind}"})
+            seq_has_file = True
+            any_found = True
+        if not seq_has_file:
+            print(f"경고: seq_no={seq_no}에 해당하는 규칙 파일이 없습니다(render/login/refine 모두).")
+
+    if not any_found:
+        print("경고: 어떤 seq_no에도 규칙 파일이 없습니다. 커스텀 규칙 없이 빌드를 계속합니다.")
+
+    return add_data
+
+
+def build_manifest(request_info_path: str, staging_dir: str, requested_seq_nos: list) -> dict:
+    request_info_list, actual_seq_nos = fetch_active_blueprints()
+    write_request_info(request_info_list, request_info_path)
+    print(
+        f"request_info.json을 DB 기준으로 갱신했습니다 (active {len(actual_seq_nos)}건: "
+        f"{', '.join(actual_seq_nos)})"
+    )
+
+    if requested_seq_nos:
+        validate_seq_no_selection(actual_seq_nos, requested_seq_nos)
+
+    # request_info.json 원본과 고정 아이콘 자산(harvest/assets/combine-harvester.ico, harvest/assets/icon/)은
+    # 고객 콘텐츠와 무관하게 항상 포함한다.
+    add_data = [
+        {"src": request_info_path, "dest": "harvest/config"},
+        {"src": utility.asset_path("combine-harvester.ico"), "dest": "harvest/assets"},
+        {"src": utility.asset_path("icon"), "dest": "harvest/assets/icon"},
+    ]
+    add_data.extend(stage_custom_rules(actual_seq_nos, staging_dir))
+
+    return {"seq_nos": actual_seq_nos, "add_data": add_data}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="고객 배포용 exe에 포함할 --add-data 목록을 산출합니다.")
+    parser.add_argument("--out", required=True, help="매니페스트 JSON을 저장할 경로")
+    parser.add_argument("--staging-dir", required=True, help="seq_no별 규칙 파일을 모을 스테이징 폴더")
+    parser.add_argument(
+        "--seq-no", nargs="+", default=[],
+        help="이번 빌드에 반드시 포함되어야 할 고객 seq_no 검증용(복수 가능, 생략 시 검증 "
+             "생략). DB에서 가져온 active 블루프린트 전체가 항상 포함되며, 이 값은 포함 "
+             "대상을 고르는 필터가 아니라 지정한 seq_no가 실제로 active 목록에 있는지 "
+             "확인하는 안전장치입니다.",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    request_info_path = os.path.join(utility.config_dir(), "request_info.json")
+
+    manifest = build_manifest(request_info_path, args.staging_dir, args.seq_no)
+
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+'@
+
+$manifestPyPath = Join-Path $stagingRoot "_build_manifest.py"
+# PowerShell 5.1의 파이프/Set-Content 기본 인코딩은 한글이 깨지므로 BOM 없는 UTF-8로 직접 기록한다.
+[System.IO.File]::WriteAllText($manifestPyPath, $manifestPy, (New-Object System.Text.UTF8Encoding($false)))
+
 $manifestScriptArgs = @(
-    "-m", "harvest.tools.build_manifest",
+    $manifestPyPath,
     "--out", $manifestPath,
     "--staging-dir", $stagingRoot
 )
@@ -54,11 +283,14 @@ if ($SeqNo.Count -gt 0) { $manifestScriptArgs += @("--seq-no") + $SeqNo }
 # PyInstaller 호출부와 동일한 이유(아래 2.의 주석 참고)로, 이 native 호출 주변에서만
 # 일시적으로 $ErrorActionPreference를 낮추고 진짜 실패 여부는 $LASTEXITCODE로 판별합니다.
 $ErrorActionPreference = "Continue"
+$prevPythonPath = $env:PYTHONPATH
+$env:PYTHONPATH = $repoRoot
 python @manifestScriptArgs
 $manifestExitCode = $LASTEXITCODE
+$env:PYTHONPATH = $prevPythonPath
 $ErrorActionPreference = "Stop"
 if ($manifestExitCode -ne 0) {
-    Write-Error "build_manifest.py가 실패했습니다 (종료 코드 $manifestExitCode). 위 로그를 확인하세요."
+    Write-Error "내장 매니페스트 단계가 실패했습니다 (종료 코드 $manifestExitCode). 위 로그를 확인하세요."
     exit 1
 }
 
@@ -77,7 +309,7 @@ $iconPath = Join-Path $repoRoot "harvest\assets\combine-harvester.ico"
 # import합니다. 코드 어디에도 `import harvest.crawler.scraper.pipelines` 같은 정적 import가
 # 없어 PyInstaller의 자동 의존성 분석이 이 모듈들을 놓치므로 --add-data로
 # 소스 그대로 번들에 넣어 일반 import 폴백이 찾을 수 있게 합니다.
-# (고객 콘텐츠와 무관한 고정 항목이라 build_manifest.py가 아니라 여기서 직접 추가합니다.)
+# (고객 콘텐츠와 무관한 고정 항목이라 1단계 매니페스트 코드가 아니라 여기서 직접 추가합니다.)
 $addDataArgs += @(
     "--add-data", "$(Join-Path $repoRoot 'harvest\crawler\scraper');harvest/crawler/scraper"
 )
