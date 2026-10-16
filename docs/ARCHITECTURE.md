@@ -19,15 +19,15 @@
 | 크롤링 엔진(`harvest/crawler/engine.py`, `harvest/crawler/glean.py`, `harvest/crawler/scraper/`) | URL 전개, 요청 생성, 데이터 추출, 미들웨어, 결과 출력 | `worker`(자식 프로세스로 실행) |
 | 설정·상태(`harvest/core/conf.py`, `harvest/core/customized_settings.py`) | 블루프린트, 수집 이력, 사이트별 플러그인을 싱글턴으로 관리한다 | GUI 프로세스 전용 |
 | 정제(`harvest/core/preprocess.py`) | 수집 후 7단계 규칙으로 데이터를 정제한다 | `harvest/gui/trigger/monitor.py`, `conf` |
-| DB 연동(`harvest/core/db_conn.py`) | 3종 DB 저장·조회와 연결 검증 | `harvest/gui/trigger/`, `harvest/tools/create_request_info.py` |
-| 블루프린트 저작 도구 | `harvest/assets/generator_conditions.html`과 `harvest/tools/create_request_info.py`. 앱 실행과 무관한 오프라인 트랙 | `tb_blueprint`, `request_info.json` |
+| DB 연동(`harvest/core/db_conn.py`) | 3종 DB 저장·조회와 연결 검증 | `harvest/gui/trigger/`, `harvest/config/create_request_info.py` |
+| 블루프린트 저작 도구 | `harvest/assets/generator_conditions.html`과 `harvest/config/create_request_info.py`. 앱 실행과 무관한 오프라인 트랙 | `tb_blueprint`, `request_info.json` |
 | 사이트별 플러그인(`harvest/config/render/`, `login/`, `refine/`) | seq_no별 렌더링·로그인·정제 로직 | `conf.CustomModuleStorage`가 파일에서 로드 |
 
 구성 요소 간 경계와 통신 방식:
 - GUI와 크롤러는 서로 다른 프로세스이며 표준출력(stdout)과 `multiprocessing.Queue`로만 통신한다.
 - GUI 계층의 의존 방향은 항상 `layout → trigger → style`이다. `layout`과 `trigger`는 `scraper`·`engine`을 직접 참조하지 않고 `harvest/crawler/worker.py` 하나로만 이어진다.
 - `conf.DataStore`는 GUI 프로세스 전용이다. 자식 프로세스는 접근하지 못하며 큐 드레인으로만 동기화된다.
-- 패키지 의존 방향은 `harvest/gui → harvest/crawler/worker.py → harvest/core`, `harvest/crawler → harvest/core`다. `harvest/core`는 `gui`·`crawler`를 import하지 않는다. `harvest/tools`는 빌드·오프라인 전용이라 앱 실행에서 import되지 않는다.
+- 패키지 의존 방향은 `harvest/gui → harvest/crawler/worker.py → harvest/core`, `harvest/crawler → harvest/core`다. `harvest/core`는 `gui`·`crawler`를 import하지 않는다. `harvest/config/create_request_info.py`는 오프라인 전용이라 앱 실행에서 import되지 않는다.
 - `harvest/core/utility.py`는 내부 의존성이 없는 최하위 공용 모듈이다.
 
 ## 3. 주요 실행 흐름
@@ -75,14 +75,14 @@
 앱 실행 흐름과 무관하며 `main.py`·`harvest/crawler/worker.py`·`harvest/crawler/engine.py`는 이를 호출하지 않는다.
 
 1. 운영자가 `harvest/assets/generator_conditions.html`(서버 없는 브라우저 도구)로 `conditions` JSON을 만들고 `tb_blueprint`에 수동 저장한다.
-2. `harvest/tools/create_request_info.py`를 수동 실행하면 `db_conn.read_db_data()`로 조회해 `request_info.json`을 재생성한다. 빌드 때는 `harvest/tools/build_manifest.py`가 같은 조회를 수행한다.
+2. `harvest/config/create_request_info.py`를 수동 실행하면 `db_conn.read_db_data()`로 조회해 `request_info.json`을 재생성한다. 빌드 때는 `scripts/build-exe.ps1`에 내장된 매니페스트 코드가 같은 조회를 수행한다.
 3. 앱 시작 시 `conf.BlueprintStorage`가 로드하고, `main.py`가 블루프린트 개수로 단일(1개)·다중(2개 이상) 화면을 정한다.
 
 ## 4. 데이터와 외부 연동
 
 | 데이터 또는 연동 | 생성·입력 위치 | 저장·전달 위치 | 형식 또는 계약 |
 |---|---|---|---|
-| `request_info.json` | `harvest/tools/create_request_info.py`, 빌드 시 `harvest/tools/build_manifest.py` | 앱 데이터 폴더, `BlueprintStorage`가 로드 | 블루프린트 배열. 원소 수로 단일·다중 결정 |
+| `request_info.json` | `harvest/config/create_request_info.py`, 빌드 시 `scripts/build-exe.ps1` 내장 매니페스트 코드 | 앱 데이터 폴더, `BlueprintStorage`가 로드 | 블루프린트 배열. 원소 수로 단일·다중 결정 |
 | 수집 결과 행 | 자식 프로세스 파이프라인 | stdout → 큐 → `DataStore` | 한 줄 `RESULT_INFO:{json}` |
 | 통계 응답 이력 | `harvest/crawler/worker.py`가 응답마다 기록 | `stats_history.json.gz` (gzip, 컴팩트 JSON) | URL 사전 + 응답 배열. 저장 때 `.bak` 한 세대, 읽을 수 없으면 `.corrupt`로 보존 후 `.bak` 복구 |
 | 스케줄 | 스케줄 등록 화면 | 앱 데이터 폴더의 `schedules.json` | 스케줄별 규칙·저장 설정 포함. DB 저장 자격증명이 평문으로 들어간다 |

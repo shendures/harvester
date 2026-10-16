@@ -10,11 +10,10 @@
 |---|---|---|
 | Python | 3.12 이상 (`.venv`는 3.12.13) | 앱 실행 |
 | 의존성 | [requirements.txt](../requirements.txt)에 고정 | PyQt6 6.10.2, Scrapy 2.14.1, selenium 4.41.0, SQLAlchemy 2.0.48 등 |
-| Windows 10 이상 | — | exe·설치 프로그램 빌드(WSL·Linux에서는 빌드할 수 없다) |
+| Windows 10 이상 | — | exe 빌드(WSL·Linux에서는 빌드할 수 없다) |
 | PyInstaller | 6.19.0 (requirements.txt에 포함) | exe 빌드 |
-| Inno Setup 6 | 6.7.3에서 확인 | 설치 프로그램 빌드(Windows 전용 외부 도구, 선택) |
 | Chrome | — | JS 렌더링 수집(`webdriver-manager`가 드라이버를 설치) |
-| PostgreSQL | — | 블루프린트 원본 DB(`tb_blueprint`). 빌드와 `harvest/tools/create_request_info.py`에 필요. 수집 결과 저장에는 MySQL·MongoDB도 지원 |
+| PostgreSQL | — | 블루프린트 원본 DB(`tb_blueprint`). 빌드와 `harvest/config/create_request_info.py`에 필요. 수집 결과 저장에는 MySQL·MongoDB도 지원 |
 
 주요 의존성 용도: Scrapy·Twisted(크롤링), PyQt6(GUI), lxml·parsel(파싱), pymongo·mysqlclient·PyMySQL·psycopg2·SQLAlchemy(DB), furl(URL), python-dotenv.
 
@@ -32,10 +31,10 @@
 | 환경 변수 또는 설정 파일 | 용도 | 준비 방법 |
 |---|---|---|
 | `harvest/config/env/database.ini` | `tb_blueprint` 조회와 DB 연동 | `python harvest/config/env/create_ini.py`로 같은 폴더에 템플릿을 만든 뒤 호스트·계정을 채운다. **섹션명은 정확히 `[PostgreSQL]`(대문자 P)** 이어야 `db_conn.get_params("PostgreSQL")`이 읽는다. 템플릿은 소문자 `[postgresql]`이므로 직접 고쳐야 한다. 비밀번호 같은 값은 문서나 커밋에 넣지 않는다 |
-| `harvest/config/request_info.json` | 블루프린트 목록 | 빌드 시 `harvest/tools/build_manifest.py`가 DB에서 만들어 덮어쓴다. 로컬에서 직접 고치면 다음 빌드에 반영되지 않는다 |
+| `harvest/config/request_info.json` | 블루프린트 목록 | 빌드 시 `scripts/build-exe.ps1`의 매니페스트 단계가 DB에서 만들어 덮어쓴다. 로컬에서 직접 고치면 다음 빌드에 반영되지 않는다 |
 | `harvest/config/render/`·`login/`·`refine/` | 사이트별 플러그인 | 수집 설정 폴더 안의 개발 전용 폴더. git 미추적이며 [아래](#커스텀-규칙-개발검증배포) 참고 |
 
-2026-10-15 폴더 재구성 이전에 만든 클론은 git 미추적 파일이 자동으로 옮겨지지 않는다. 저장소 루트의 `request_info.json`, `render/`, `login/`, `refine/`, `env/`를 `harvest/config/`로 직접 옮긴다. 옮기지 않으면 앱이 기본값으로 기동하고 `build_manifest.py`는 규칙 파일을 찾지 못했다는 경고만 낸다. `env/create_ini.py`는 이제 자기 폴더에 `database.ini`를 쓰도록 고쳐 두었다(이전에는 실행 위치의 `env/`).
+2026-10-15 폴더 재구성 이전에 만든 클론은 git 미추적 파일이 자동으로 옮겨지지 않는다. 저장소 루트의 `request_info.json`, `render/`, `login/`, `refine/`, `env/`를 `harvest/config/`로 직접 옮긴다. 옮기지 않으면 앱이 기본값으로 기동하고 빌드의 매니페스트 단계는 규칙 파일을 찾지 못했다는 경고만 낸다. `env/create_ini.py`는 이제 자기 폴더에 `database.ini`를 쓰도록 고쳐 두었다(이전에는 실행 위치의 `env/`).
 
 WSL 개발 환경 주의:
 - WSL2에서 Windows에 설치된 DB로 접속하는 방법(게이트웨이 IP, 방화벽, 바인드 주소)은 개인 학습 노트 `docs/study/study_wsl_db_connect.md`에 정리돼 있다(git 미추적).
@@ -53,7 +52,7 @@ python main.py --single   # 단일 화면 강제(블루프린트가 1개일 때�
 - 플래그가 블루프린트 개수와 모순되면 안내 메시지를 출력하고 종료 코드 1로 즉시 중단한다.
 - 디스플레이가 없는 환경(WSL 등)에서는 `QT_QPA_PLATFORM=offscreen python main.py`로 기동 여부만 확인한다. 이번에 8초간 예외 없이 이벤트 루프에 머무는 것을 확인했다.
 - 루트의 `main.py`는 `freeze_support()`를 호출하고 `harvest/app.py`의 `main()`을 실행하는 얇은 진입점이다. 개발 중 `harvest` 패키지는 저장소 루트에서 실행할 때만 import된다.
-- 블루프린트 도구는 저장소 루트에서 모듈로 실행한다: `python -m harvest.tools.create_request_info`(DB 접속 필요), `python -m harvest.tools.build_manifest --help`  (후자 확인). `python harvest/tools/<파일>.py`처럼 파일로 직접 실행하면 `harvest` import가 실패한다.
+- 블루프린트 도구는 저장소 루트에서 모듈로 실행한다: `python -m harvest.config.create_request_info`(DB 접속 필요). `python harvest/config/<파일>.py`처럼 파일로 직접 실행하면 `harvest` import가 실패한다.
 - 같은 사용자가 이미 앱을 실행 중이면 `QLocalServer`가 두 번째 실행을 막는다.
 - 개발 실행(`.py`)에서 `request_info.json`과 플러그인은 `harvest/config/`를 그대로 읽고 쓴다(사본을 만들지 않는다). 수집 이력(`stats_history.json.gz`)도 같은 `harvest/config/`에 쓴다. exe는 `%LOCALAPPDATA%\<AppName>\`을 쓰며 최초 실행 때 `request_info.json`과 플러그인 폴더가 그 위치로 복사된다.
 
@@ -78,17 +77,14 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 ```powershell
 .\scripts\build-exe.ps1 -AppName DataCrawler                  # dist\DataCrawler.exe  (기록: 2026-07-21 Windows 실 빌드, 당시 경로 .\build-exe.ps1)
 .\scripts\build-exe.ps1 -SeqNo 000000 000022 -AppName DataCrawler   # -SeqNo는 포함 필터가 아니라 검증용
-.\scripts\build-installer.ps1 -AppName DataCrawler -AppVersion 1.0.0   # dist\DataCrawler-Setup.exe  (기록: 이슈㉘, 당시 경로 .\build-installer.ps1)
 ```
 
-- 두 스크립트는 어느 폴더에서 실행해도 저장소 루트를 기준으로 동작한다. 2026-10-15 폴더 재구성 이후 `scripts/` 경로의 Windows 실빌드는 아직 확인하지 않았다([HISTORY.md](HISTORY.md)).
+- 스크립트는 어느 폴더에서 실행해도 저장소 루트를 기준으로 동작한다. 2026-10-15 폴더 재구성 이후 `scripts/` 경로의 Windows 실빌드는 아직 확인하지 않았다([HISTORY.md](HISTORY.md)).
 
-- 탐색기나 `cmd`에서는 `scripts/build-exe.bat`·`scripts/build-installer.bat`을 쓴다. 이 파일들은 `.venv`(없으면 `.venv-win`)를 자동으로 활성화한다. 환경은 미리 만들어 둬야 한다.
-- 결과: `dist\<AppName>.exe` → `dist\<AppName>-Setup.exe`. `build-installer`는 먼저 `build-exe` 결과가 있어야 하고 `-AppName`이 같아야 한다.
-- `scripts/build-exe.ps1`이 하는 일: `harvest/tools/build_manifest.py`가 `request_info.json`을 만들고 활성 seq_no의 `render/login/refine` 파일을 임시 스테이징으로 골라 담는다 → 그 목록을 PyInstaller `--add-data`로 전달 → `--onefile --windowed`로 `main.py`를 빌드(`harvest/crawler/scraper/` 패키지(`scrapy.cfg` 포함), `--hidden-import`, `--copy-metadata`를 함께 지정) → 스테이징 정리.
+- `build-exe.ps1` 하나가 빌드 전체를 처리한다. `.venv`(없으면 `.venv-win`)를 자동으로 PATH에 올리고, `python`·`pyinstaller`를 실제로 실행해 점검하며, `-SeqNo`·`-AppName`을 주지 않으면 실행 중 입력받는다. 환경은 미리 만들어 둬야 한다. 탐색기 더블클릭 실행은 지원하지 않으며, cmd에서는 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-exe.ps1`로 실행한다. 이 통합 후 동작(가상환경 활성화·점검·대화형 입력·내장 매니페스트)의 Windows 실 빌드는 아직 확인하지 않았다.
+- 결과: `dist\<AppName>.exe`.
+- `scripts/build-exe.ps1`이 하는 일: 스크립트에 내장된 Python 매니페스트 코드가 `request_info.json`을 만들고 활성 seq_no의 `render/login/refine` 파일을 임시 스테이징으로 골라 담는다 → 그 목록을 PyInstaller `--add-data`로 전달 → `--onefile --windowed`로 `main.py`를 빌드(`harvest/crawler/scraper/` 패키지(`scrapy.cfg` 포함), `--hidden-import`, `--copy-metadata`를 함께 지정) → 스테이징 정리.
 - `-AppName`은 exe 이름과 `%LOCALAPPDATA%\<AppName>\` 폴더명을 정한다. 빌드 후 exe 이름을 바꾸지 않는다. 바꾸면 다음 실행부터 빈 데이터 폴더를 찾는다.
-- 제거 프로그램은 설치 프로그램에 자동으로 포함된다. 앱 데이터 폴더는 고객 수정본을 보호하려고 의도적으로 지우지 않는다.
-- ISCC.exe는 PATH → `Program Files\Inno Setup 6` → `Program Files (x86)\Inno Setup 6` → `%LOCALAPPDATA%\Programs\Inno Setup 6` 순으로 찾는다.
 
 ### 빌드 트러블슈팅
 
@@ -98,10 +94,9 @@ python3 -m py_compile main.py harvest/core/conf.py harvest/crawler/worker.py har
 | exe 실행 시 `ModuleNotFoundError` | `--copy-metadata` 목록 밖의 의존성이다. 모듈명을 pyinstaller 호출에 `--hidden-import` 또는 `--collect-all`로 추가 |
 | exe에서 수집이 에러 없이 0건 | `multiprocessing.freeze_support()`가 빠지면 자식이 GUI를 재기동하다 단일 실행 감지로 즉시 종료된다. 현재는 `main.py`에 있다 |
 | exe에서 Scrapy가 동작하지 않음 | `harvest/crawler/scraper/`는 문자열 경로로 동적 import돼 자동 분석에 잡히지 않는다. 기동 로그의 `Enabled downloader middlewares:`·`Enabled item pipelines:`에 `harvest.crawler.scraper.` 항목이 보이는지 확인 |
-| `harvest/tools/build_manifest.py`가 "DB 접속 정보를 읽지 못했습니다"로 중단 | `harvest/config/env/database.ini`가 없거나 `[PostgreSQL]` 섹션명이 다르다 |
+| 빌드의 매니페스트 단계가 "DB 접속 정보를 읽지 못했습니다"로 중단 | `harvest/config/env/database.ini`가 없거나 `[PostgreSQL]` 섹션명이 다르다 |
 | "active=True인 블루프린트를 하나도 가져오지 못했습니다" | 연결 실패와 0건을 `db_conn.read_db_data()`가 구분하지 않는다. `tb_blueprint`를 직접 조회해 확인 |
 | "DB에서 active 블루프린트를 조회하는 중" 문구에서 오래 멈춤 | PostgreSQL 연결에 `connect_timeout`이 없어 OS 기본 TCP 타임아웃까지 기다린다. host·포트·방화벽을 확인 |
-| ISCC.exe를 찾을 수 없음 | Inno Setup 미설치이거나 탐색 경로 밖에 설치됐다. 실제 경로를 확인해 스크립트의 후보에 추가 |
 
 ## 커스텀 규칙 개발·검증·배포
 
