@@ -9,7 +9,7 @@
 - 제공하는 범위
   - 수집 형식: HTML(정적·Selenium 렌더링), JSON API, XML, 목록→상세 2단계 수집
   - 저장 형식: CSV·JSON 파일, MongoDB·MySQL·PostgreSQL
-  - Windows용 exe와 설치 프로그램 빌드 스크립트
+  - Windows용 exe 빌드 스크립트
 - 제공하지 않는 범위
   - 블루프린트 작성은 앱 밖의 오프라인 도구(`harvest/assets/generator_conditions.html`)와 DB가 맡는다. 앱 안에는 작성 화면이 없다.
   - 로그인이 필요한 사이트는 Selenium 렌더링 수집(`html_render`)에서만 지원한다.

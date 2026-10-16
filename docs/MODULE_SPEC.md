@@ -15,7 +15,7 @@
 **목적**: 특정 기능을 수정하려는 개발자가 어떤 모듈을 건드려야 하는지, 그 수정이
 어떤 다른 모듈에 영향을 줄 수 있는지 빠르게 파악하도록 돕습니다.
 
-**범위**: `main.py`와 `harvest/` 패키지 전체(`app.py`, `core/`, `crawler/`, `gui/`, `tools/`, `assets/`, `config/`)
+**범위**: `main.py`와 `harvest/` 패키지 전체(`app.py`, `core/`, `crawler/`, `gui/`, `assets/`, `config/`)
 
 **폴더 구조**
 
@@ -27,10 +27,9 @@ Harvest/
 │  ├─ core/                 # 공용·데이터 계층: conf, customized_settings, utility, preprocess, db_conn
 │  ├─ crawler/              # 크롤링: engine, glean, worker, scraper/(scrapy.cfg·settings·items·middlewares·pipelines·spiders/)
 │  ├─ gui/                  # GUI: style.py, layout/(single·multi), trigger/
-│  ├─ tools/                # 오프라인·빌드 전용: build_manifest, create_request_info
 │  ├─ assets/               # combine-harvester.ico, icon/, generator_conditions.html
-│  └─ config/               # 수집 설정(git 미추적): request_info.json, render/ login/ refine/ env/(database.ini)
-├─ scripts/                 # build-exe·build-installer(.ps1/.bat), installer.iss, git-setup-*, model-tuner-*
+│  └─ config/               # 수집 설정(git 미추적 데이터 + create_request_info.py 도구): request_info.json, render/ login/ refine/ env/(database.ini)
+├─ scripts/                 # build-exe.ps1(exe 빌드 단일 진입점, 매니페스트 산출 Python 내장), model-tuner-*
 ├─ docs/  reports/
 ```
 
@@ -176,7 +175,7 @@ Scrapy가 동적으로 로드하는 구성요소를 모은 패키지입니다. `
 `set_downloader_middlewares`)을 제공합니다.
 
 **의존**: `harvest/core/conf.py`→`harvest/core/customized_settings.py`,`harvest/core/utility.py`; `harvest/core/customized_settings.py`→없음.
-**피의존**: `harvest/core/conf.py`는 거의 전 계층, `harvest/core/customized_settings.py`는 `harvest/core/conf.py`·`harvest/crawler/worker.py`·`harvest/tools/create_request_info.py`·`harvest/gui/layout/single/*`·`harvest/gui/trigger/monitor.py`·`scheduler.py`.
+**피의존**: `harvest/core/conf.py`는 거의 전 계층, `harvest/core/customized_settings.py`는 `harvest/core/conf.py`·`harvest/crawler/worker.py`·`harvest/config/create_request_info.py`·`harvest/gui/layout/single/*`·`harvest/gui/trigger/monitor.py`·`scheduler.py`.
 
 ### 2.9 데이터 정제 — `harvest/core/preprocess.py`
 
@@ -224,7 +223,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 없음). `_check_db_connect_info()`(연결 검증+실패 원인 분류), `read_db_data()`,
 `save_db(mode=append|overwrite)`를 제공합니다.
 
-**의존**: `sqlalchemy`, `pymongo`(프로젝트 내부 모듈 의존 없음) · **피의존**: `harvest/tools/create_request_info.py`, `harvest/gui/trigger/common.py`·`monitor.py`(출력 설정 UI).
+**의존**: `sqlalchemy`, `pymongo`(프로젝트 내부 모듈 의존 없음) · **피의존**: `harvest/config/create_request_info.py`, `harvest/gui/trigger/common.py`·`monitor.py`(출력 설정 UI).
 
 ### 2.11 공용 유틸리티 — `harvest/core/utility.py`
 
@@ -235,7 +234,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 **의존**: 없음(표준 라이브러리만) · **피의존**: 거의 모든 모듈(`conf`, `engine`, `glean`, `worker`, `main`, `style`, 다수 `harvest/gui/layout/*`·`harvest/gui/trigger/*`).
 
-### 2.12 블루프린트 저작 도구 — `harvest/assets/generator_conditions.html`, `harvest/tools/create_request_info.py`
+### 2.12 블루프린트 저작 도구 — `harvest/assets/generator_conditions.html`, `harvest/config/create_request_info.py`
 
 앱 실행 흐름과 무관한 **오프라인 트랙**입니다 — 런타임에 `main.py`·`harvest/app.py`/`harvest/crawler/worker.py`/
 `harvest/crawler/engine.py`가 호출하지 않습니다.
@@ -243,14 +242,14 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 - **`harvest/assets/generator_conditions.html`**: 서버 없는 순수 브라우저 HTML+JS 도구. 운영자가
   직접 열어 수집 조건(`conditions` JSON)을 폼으로 생성해 DB에 수동 반영합니다.
   파이썬 코드와 완전히 분리되어 있습니다.
-- **`harvest/tools/create_request_info.py`**: `tb_blueprint`(활성 블루프린트)를 조회해
+- **`harvest/config/create_request_info.py`**: `tb_blueprint`(활성 블루프린트)를 조회해
   `harvest/config/request_info.json`을 재생성하는 수동 실행 스크립트. `map_blueprints_to_
   request_info()`가 DB row를 `customized_settings.get_request_settings()` 스켈레톤에
   채웁니다.
 
-**실행**: 저장소 루트에서 `python -m harvest.tools.create_request_info`·`python -m harvest.tools.build_manifest`(파일 경로로 직접 실행하면 `harvest` import 실패).
+**실행**: 저장소 루트에서 `python -m harvest.config.create_request_info`(파일 경로로 직접 실행하면 `harvest` import 실패).
 
-**의존**(후자): `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` · **피의존**: `harvest/tools/build_manifest.py`(쿼리·매핑 재사용). 앱 런타임에서는 미호출.
+**의존**: `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` · **피의존**: `scripts/build-exe.ps1`에 내장된 매니페스트 코드(`ACTIVE_BLUEPRINT_QUERY`·`map_blueprints_to_request_info()` 재사용). 앱 런타임에서는 미호출.
 
 ---
 
@@ -273,7 +272,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 | `harvest/core/conf.py` | `harvest/core/customized_settings.py`, `harvest/core/utility.py` |
 | `harvest/core/customized_settings.py` / `harvest/core/db_conn.py` / `harvest/core/utility.py` | 없음 |
 | `harvest/core/preprocess.py` | `harvest/core/conf.py` |
-| `harvest/tools/create_request_info.py` | `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` |
+| `harvest/config/create_request_info.py` | `harvest/core/db_conn.py`, `harvest/core/utility.py`, `harvest/core/customized_settings.py` |
 | `harvest/assets/generator_conditions.html` | 없음(파이썬 코드와 완전 분리) |
 
 ### 3.2 대표 흐름
@@ -292,7 +291,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 
 **③ 블루프린트 저작 흐름(오프라인)**
 1. 운영자가 `harvest/assets/generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
-2. `harvest/tools/create_request_info.py` 수동 실행 → `db_conn.read_db_data()` 조회 → `request_info.json` 재생성
+2. `harvest/config/create_request_info.py` 수동 실행 → `db_conn.read_db_data()` 조회 → `request_info.json` 재생성
 3. 앱 재시작 시 `conf.BlueprintStorage`가 로드 → `harvest/app.py`가 블루프린트 개수로 Single/Multi 결정
 
 ---
