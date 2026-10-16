@@ -57,7 +57,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 
 | 구분 | 파일 | 클래스 | 기능 |
 |---|---|---|---|
-| 공용 | `common.py` | — | single/multi 공유 테마·헬퍼 허브(인증 필요 여부 판정 등) |
+| 공용 | `common.py` | — | single/multi 공유 테마·헬퍼 허브(인증 필요 여부 판정 등), 실패 배너 빌더 `build_status_banner()` |
 | 공용 | `auth.py` | `AuthManagerPage` | 인증 관리 화면 |
 | 공용 | `session.py` | `SessionSettingsPage` | 세션/프록시 설정 화면 |
 | 공용 | `scheduler.py` | `SchedulerPage` | 스케줄 목록 + 카운트다운 카드 |
@@ -67,7 +67,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 | single | `main_window.py` | `MainWindowSingle(MainWindowBase)` | 단일 블루프린트용 페이지 생성·스택 등록 |
 | single | `sidebar.py`/`toolbar.py` | `SidebarSingle`/`GlobalToolbarSingle` | 내비게이션 / 상단 툴바(시작·중지) / 하단 수집 상태(대기/수집 중) |
 | single | `common.py` | `ActiveBlueprintMixin` | 활성 블루프린트 조회(Multi 확장 지점) |
-| single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 |
+| single | `dashboard.py` | `DashboardPageSingle` | 진행상태 + 수집설정 + 세션 현황 + 실시간 모니터링 + 실패 배너(`set_status_banner`/`clear_status_banner`, 다음 수집 시작 시 해제) |
 | single | `monitor.py` | `MonitorPageSingle` | 원본/정제규칙/정제결과/비교 4탭 |
 | single | `statistics.py` | `StatisticsPageSingle(StatisticsPageBase)` | 전체 합산 통계 패널 1개를 감싼 통계 분석 페이지 |
 | multi | `main_window.py` | `MainWindowMulti(MainWindowBase)` | 블루프린트별 페이지 번들 지연 생성·관리 |
@@ -75,7 +75,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 | multi | `dashboard.py`/`monitor.py` | `*Multi(*Single)` | single 상속, 슬롯 배치만 조정 |
 | multi | `statistics.py` | `StatisticsPageMulti(StatisticsPageBase)` | 좌측 수집 대상 목록 + 우측 블루프린트별 `StatisticsPanel`(지연 생성) |
 | multi | `monitor_target_list.py` | `MonitorTargetListPage` | 경량 블루프린트 목록(정제 화면용) |
-| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택) |
+| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택), 상태 컬럼에 대기·수집 중·실패(빨간 글씨) 표시 |
 
 **의존**: `harvest/gui/trigger/*`, `harvest/gui/style.py`, `harvest/core/conf.py` · **피의존**: `harvest/app.py`만 최상위 import.
 **주의**: `harvest/crawler/scraper/*`·`harvest/crawler/engine.py`·`harvest/crawler/worker.py`는 직접 참조하지 않습니다(`harvest/gui/trigger/main_window.py` 뒤에 캡슐화).
@@ -87,12 +87,12 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 
 | 파일 | 클래스 | 기능 |
 |---|---|---|
-| `common.py` | (다수 함수) | 공용 허브 — task 설정 적용, 블루프린트 검증(`engine`), 추출/DB 설정 UI 빌더, 모달 다이얼로그 골격·버튼 행(`_build_modal_dialog`/`_build_dialog_button_row`) |
+| `common.py` | (다수 함수) | 공용 허브 — task 설정 적용, 블루프린트 검증(`engine`), 추출/DB 설정 UI 빌더, 모달 다이얼로그 골격·버튼 행(`_build_modal_dialog`/`_build_dialog_button_row`), 모달 허용 판정 `_modal_allowed(task)`(`task_nm` 없음 + `batch_meta.total<=1`일 때만 허용), 실행 실패 안내 `_show_aborted_dialog()`, 트레이 접근 `_get_tray_manager()` |
 | `auth.py` | `AuthManagerPageTriggers` | 자격증명 추가/삭제/내보내기 |
 | `dashboard.py` | `DashboardPageTriggers` | 실시간 행 추가, 세션 현황, CSV 내보내기 |
 | `log_viewer.py` | `LogViewerDialog` | 로그 뷰어(레벨 필터 + 키워드 검색) |
-| `main_window.py` | `MainWindowTriggersSingle/Multi` | **오케스트레이션 핵심** — 워커 실행, 완료 후 정제·저장·스케줄 재무장 총괄 |
-| `monitor.py` | `MonitorPageTriggers` | 정제 실행(`preprocess.DataRefiner`), 파일/DB 저장(`db_conn.save_db`) |
+| `main_window.py` | `MainWindowTriggersSingle/Multi` | **오케스트레이션 핵심** — 워커 실행, 완료 후 정제·저장·스케줄 재무장 총괄. `_on_finished()`가 종료를 interrupted/aborted/0건/정상으로 나눠 처리하고(aborted·0건도 스케줄 재무장과 대기 큐 소비는 계속), 모달이 금지된 실행의 실패는 트레이 알림 + 대시보드 배너로 알린다. 다중은 `_record_batch_outcome()`이 선택·전체 수집의 마지막 건에서 성공/0건/실패 요약 로그를 남긴다 |
+| `monitor.py` | `MonitorPageTriggers` | 정제 실행(`preprocess.DataRefiner`), 파일/DB 저장(`db_conn.save_db`). 자동 저장(`notify_empty=False`)에서는 정제 불가·오류 팝업을 로그로 대체하고, 무인 실행의 저장 실패는 트레이 알림도 띄운다 |
 | `scheduler.py` | `SchedulerPageTriggers` | 스케줄 등록/수정, QTimer 카운트다운, `schedules.json` 영속화 |
 | `session.py` | `SessionSettingsPageTriggers` | 프록시 추가/삭제/Import, 병렬 헬스체크 |
 | `statistics.py` | `StatisticsPageTriggers` | KPI·분포·세션 이력 재계산, 5개 카드 KPI의 신뢰구간·회차별 패턴 기반 수집 상태 평가(`evaluate`, 판정은 최근 5회 수집 창) |
@@ -116,7 +116,7 @@ Twisted 리액터는 같은 프로세스에서 재시작할 수 없어 매 크�
 띄웁니다. `MultiprocessWorker(QThread)`가 `multiprocessing.Process(run_spider)`를
 기동하고 큐를 폴링하며 `progress`/`new_row`/`finished` 시그널을 emit합니다.
 `set_scrapy_settings()`가 `scraper.settings` 위에 `harvest/core/customized_settings.py`의
-잡별 오버라이드(프록시, 미들웨어)를 적용합니다.
+잡별 오버라이드(프록시, 미들웨어)를 적용합니다. 종료 요약(`summary`)은 사용자 중지(`interrupted`)와 스파이더 실행 실패(`aborted`, 사유 `abort_reason`)를 서로 배타적인 별도 필드로 담고, `_handle_line()`은 HTTP 200이지만 추출 예외(`extract_error`)가 난 응답을 성공이 아니라 `warn`으로 분류합니다(`_errors`에는 넣지 않음).
 
 **의존**: `harvest/core/utility.py`, `harvest/crawler/engine.py`(`get_spider`만), `harvest/core/customized_settings.py`, `conf.DataStore`.
 **피의존**: `harvest/gui/trigger/main_window.py`가 유일한 호출자 — 전체 GUI는 이 클래스로만 크롤링을 시작합니다.
@@ -288,6 +288,7 @@ PostgreSQL/MySQL/MongoDB 3종을 지원하는 순수 DB 접근 계층입니다(Q
 1. 수집 완료(`worker.finished`) → `harvest/gui/trigger/main_window.py._on_finished()`
 2. `harvest/gui/trigger/monitor.py._run_refine()` → `preprocess.DataRefiner`(+커스텀 규칙) 실행 → "정제 결과"/"Before-After" 탭 반영
 3. `_extract_result_table()`이 CSV/JSON 파일 또는 `db_conn.save_db()`로 저장(사전 `_check_db_connect_info` 검증)
+4. `_on_finished()`는 종료 유형(interrupted/aborted/0건/정상)에 따라 갈라지며 `_modal_allowed(task)`로 모달 대신 트레이 알림·실패 배너를 쓸지 정한다. 경로별 통보 방식은 [ARCHITECTURE.md §3.5](ARCHITECTURE.md)를 참고하세요.
 
 **③ 블루프린트 저작 흐름(오프라인)**
 1. 운영자가 `harvest/assets/generator_conditions.html`로 `conditions` JSON 작성 → 수동으로 `tb_blueprint`에 저장
