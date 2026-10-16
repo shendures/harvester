@@ -4,7 +4,7 @@ import json
 from harvest.core import utility
 from harvest.core import customized_settings
 
-# build_manifest.py도 이 쿼리로 request_info.json을 생성하므로 여기 한 곳에서만 관리한다.
+# build-exe.ps1에 내장된 매니페스트 코드도 이 쿼리로 request_info.json을 생성하므로 여기 한 곳에서만 관리한다.
 ACTIVE_BLUEPRINT_QUERY = (
     "select seq_no, titles, spiders, urls, callback_urls, conditions, needs_cleaning "
     "from tb_blueprint where active = True"
@@ -13,7 +13,7 @@ ACTIVE_BLUEPRINT_QUERY = (
 def map_blueprints_to_request_info(blueprint_list):
     """
     DB row(리스트 내 딕셔너리)를 request_info.json 스키마로 매핑합니다.
-    파일을 쓰지 않는 순수 함수 — build_manifest.py 등 다른 스크립트가 재사용합니다.
+    파일을 쓰지 않는 순수 함수 — build-exe.ps1 내장 매니페스트 코드 등이 재사용합니다.
     """
     request_info_setting_list = []
 
