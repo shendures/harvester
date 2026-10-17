@@ -1,0 +1,155 @@
+# layout/multi/main_window.py
+
+from PyQt6.QtWidgets import QWidget, QStackedWidget
+from PyQt6.QtCore import Qt
+
+from harvest.core.conf import BlueprintStorage
+from harvest.gui.trigger import MainWindowTriggersMulti
+from harvest.gui.trigger.common import NAV_BLUEPRINT_LIST
+from ..common import build_master_detail_splitter
+from ..window_base import MainWindowBase
+from ..scheduler import SchedulerPage
+from ..session import SessionSettingsPage
+from .toolbar import GlobalToolbarMulti
+from .sidebar import SidebarMulti
+from .blueprint_list import BlueprintListPage, BlueprintPageBundle
+from .monitor_target_list import MonitorTargetListPage
+from .statistics import StatisticsPageMulti
+
+
+class MainWindowMulti(MainWindowBase, MainWindowTriggersMulti):
+    _WINDOW_TITLE = "DataCrawler v2.0 — Multi Blueprint"
+
+    def __init__(self):
+        # _build() 안의 _get_or_create_bundle()이 쓰므로 super().__init__() 이전에 바인딩한다.
+        self._bundles: dict = {}   # seq_no -> BlueprintPageBundle (지연 생성 캐시)
+        self._batch_outcome_counts = None  # 배치 실행 중 결과 집계(원칙 4) — 진행 중 배치 없으면 None
+        super().__init__()
+
+    def _build(self):
+        storage = BlueprintStorage()
+
+        self.sidebar = SidebarMulti()
+        self.global_toolbar = GlobalToolbarMulti()
+
+        # ── QStackedWidget: 페이지 종류별 인덱스는 단일과 동일하게 고정하고,
+        #    블루프린트별 페이지는 각 슬롯(내부 QStackedWidget)에서 교체한다.
+        self.stack = QStackedWidget()
+        self.dashboard_slot = QStackedWidget()   # 블루프린트별 대시보드(나머지 카드) — "수집 목록"(5) 하단에 통합됨
+        self.step_slot = QStackedWidget()        # 블루프린트별 "작업 진행 상태" 카드 — "수집 목록"(5) 위쪽에 통합됨
+        self.progress_slot = QStackedWidget()    # 블루프린트별 "대기중 상태바" — step_slot보다 더 위, 맨 위에 통합됨
+        self.monitor_slot = QStackedWidget()     # 1 — 블루프린트별 데이터 정제(4탭)
+        self.monitor_nav_list = MonitorTargetListPage()  # 1 좌측 — 정제 대상 선택용 경량 목록
+        self.monitor_nav_list.blueprint_selected.connect(self._activate_blueprint)
+        # "수집 대상"(좌) : 정제 레이아웃(우) = 2.5 : 7.5 비율 — 창 크기가 바뀌어도
+        # 두 창 폭이 늘고 줄 때 이 비율로 함께 움직이도록 스트레치 팩터도 25:75(=2.5:7.5)로
+        # 맞춘다(setSizes는 초기 폭만 정하고, 이후 리사이즈 배분은 stretchFactor를 따른다).
+        self.monitor_split = build_master_detail_splitter(
+            self.monitor_nav_list, self.monitor_slot, Qt.Orientation.Horizontal,
+            stretch=(25, 75),
+        )
+        self.monitor_split.setSizes([250, 750])
+        self.schedule_page = SchedulerPage()     # 2 — 전역 단일 (단일과 동일)
+        self.schedule_page.schedule_run.connect(self._start_crawl_from_schedule)
+        self.stats_page = StatisticsPageMulti()  # 3 — 좌측 수집 대상 목록 + 블루프린트별 통계
+        self.stats_page.target_list.blueprint_selected.connect(self._activate_blueprint)
+        self.global_toolbar.running_changed.connect(self.stats_page.set_collecting)
+        self.session_page = SessionSettingsPage()  # 4 — 전역 단일
+        self.schedule_page.session_page = self.session_page
+
+        self.blueprint_list_page = BlueprintListPage()   # 5 — 전역 단일, 목록+모니터링 통합
+        self.blueprint_list_page.row_selected.connect(self._activate_blueprint)
+        self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
+        self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)
+        self.blueprint_list_page.stop_requested.connect(self._stop_crawl)
+        # "대시보드"(구 NAV_MONITOR 페이지)를 "수집 목록" 위/아래에 통합한다 — 카드
+        # 순서를 "대기중 상태바 → 작업 진행 상태 → 수집 목록 → 세션 현황 → 수집
+        # 모니터링"으로 맞추기 위해 progress_slot(대기중 상태바)·step_slot(작업 진행
+        # 상태)을 이 순서로 위에, dashboard_slot(나머지 카드)을 아래에 붙인다. 세
+        # 슬롯의 소유권은 그대로 이 클래스가 갖고(_get_or_create_bundle이 계속
+        # addWidget으로 채움), 화면 배치만 여기서 주입한다. attach_progress_panel은
+        # attach_step_panel보다 반드시 나중에 호출해야 "작업 진행 상태" 위에 놓인다.
+        self.blueprint_list_page.attach_step_panel(self.step_slot)
+        self.blueprint_list_page.attach_progress_panel(self.progress_slot)
+        self.blueprint_list_page.attach_detail_panel(self.dashboard_slot)
+
+        # 추가 순서가 곧 스택 인덱스이며 trigger/common.py의 NAV_* 상수와 일치해야 한다.
+        # 인덱스 0(NAV_MONITOR)은 단일 레이아웃과 공유하는 고정값이라 값을 바꿀 수
+        # 없지만, 다중은 위에서 "수집 목록"에 통합했으므로 이 자리는 쓰지 않는
+        # 빈 위젯으로 채워 1~5 인덱스 정렬만 유지한다.
+        self.stack.addWidget(QWidget())                 # 0 — NAV_MONITOR (다중 미사용, "수집 목록"에 통합됨)
+        self.stack.addWidget(self.monitor_split)        # 1 — NAV_REFINE
+        self.stack.addWidget(self.schedule_page)        # 2 — NAV_SCHEDULE
+        self.stack.addWidget(self.stats_page)           # 3 — NAV_STATS
+        self.stack.addWidget(self.session_page)         # 4 — NAV_SESSION
+        self.stack.addWidget(self.blueprint_list_page)  # 5 — NAV_BLUEPRINT_LIST
+
+        self._assemble_shell()
+
+        # 최초 활성화 — 첫 번째 블루프린트 기준으로 기존 단일 동작을 재현
+        self._activate_blueprint(storage.list_seq_nos()[0])
+        # 다중 레이아웃은 시작 화면으로 "수집 목록"을 먼저 보여준다
+        self._activate_nav_page(NAV_BLUEPRINT_LIST)
+
+    # ── 번들 캐시 ─────────────────────────────────────
+    def _resolve_seq_no(self, seq_no):
+        """알 수 없는 seq_no(구버전 스케줄 등)는 현재 활성 블루프린트로 폴백."""
+        storage = BlueprintStorage()
+        return seq_no if seq_no in storage.list_seq_nos() else storage.active_seq_no
+
+    def _get_or_create_bundle(self, seq_no) -> BlueprintPageBundle:
+        seq_no = self._resolve_seq_no(seq_no)
+        if seq_no not in self._bundles:
+            bundle = BlueprintPageBundle(BlueprintStorage().get(seq_no))
+            self._bundles[seq_no] = bundle
+            # 생성 즉시 슬롯에 편입 — 페이지 내부의 self.window() 참조가 항상
+            # 동작하게 한다. auth_page는 어떤 슬롯에도 마운트하지 않는다 — 더
+            # 이상 별도 화면이 아니라 "⚙" 다이얼로그가 열릴 때만 잠깐 그
+            # 다이얼로그에 얹혔다가 떼어지는 방식으로 쓰인다(_open_blueprint_settings).
+            self.dashboard_slot.addWidget(bundle.dashboard)
+            self.step_slot.addWidget(bundle.dashboard.step_card_widget)
+            self.progress_slot.addWidget(bundle.dashboard.progress_card_widget)
+            self.monitor_slot.addWidget(bundle.monitor_page)
+        return self._bundles[seq_no]
+
+    def _open_blueprint_settings(self, seq_no) -> None:
+        """"수집 목록" 테이블의 "⚙" 버튼 클릭 — 화면 전환 없이 그 블루프린트의
+        "수집 설정" 다이얼로그(수집 설정 + 추출 설정 + 인증 관리)만 모달로 띄운다."""
+        bundle = self._get_or_create_bundle(seq_no)
+        bundle.monitor_page._open_output_settings_dialog(
+            collect=bundle.collect_settings, auth_page=bundle.auth_page,
+        )
+
+    def _broadcast_blueprint_status(self, seq_no, status: str) -> None:
+        """"수집 목록"과 "데이터 정제"·"통계 분석" 좌측 목록의 상태 컬럼을 함께 갱신한다."""
+        self.blueprint_list_page.set_status(seq_no, status)
+        self.monitor_nav_list.set_status(seq_no, status)
+        self.stats_page.set_status(seq_no, status)
+
+    # ── 활성 블루프린트 전환 ───────────────────────────
+    def _activate_blueprint(self, seq_no):
+        """
+        사이드바 선택/실행 시작 시 호출 — 각 슬롯의 표시 페이지를 해당
+        블루프린트 번들로 교체하고, 상속받은 단일 트리거 코드가 참조하는
+        self.dashboard/self.monitor_page/self.auth_page를 함께 갱신합니다.
+        """
+        seq_no = self._resolve_seq_no(seq_no)
+        bundle = self._get_or_create_bundle(seq_no)
+        BlueprintStorage().set_active(seq_no)
+        self.monitor_nav_list.set_active_seq_no(seq_no)
+        self.stats_page.select_blueprint(seq_no)
+
+        self.dashboard_slot.setCurrentWidget(bundle.dashboard)
+        self.step_slot.setCurrentWidget(bundle.dashboard.step_card_widget)
+        self.progress_slot.setCurrentWidget(bundle.dashboard.progress_card_widget)
+        self.monitor_slot.setCurrentWidget(bundle.monitor_page)
+
+        # 상속(단일) 트리거 호환 — "활성 번들"의 페이지를 가리키는 별칭 유지
+        self.dashboard = bundle.dashboard
+        self.monitor_page = bundle.monitor_page
+        self.auth_page = bundle.auth_page
+
+        # bundle.dashboard.blueprint_info는 번들 생성 시 이미 deepcopy된
+        # 동일 블루프린트 — 여기서 BlueprintStorage().get()을 또 호출해
+        # deepcopy를 반복할 필요가 없다.
+        self.global_toolbar.activate_blueprint(bundle.dashboard.blueprint_info)

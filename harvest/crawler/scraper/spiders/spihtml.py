@@ -1,0 +1,32 @@
+from harvest.crawler import engine
+from .base import BaseExtractorSpider
+
+class HtmlExtractorSpider(BaseExtractorSpider):
+
+    name = "spider_html"
+
+    def parse(self, response):
+        try:
+            if response.status != 200:
+                self.logger.warning(f'HTTP Status {response.status} for URL: {response.url}')
+                yield engine.build_failure_item(response, self.request_info)
+                return
+
+            root = self.request_info["conditions"]["items"]["root"]
+            _items = {key: value for key, value in self.request_info["conditions"]["items"].items() if key != 'root'}
+
+            selectors = response.xpath(root)
+            result = engine.get_result(self.request_info, selectors, _items)
+
+            loader = engine.set_item_loader(response, self.request_info, result)
+
+            yield loader.load_item()
+
+        except IndexError as e:
+            self.logger.error('IndexError : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
+        except Exception as e:
+            self.logger.error('Exception : %s at %s', e, response.url)
+            yield engine.build_failure_item(response, self.request_info, error=e)
+
+
