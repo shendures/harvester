@@ -58,6 +58,8 @@ class MainWindowMulti(MainWindowBase, MainWindowTriggersMulti):
         self.schedule_page.session_page = self.session_page
 
         self.blueprint_list_page = BlueprintListPage()   # 5 — 전역 단일, 목록+모니터링 통합
+        self.blueprint_list_page.attach_run_buttons(
+            self.global_toolbar.collect_btn, self.global_toolbar.batch_btn)
         self.blueprint_list_page.row_selected.connect(self._activate_blueprint)
         self.blueprint_list_page.batch_start_requested.connect(self._start_batch)
         self.blueprint_list_page.settings_requested.connect(self._open_blueprint_settings)

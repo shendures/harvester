@@ -75,7 +75,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 | multi | `dashboard.py`/`monitor.py` | `*Multi(*Single)` | single 상속, 슬롯 배치만 조정 |
 | multi | `statistics.py` | `StatisticsPageMulti(StatisticsPageBase)` | 좌측 수집 대상 목록 + 우측 블루프린트별 `StatisticsPanel`(지연 생성) |
 | multi | `monitor_target_list.py` | `MonitorTargetListPage` | 경량 블루프린트 목록(정제 화면용) |
-| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택), 상태 컬럼에 대기·수집 중·실패(빨간 글씨) 표시 |
+| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택, Select 헤더 체크박스로 전체 선택·해제), 상태 컬럼에 대기·수집 중·실패(빨간 글씨) 표시 |
 
 **의존**: `harvest/gui/trigger/*`, `harvest/gui/style.py`, `harvest/core/conf.py` · **피의존**: `harvest/app.py`만 최상위 import.
 **주의**: `harvest/crawler/scraper/*`·`harvest/crawler/engine.py`·`harvest/crawler/worker.py`는 직접 참조하지 않습니다(`harvest/gui/trigger/main_window.py` 뒤에 캡슐화).
