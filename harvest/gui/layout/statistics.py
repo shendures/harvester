@@ -51,47 +51,50 @@ DIAG_POPUP_SIZE = (1180, 480)       # 폭은 표 8열이 잘리지 않는 값, �
 DIAG_POPUP_MIN_SIZE = (740, 300)
 
 # 카드명 옆 "?" 도움말 — 스크래핑을 모르는 사용자가 용어와 숫자 읽는 법을 알 수 있게 쉬운 말로 적는다.
+# 첫 줄은 무엇인지, 이후 줄은 항목마다 "· 항목 : 뜻" 한 줄씩 적는다.
 REQUEST_CARD_HELP = (
-    "사이트에 요청을 보내고 응답을 받는 과정의 통계입니다.\n"
-    "페이지가 열렸는지, 얼마나 빨랐는지, 연결이 끊겼는지를 봅니다."
+    "사이트에 요청을 보내고 응답을 받는 과정입니다.\n"
+    "· 요청 페이지 수 : 요청을 보낸 페이지 수\n"
+    "· 응답 성공률 : 200 응답 수 ÷ 요청 페이지 수\n"
+    "· 평균 응답 : 응답까지 걸린 평균 시간\n"
+    "· 처리량 : 초당 처리한 요청 수"
 )
 PROCESS_CARD_HELP = (
-    "응답을 받은 뒤 페이지에서 데이터를 꺼내는 과정의 결과입니다.\n"
-    "페이지마다 몇 건씩 나오는지, 꺼낸 데이터가 얼마나 온전한지를 봅니다.\n"
-    "유효 데이터 비율은 값이 하나라도 있는 행을 추출된 행으로 나눈 값입니다."
+    "응답을 받은 뒤 페이지에서 데이터를 꺼낸 결과입니다.\n"
+    "· 건수 중앙값 : 페이지당 수집 건수의 중앙값\n"
+    "· 최소/최대 건수 : 페이지당 가장 적은/많은 건수\n"
+    "· 결측값 데이터 비율 : 값이 하나도 없는 행 ÷ 추출된 행\n"
+    "※ 데이터를 가져온 페이지만 집계합니다"
 )
-
-STATUS_MEANINGS_PER_LINE = 3
 
 
 def _status_meaning_lines() -> str:
-    """상태 코드 뜻 표를 툴팁 폭이 과도해지지 않게 줄마다 몇 개씩 끊어 적는다."""
-    items = [f"{code} {meaning}" for code, meaning in STATUS_CODE_MEANINGS.items()]
-    return "\n".join(
-        " · ".join(items[i:i + STATUS_MEANINGS_PER_LINE])
-        for i in range(0, len(items), STATUS_MEANINGS_PER_LINE))
+    """상태 코드마다 한 줄씩 "· 코드 : 뜻"으로 적는다 — STATUS_CODE_MEANINGS를 그대로 순회해
+    코드 표와 툴팁이 어긋나지 않게 한다."""
+    return "\n".join(f"· {code} : {meaning}" for code, meaning in STATUS_CODE_MEANINGS.items())
 
 
 STATUS_CHART_TIP = (
-    "사이트가 응답과 함께 보내는 결과 번호(상태 코드)별 개수입니다.\n"
+    "사이트가 응답과 함께 보낸 결과 번호(상태 코드)별 개수입니다.\n"
     + _status_meaning_lines() + "\n"
-    "자주 보는 코드는 0건이어도 항상 표시됩니다.\n"
-    "표에 없는 코드는 '기타'로 합쳐 표시합니다.\n"
-    "연결에 실패한 응답은 번호가 없어 여기에 없고, '응답 결과 구성'에서 확인할 수 있습니다."
+    "· 기타 : 위에 없는 코드를 합친 값\n"
+    "※ 연결 실패는 번호가 없어 '응답 결과 구성'에서 봅니다"
 )
 SPEED_CHART_TIP = (
-    f"응답이 도착하기까지 걸린 시간을 네 구간으로 나눈 것입니다.\n"
-    f"빠름 {speed_secs(SPEED_FAST_MAX)}초 미만 · 보통 {speed_secs(SPEED_FAST_MAX)}~{speed_secs(SPEED_NORMAL_MAX)}초 · "
-    f"느림 {speed_secs(SPEED_NORMAL_MAX)}~{speed_secs(SPEED_SLOW_MAX)}초 · 매우 느림 {speed_secs(SPEED_SLOW_MAX)}초 이상\n"
-    f"느린 쪽에 몰리면 {CHECKLIST_ADVICE}\n"
-    "평균값은 위 '요청·응답' 카드의 '평균 응답'에서 볼 수 있습니다."
+    "응답이 도착하기까지 걸린 시간을 4구간으로 나눈 것입니다.\n"
+    f"· 빠름 : {speed_secs(SPEED_FAST_MAX)}초 미만\n"
+    f"· 보통 : {speed_secs(SPEED_FAST_MAX)}~{speed_secs(SPEED_NORMAL_MAX)}초\n"
+    f"· 느림 : {speed_secs(SPEED_NORMAL_MAX)}~{speed_secs(SPEED_SLOW_MAX)}초\n"
+    f"· 매우 느림 : {speed_secs(SPEED_SLOW_MAX)}초 이상\n"
+    f"※ 느린 쪽에 몰리면 {CHECKLIST_ADVICE}"
 )
+# 줄 순서는 카드 막대 순서(OUTCOME_SEGMENTS)와 같다 — 차트가 정렬하지 않고 받은 순서대로 그린다
 OUTCOME_CHART_TIP = (
     "받은 응답을 4가지로 나눈 결과입니다.\n"
-    "정상 수집: 실제로 데이터를 가져옴\n"
-    "데이터 누락: 페이지는 열렸지만 데이터 없음\n"
-    "HTTP 오류: 사이트가 오류로 응답함\n"
-    "연결 실패: 사이트에 연결하지 못함"
+    "· 연결 실패 : 사이트에 연결하지 못함\n"
+    "· HTTP 오류 : 사이트가 오류로 응답\n"
+    "· 정상 수집 : 데이터를 가져옴\n"
+    "· 데이터 누락 : 페이지는 열렸지만 데이터 없음"
 )
 
 
@@ -186,10 +189,10 @@ class StatisticsPanel(QWidget, StatisticsPageTriggers):
         process_card_w, process_cards = build_stat_summary_card(
             parts, "데이터 처리",
             [("건수 중앙값", "—", ACCENT_LIGHT), ("페이지 최소/최대 건수", "—", PURPLE),
-             ("유효 데이터 비율", "—", GREEN)],
+             ("결측값 데이터 비율", "—", GREEN)],
             help_text=PROCESS_CARD_HELP,
         )
-        self.kpi_page_median, self.kpi_item_range, self.kpi_valid_rate = process_cards
+        self.kpi_page_median, self.kpi_item_range, self.kpi_missing_rate = process_cards
         process_card_w.setFixedHeight(process_card_w.sizeHint().height())
         row1.addWidget(process_card_w, 1)
 
