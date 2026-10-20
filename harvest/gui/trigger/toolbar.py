@@ -130,7 +130,7 @@ class GlobalToolbarTriggers:
             self.run_btn.setText("⬛  중지")
             self.run_btn.setStyleSheet(_stop_btn_qss())
         else:
-            self.run_btn.setText("▶  시작")
+            self.run_btn.setText("▶  수집 실행")
             self.run_btn.setStyleSheet(f"""
                 QPushButton{{background:{ACCENT};color:white;border:none;border-radius:6px;
                 padding:6px 14px;font-size:13px;font-weight:bold;}}
