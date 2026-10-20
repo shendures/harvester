@@ -38,7 +38,7 @@
 
 WSL 개발 환경 주의:
 - WSL2에서 Windows에 설치된 DB로 접속하는 방법(게이트웨이 IP, 방화벽, 바인드 주소)은 개인 학습 노트 `docs/study/study_wsl_db_connect.md`에 정리돼 있다(git 미추적).
-- `harvest/config/env/database.ini`의 host가 WSL→Windows 게이트웨이 주소(예: `172.22.224.1`)인 경우 그 WSL에서만 유효하다. 배포 빌드를 하는 Windows 머신에서는 그 머신 기준의 host를 따로 쓴다.
+- 블루프린트 DB(`harvest`)는 WSL 로컬 PostgreSQL(`127.0.0.1:5433`)에 있다. `database.ini`의 host·port가 이 값이면 그 WSL에서만 유효하다. 배포 빌드를 하는 Windows 머신에서는 그 머신에서 DB에 닿는 host·port를 따로 쓴다.
 - WSL 네이티브 경로의 `.venv`는 이미 WSL용이다. 같은 클론에서 Windows 빌드용 가상환경을 만들지 않는다. Windows 빌드는 `/mnt/c`·`/mnt/d` 같은 Windows 경로의 별도 클론이나 다른 이름(`.venv-win`)의 가상환경에서 한다.
 
 ## 실행
