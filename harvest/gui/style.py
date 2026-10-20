@@ -7,13 +7,13 @@ from PyQt6.QtWidgets import (
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
     QSplitter, QSplitterHandle, QProxyStyle,
-    QMenu, QListWidget, QListWidgetItem, QWidgetAction, QSizePolicy,
+    QMenu, QListWidget, QListWidgetItem, QWidgetAction, QSizePolicy, QApplication,
 )
 
 from PyQt6.QtCore import (
     Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal, QCoreApplication, QEvent,
 )
-from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
+from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon, QKeySequence, QCursor )
 from PyQt6.QtSvg import QSvgRenderer
 
 from harvest.core import utility
@@ -1292,11 +1292,68 @@ class EqualSpacingTable(QTableWidget):
         pos = hdr.mapToGlobal(QPoint(hdr.sectionViewportPosition(logical), hdr.height()))
         menu.exec(pos)
 
+    # ── 행 복사 ───────────────────────────────────────
+    def rows_as_text(self, rows: list) -> str:
+        """행 번호 목록을 클립보드용 문자열로 만든다 — 한 행은 셀 텍스트를 탭으로 이은 한 줄,
+        여러 행은 줄바꿈으로 잇는다(엑셀·메모장에 그대로 붙여넣을 수 있다). 숨겨진 행은 빼고,
+        정렬이 행을 실제로 재배치하므로 행 번호 순서가 곧 화면 순서다. 텍스트 아이템이 없는
+        셀(체크박스·버튼 같은 cellWidget 컬럼)은 빈 문자열이다."""
+        lines = []
+        for row in sorted(set(rows)):
+            if not 0 <= row < self.rowCount() or self.isRowHidden(row):
+                continue
+            cells = (self.item(row, col) for col in range(self.columnCount()))
+            lines.append("\t".join(item.text() if item else "" for item in cells))
+        return "\n".join(lines)
+
+    def _copy_target_rows(self, clicked_row: int | None = None) -> list:
+        """복사할 행 — 선택 모드가 있으면 선택된 행, 없으면(NoSelection) 우클릭한 행이나 현재 행."""
+        if self.selectionMode() != QTableWidget.SelectionMode.NoSelection:
+            selected = {index.row() for index in self.selectedIndexes()}
+            if selected:
+                return sorted(selected)
+        row = clicked_row if clicked_row is not None else self.currentRow()
+        return [row] if row >= 0 else []
+
+    def copy_text(self, text: str) -> None:
+        """텍스트를 클립보드에 복사하고 안내 툴팁을 띄운다 — 행 복사와 셀 복사가 공유한다."""
+        QApplication.clipboard().setText(text)
+        QToolTip.showText(QCursor.pos(), "클립보드에 복사되었습니다", self)
+
+    def copy_rows(self, rows: list | None = None) -> None:
+        """행을 클립보드에 복사한다 — rows를 생략하면 선택·현재 행이다.
+        복사할 텍스트가 없으면(대상 행 없음·숨김) 클립보드를 건드리지 않는다."""
+        text = self.rows_as_text(self._copy_target_rows() if rows is None else rows)
+        if text:
+            self.copy_text(text)
+
+    def add_copy_row_action(self, menu: QMenu, row: int) -> None:
+        """자체 우클릭 메뉴를 가진 표가 "행 복사" 항목을 덧붙인다 — 누르면 그 행을 바로 복사한다."""
+        menu.addAction("행 복사").triggered.connect(lambda: self.copy_rows([row]))
+
+    def contextMenuEvent(self, event):
+        """기본 우클릭 메뉴("행 복사") — CustomContextMenu를 쓰는 표는 이 이벤트를 받지 않고
+        자기 메뉴에서 add_copy_row_action()으로 같은 항목을 넣는다."""
+        index = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+        rows = self._copy_target_rows(index.row())
+        if index.row() not in rows:
+            rows = [index.row()]
+        menu = QMenu(self)
+        menu.setStyleSheet(self.theme.PROXY_CONTEXT_MENU_QSS)
+        label = "행 복사" if len(rows) == 1 else f"선택한 {len(rows)}개 행 복사"
+        menu.addAction(label).triggered.connect(lambda: self.copy_rows(rows))
+        menu.exec(event.globalPos())
+
     # ── Qt 이벤트 오버라이드 ──────────────────────────
     def keyPressEvent(self, event):
-        """↑/↓로 current 행이 바뀌면 rowKeyNavigated를 emit한다 — NoSelection
-        테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도 같은 핸들러를
-        재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        """Ctrl+C는 선택(없으면 현재) 행을 복사한다. ↑/↓로 current 행이 바뀌면 rowKeyNavigated를
+        emit한다 — NoSelection 테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도
+        같은 핸들러를 재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self.copy_rows()
+            return
         previous_row = self.currentRow()
         super().keyPressEvent(event)
         if event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):

@@ -1,10 +1,10 @@
 # layout/multi/blueprint_list.py
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
+    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor, QColor
+from PyQt6.QtGui import QColor
 
 from harvest.core.conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from harvest.gui.style import EqualSpacingTable
@@ -562,10 +562,10 @@ class BlueprintListPage(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet(theme.PROXY_CONTEXT_MENU_QSS)
         copy_act = menu.addAction(f"'{self._COLUMNS[col]}' 복사")
+        self.table.add_copy_row_action(menu, row)
         action = menu.exec(self.table.viewport().mapToGlobal(pos))
         if action == copy_act:
-            QApplication.clipboard().setText(item.text())
-            QToolTip.showText(QCursor.pos(), "클립보드에 복사되었습니다", self.table)
+            self.table.copy_text(item.text())
 
 
 class BlueprintPageBundle:
