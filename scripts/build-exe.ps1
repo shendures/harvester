@@ -7,6 +7,7 @@
 # 이 스크립트 하나가 가상환경 활성화, python/pyinstaller 사전 점검, 인자 대화형 입력,
 # 빌드 전체를 처리합니다(과거 build-exe.bat 래퍼의 기능을 통합).
 # -AppName을 명령줄로 주지 않으면 실행 중 입력받습니다(Enter만 치면 DataCrawler).
+# 빌드 PC의 앱 데이터(설정·스케줄·통계 이력)는 확인 없이 빌드 성공 후 항상 삭제합니다.
 # DB의 active 블루프린트 전체가 항상 배포 대상에 포함됩니다.
 #
 # 무엇을 --add-data로 담을지는 이 파일에 내장된 Python 매니페스트 코드(1단계)가 결정합니다. 이 코드는
@@ -81,6 +82,23 @@ if (-not $toolsOk) {
 if (-not $PSBoundParameters.ContainsKey("AppName")) {
     $appInput = Read-Host "AppName을 입력하세요 [Enter=DataCrawler]"
     if ($appInput) { $AppName = $appInput }
+}
+
+# 빌드 PC 앱 데이터는 빌드 성공 후(4단계) 항상 삭제한다 — 빌드가 실패하면 지우지 않는다.
+# 앱은 %LOCALAPPDATA%\<AppName>에 파일이 이미 있으면 번들 기본값으로 시딩하지 않으므로(BlueprintStorage),
+# 직전 테스트의 설정·스케줄·통계 이력이 남지 않게 지워야 첫 실행이 항상 DB 기본값 시딩이 된다.
+$appDataDir = $null
+if ($env:LOCALAPPDATA -and $AppName -and $AppName -notmatch '[\\/]|\.\.') {
+    $appDataDir = Join-Path $env:LOCALAPPDATA $AppName
+}
+if (-not $appDataDir) {
+    Write-Host "[경고] 앱 데이터 폴더 경로를 안전하게 결정할 수 없어 정리를 건너뜁니다."
+} elseif (Test-Path $appDataDir) {
+    Write-Host ""
+    Write-Host "빌드 PC의 앱 데이터 폴더: $appDataDir"
+    Write-Host "저장된 설정·스케줄·통계 이력이 삭제됩니다(빌드가 성공한 뒤 삭제)."
+} else {
+    Write-Host "정리할 앱 데이터 폴더가 없습니다: $appDataDir"
 }
 
 # ── 1. 매니페스트 산출 (내장 Python) ──────────────────────────
@@ -338,28 +356,10 @@ if ($LASTEXITCODE -ne 0) {
 Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 # ── 4. 빌드 PC 앱데이터 정리 ────────────────────────────────────────
-# exe에는 이 PC의 사용자 설정이 들어가지 않지만, 앱은 %LOCALAPPDATA%\<AppName>에 파일이 이미
-# 있으면 번들 기본값으로 시딩하지 않습니다(BlueprintStorage). 직전 테스트의 설정·스케줄·통계
-# 이력이 남지 않도록, 빌드 성공 후 이 폴더를 확인받고 삭제해 첫 실행이 항상 DB 기본값 시딩이 되게 합니다.
-$appDataDir = $null
-if ($env:LOCALAPPDATA -and $AppName -and $AppName -notmatch '[\\/]|\.\.') {
-    $appDataDir = Join-Path $env:LOCALAPPDATA $AppName
-}
-if (-not $appDataDir) {
-    Write-Host "[경고] 앱 데이터 폴더 경로를 안전하게 결정할 수 없어 정리를 건너뜁니다."
-} elseif (Test-Path $appDataDir) {
-    Write-Host ""
-    Write-Host "빌드 PC의 앱 데이터 폴더: $appDataDir"
-    Write-Host "저장된 설정·스케줄·통계 이력이 삭제됩니다."
-    $resetAnswer = Read-Host "삭제하시겠습니까? [Y/n]"
-    if (-not $resetAnswer -or $resetAnswer -match '^[yY]') {
-        Remove-Item $appDataDir -Recurse -Force
-        Write-Host "앱 데이터 폴더를 삭제했습니다."
-    } else {
-        Write-Host "앱 데이터 폴더 삭제를 건너뜁니다."
-    }
-} else {
-    Write-Host "정리할 앱 데이터 폴더가 없습니다: $appDataDir"
+# 여기까지 왔다면 빌드가 성공한 것이므로 확인 없이 삭제합니다.
+if ($appDataDir -and (Test-Path $appDataDir)) {
+    Remove-Item $appDataDir -Recurse -Force
+    Write-Host "앱 데이터 폴더를 삭제했습니다: $appDataDir"
 }
 
 Write-Host ""

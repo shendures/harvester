@@ -1,10 +1,10 @@
 # layout/multi/blueprint_list.py
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu, QToolTip, QApplication,
+    QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QScrollArea, QTableWidgetItem, QTableWidget, QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QCursor, QColor
+from PyQt6.QtGui import QColor
 
 from harvest.core.conf import BlueprintStorage, DEFAULT_COLLECT_SETTINGS
 from harvest.gui.style import EqualSpacingTable
@@ -39,7 +39,7 @@ class BlueprintListPage(QWidget):
       "비전체" 수집 대상을 고르는 유일한 방법이다.
     - "Run/Manage" 컬럼: "▶"(실행)·"⚙"(설정) 버튼이 이 순서로 나란히 들어있다.
       "▶"는 체크 상태와 무관하게 그 행의 블루프린트 하나만 즉시 실행한다 —
-      batch_start_requested를 seq_no 1개짜리 리스트로 emit해 "선택 수집"/
+      batch_start_requested를 seq_no 1개짜리 리스트로 emit해 "수집 실행"/
       "전체 수집"과 동일한 순차 실행 큐를 그대로 공유한다(이미 다른 작업이
       실행 중이면 MainWindowMulti._start_batch가 이미 하는 대로 그 큐 뒤에
       순서대로 대기 — 이 버튼 자체에는 "중지" 토글이 없다). "⚙"는
@@ -49,7 +49,7 @@ class BlueprintListPage(QWidget):
     - 셀 우클릭: 컨텍스트 메뉴에서 "'<컬럼명>' 복사" 선택 시 그 셀의 텍스트만
       클립보드에 복사한다(행 전체가 아니라 클릭한 셀 하나). "Run/Manage"/"Select"
       컬럼은 텍스트 아이템이 없어 메뉴 자체가 뜨지 않는다.
-    - "선택 수집" 버튼: 체크된 블루프린트만 순차 실행("비전체"). 체크 0개면 비활성화.
+    - "수집 실행" 버튼: 체크된 블루프린트만 순차 실행("비전체"). 체크 0개면 비활성화.
     - "전체 수집" 버튼: 체크 여부와 무관하게 먼저 모든 행을 체크 상태로 바꾼 뒤
       테이블의 모든 블루프린트를 순차 실행("전체").
     - 두 버튼 모두 실행을 시작하면 자기 자신이 "⬛ 중지"로 바뀌고(반대쪽 버튼은
@@ -58,6 +58,9 @@ class BlueprintListPage(QWidget):
       "⬛ 중지" 토글(trigger/toolbar.py의 _toggle_run)과 동일한 관례. "중지" 클릭은
       stop_requested를 emit하고 완료 확인을 기다리지 않고 즉시 원래 라벨로
       되돌아간다(낙관적 UI).
+    - "Select" 헤더 체크박스: 켜면 모든 행 체크박스를 체크, 끄면 모두 해제한다
+      (일괄 토글 전용 — 개별 체크 변경은 헤더에 반영하지 않고 refresh() 때만 초기화).
+      이 컬럼 헤더에는 필터·정렬이 없다.
     - 행의 음영(배경 강조)은 Qt의 선택 상태가 아니라 체크 상태로 직접
       구동된다(_set_row_shaded). 상단 URL 입력창은 체크 개수와 무관하며,
       "Run/Manage" 컬럼이 아닌 셀 클릭(row_selected)으로만 갱신된다.
@@ -108,6 +111,8 @@ class BlueprintListPage(QWidget):
         self._active_view_seq_no = None    # 마지막으로 클릭(보기)한 블루프린트 — 음영 표시용
         self._active_row_seq_no = None     # 지금 "■"로 바뀐 행(Run/Manage ▶ 버튼)의 seq_no
         self._run_btn_by_seq_no = {}       # seq_no -> 그 행의 ▶/■ 버튼(refresh()마다 재구성)
+        self._collect_btn = None           # "수집 실행"/"전체 수집"은 상단 툴바 소유 — attach_run_buttons로 주입
+        self._batch_btn = None
         self._build()
         self.refresh()
 
@@ -139,18 +144,6 @@ class BlueprintListPage(QWidget):
 
         tcw, tc = parts.card_widget("수집 목록")
 
-        ctrl_row = QHBoxLayout()
-        ctrl_row.addStretch()
-        self._collect_btn = parts.action_btn("선택 수집")
-        self._collect_btn_idle_qss = self._collect_btn.styleSheet()
-        self._collect_btn.clicked.connect(self._on_collect_clicked)
-        ctrl_row.addWidget(self._collect_btn)
-        self._batch_btn = parts.action_btn("전체 수집")
-        self._batch_btn_idle_qss = self._batch_btn.styleSheet()
-        self._batch_btn.clicked.connect(self._on_collect_all_clicked)
-        ctrl_row.addWidget(self._batch_btn)
-        tc.addLayout(ctrl_row)
-
         self.table = EqualSpacingTable(parent=self, row_height=32, col_padding=10, hscroll_handle=50)
         # 행 음영은 Qt의 선택 상태가 아니라 체크박스 상태로 직접 구동한다
         # (_set_row_shaded) — 체크는 여러 행 동시에 가능하므로 Qt의 단일 선택
@@ -158,6 +151,10 @@ class BlueprintListPage(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.setColumnCount(len(self._COLUMNS))
         self.table.setHorizontalHeaderLabels(self._COLUMNS)
+        # Select 헤더는 글자 대신 전체 선택/해제 체크박스로 그린다.
+        self.table.setHorizontalHeaderItem(self._CHECK_COL, QTableWidgetItem(""))
+        self.table.enable_header_checkbox(self._CHECK_COL)
+        self.table.headerCheckToggled.connect(self._on_header_check_toggled)
         self.table.itemClicked.connect(self._on_item_clicked)
         self.table.rowKeyNavigated.connect(self._on_item_clicked)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -182,6 +179,25 @@ class BlueprintListPage(QWidget):
         """활성 블루프린트의 모니터링 상세(main_window의 dashboard_slot)를 목록 아래에
         결합한다 — 남는 세로 공간을 모두 차지한다(stretch=1)."""
         self._root.addWidget(widget, 1)
+
+    def attach_run_buttons(self, collect_btn, batch_btn) -> None:
+        """상단 툴바(GlobalToolbarMulti)가 소유한 "수집 실행"/"전체 수집" 버튼을
+        주입받아 클릭 핸들러를 연결한다 — 실행/중지 토글 로직은 이 페이지가 그대로 담당."""
+        self._collect_btn = collect_btn
+        self._collect_btn_idle_qss = collect_btn.styleSheet()
+        collect_btn.clicked.connect(self._on_collect_clicked)
+        self._batch_btn = batch_btn
+        self._batch_btn_idle_qss = batch_btn.styleSheet()
+        batch_btn.clicked.connect(self._on_collect_all_clicked)
+        self._sync_run_btns_enabled()
+
+    def _sync_run_btns_enabled(self) -> None:
+        """목록에 행이 있을 때만 두 버튼을 활성화한다(주입 전에는 아무것도 안 함)."""
+        if self._collect_btn is None:
+            return
+        has_rows = self.table.rowCount() > 0
+        self._collect_btn.setEnabled(has_rows)
+        self._batch_btn.setEnabled(has_rows)
 
     def refresh(self) -> None:
         """BlueprintStorage에서 다시 읽어 테이블을 재구성한다."""
@@ -224,7 +240,7 @@ class BlueprintListPage(QWidget):
             # "Run/Manage" 컬럼 — "▶"(실행)·"⚙"(설정) 두 아이콘 버튼을 이 순서로 한
             # 셀에 나란히 배치한다. "▶"는 체크 여부와 무관하게 이 블루프린트
             # 하나만 즉시 실행한다(batch_start_requested를 seq_no 1개짜리
-            # 리스트로 emit해 "선택 수집"/"전체 수집"과 동일한 순차 실행 큐를
+            # 리스트로 emit해 "수집 실행"/"전체 수집"과 동일한 순차 실행 큐를
             # 그대로 재사용 — 새 실행 로직 불필요). 이 블루프린트가 실제로
             # 실행 중이면 같은 버튼이 "■"(중지)로 바뀐다(_on_row_run_btn_clicked/
             # set_status 참고). "⚙"는 수집 설정 다이얼로그를 연다. seq_no를
@@ -265,9 +281,8 @@ class BlueprintListPage(QWidget):
             wrap_layout.addStretch()
             self.table.setCellWidget(row, self._CHECK_COL, check_wrap)
 
-        has_rows = self.table.rowCount() > 0
-        self._collect_btn.setEnabled(has_rows)
-        self._batch_btn.setEnabled(has_rows)
+        self._sync_run_btns_enabled()
+        self.table.set_header_checked(False)   # 행이 모두 새로(미체크로) 만들어졌으므로 헤더도 초기화
         if self._active_view_seq_no is not None:
             row = self._row_of_seq(self._active_view_seq_no)
             if row != -1:
@@ -348,6 +363,14 @@ class BlueprintListPage(QWidget):
             if checkbox:
                 checkbox.setChecked(False)
 
+    def _on_header_check_toggled(self, checked: bool) -> None:
+        """Select 헤더 체크박스 — 모든 행 체크박스를 같은 상태로 맞춘다(행 음영은
+        각 체크박스의 toggled → _on_check_toggled가 처리). 개별 변경은 헤더에 반영하지 않는다."""
+        for row in range(self.table.rowCount()):
+            checkbox = self._checkbox_at(row)
+            if checkbox:
+                checkbox.setChecked(checked)
+
     def _row_of(self, wrap: QWidget) -> int:
         """정렬로 행 순서가 바뀌어도 이 셀 위젯이 현재 위치한 행 번호를 찾는다."""
         for row in range(self.table.rowCount()):
@@ -367,13 +390,13 @@ class BlueprintListPage(QWidget):
         return result
 
     def _warn_no_selection(self) -> None:
-        """"선택 수집" 클릭 시 체크된 대상이 없으면 안내한다."""
+        """"수집 실행" 클릭 시 체크된 대상이 없으면 안내한다."""
         _show_message_dialog(
             self, "수집 대상 없음", "수집 대상을 선택한 뒤 수집을 진행해 주세요.", font_size=12,
         )
 
     def _on_collect_clicked(self) -> None:
-        """"선택 수집" 버튼 — 평소엔 체크된 것만 실행("비전체"), 자기 자신이 실행 중
+        """"수집 실행" 버튼 — 평소엔 체크된 것만 실행("비전체"), 자기 자신이 실행 중
         (="⬛ 중지" 상태)일 땐 같은 버튼이 중지 역할을 한다(trigger/toolbar.py의
         _toggle_run과 동일한 토글 패턴). 체크된 게 없으면 막는 대신(비활성화)
         선택을 안내한다 — 버튼은 항상 눌러볼 수 있게 열어둔다."""
@@ -427,14 +450,12 @@ class BlueprintListPage(QWidget):
         self._active_run_btn = None
         self._pending_run_seq_nos = set()
         if btn is self._collect_btn:
-            btn.setText("선택 수집")
+            btn.setText("수집 실행")
             btn.setStyleSheet(self._collect_btn_idle_qss)
         else:
             btn.setText("전체 수집")
             btn.setStyleSheet(self._batch_btn_idle_qss)
-        has_rows = self.table.rowCount() > 0
-        self._collect_btn.setEnabled(has_rows)
-        self._batch_btn.setEnabled(has_rows)
+        self._sync_run_btns_enabled()
 
     def _style_row_run_btn(self, btn, running: bool) -> None:
         """행의 ▶/■ 버튼 모양을 실행/중지 상태에 맞춰 맞춘다 — 상단 배치 버튼의
@@ -448,7 +469,7 @@ class BlueprintListPage(QWidget):
 
     def _on_row_run_btn_clicked(self, seq_no) -> None:
         """"Run/Manage" 컬럼의 ▶ 버튼 — 이 행이 이미 실행 중(="■"로 바뀐 상태)이면
-        그 버튼 자체가 중지 역할을 한다(선택 수집/전체 수집과 동일한 토글 관례,
+        그 버튼 자체가 중지 역할을 한다(수집 실행/전체 수집과 동일한 토글 관례,
         전역 중지와 완전히 동일하게 동작 — 워커가 하나뿐이라 "이 행만 중지"는
         곧 "지금 도는 작업을 중지"와 같다). 아니면 이 블루프린트 하나만 즉시
         실행 큐에 넣는다. 지금 아무것도 실행 중이 아니라 이 클릭이 대기 없이
@@ -562,10 +583,10 @@ class BlueprintListPage(QWidget):
         menu = QMenu(self)
         menu.setStyleSheet(theme.PROXY_CONTEXT_MENU_QSS)
         copy_act = menu.addAction(f"'{self._COLUMNS[col]}' 복사")
+        self.table.add_copy_row_action(menu, row)
         action = menu.exec(self.table.viewport().mapToGlobal(pos))
         if action == copy_act:
-            QApplication.clipboard().setText(item.text())
-            QToolTip.showText(QCursor.pos(), "클립보드에 복사되었습니다", self.table)
+            self.table.copy_text(item.text())
 
 
 class BlueprintPageBundle:

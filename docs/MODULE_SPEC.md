@@ -75,7 +75,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 | multi | `dashboard.py`/`monitor.py` | `*Multi(*Single)` | single 상속, 슬롯 배치만 조정 |
 | multi | `statistics.py` | `StatisticsPageMulti(StatisticsPageBase)` | 좌측 수집 대상 목록 + 우측 블루프린트별 `StatisticsPanel`(지연 생성) |
 | multi | `monitor_target_list.py` | `MonitorTargetListPage` | 경량 블루프린트 목록(정제 화면용) |
-| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택), 상태 컬럼에 대기·수집 중·실패(빨간 글씨) 표시 |
+| multi | `blueprint_list.py` | `BlueprintListPage` | 수집 목록 테이블(행별 실행/설정/선택, Select 헤더 체크박스로 전체 선택·해제), 상태 컬럼에 대기·수집 중·실패(빨간 글씨) 표시 |
 
 **의존**: `harvest/gui/trigger/*`, `harvest/gui/style.py`, `harvest/core/conf.py` · **피의존**: `harvest/app.py`만 최상위 import.
 **주의**: `harvest/crawler/scraper/*`·`harvest/crawler/engine.py`·`harvest/crawler/worker.py`는 직접 참조하지 않습니다(`harvest/gui/trigger/main_window.py` 뒤에 캡슐화).
@@ -104,7 +104,7 @@ QWidget 트리 구성만 담당(동작 로직 없음), 같은 이름의 `harvest
 ### 2.4 테마·공용 위젯 — `harvest/gui/style.py`
 
 앱의 다크 테마 QSS와 재사용 위젯을 정의하는 유일한 소스입니다(비즈니스 로직
-없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit), `Parts`(위젯 빌더),
+없음). `THEME`(팔레트), `EqualSpacingTable`(엑셀형 표, 클릭 셀 포커스 테두리 없이 행 단위 강조, ↑/↓ 행 이동 시 `rowKeyNavigated` emit, Ctrl+C·우클릭 "행 복사"로 선택 행을 탭 구분 텍스트로 클립보드에 복사), `Parts`(위젯 빌더),
 `build_refine_rule_rows`(정제 규칙 UI, monitor·scheduler 공유), `HelpIcon`(카드명 옆 도움말 아이콘) 등을 제공합니다.
 
 **의존**: `harvest/core/utility.py`만(아이콘 경로) · **피의존**: `harvest/gui/layout/*` 대부분, `harvest/gui/trigger/*` 다수, `harvest/app.py`.

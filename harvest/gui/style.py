@@ -7,13 +7,13 @@ from PyQt6.QtWidgets import (
     QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle,
     QSpinBox, QDoubleSpinBox, QToolTip, QAbstractSpinBox,
     QSplitter, QSplitterHandle, QProxyStyle,
-    QMenu, QListWidget, QListWidgetItem, QWidgetAction, QSizePolicy,
+    QMenu, QListWidget, QListWidgetItem, QWidgetAction, QSizePolicy, QApplication,
 )
 
 from PyQt6.QtCore import (
-    Qt, QTimer, QPoint, QRect, QSize, QByteArray, pyqtSignal, QCoreApplication, QEvent,
+    Qt, QTimer, QPoint, QRect, QRectF, QSize, QByteArray, pyqtSignal, QCoreApplication, QEvent,
 )
-from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon )
+from PyQt6.QtGui import ( QColor, QPalette, QFontMetrics, QIcon, QPixmap, QPainter, QPolygon, QKeySequence, QCursor, QPen )
 from PyQt6.QtSvg import QSvgRenderer
 
 from harvest.core import utility
@@ -588,10 +588,15 @@ class _FilterHeaderView(QHeaderView):
     SORT_ARROW_SIZE = 8
     SORT_ARROW_MARGIN = 8  # 정렬 화살표와 섹션 우측 경계 사이 여백(px)
 
+    CHECK_SIZE = 14  # 헤더 체크박스 한 변(px) — 행 QCheckBox 인디케이터(_indicator_qss)와 동일
+
     filterIconClicked = pyqtSignal(int)
+    checkToggled = pyqtSignal(bool)   # 체크 컬럼의 헤더 체크박스를 클릭했을 때 emit(새 상태)
 
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
+        self._check_column = None   # 헤더 체크박스를 그릴 컬럼(없으면 None) — 필터·정렬 표시는 이 컬럼에서 생략
+        self._checked = False
         self._filtered_columns: set = set()
         self.theme = THEME()
         self._icon_inactive = _load_svg_icon("funnel", self.theme.TEXT_MUTED, "2", self.ICON_SIZE)
@@ -624,6 +629,26 @@ class _FilterHeaderView(QHeaderView):
         if column is not None:
             self.updateSection(column)
 
+    def set_check_column(self, logical) -> None:
+        """logical 컬럼 헤더를 텍스트 대신 체크박스로 그린다(EqualSpacingTable
+        .enable_header_checkbox가 호출). 이 컬럼에는 깔때기·정렬 화살표를 그리지 않는다."""
+        self._check_column = logical
+        self.updateSection(logical)
+
+    def set_checked(self, checked: bool) -> None:
+        """시그널 없이 헤더 체크박스 표시만 바꾼다."""
+        self._checked = checked
+        if self._check_column is not None:
+            self.updateSection(self._check_column)
+
+    def _check_rect(self, section_rect: QRect) -> QRect:
+        size = self.CHECK_SIZE
+        return QRect(
+            section_rect.left() + (section_rect.width() - size) // 2,
+            section_rect.top() + (section_rect.height() - size) // 2,
+            size, size,
+        )
+
     def _icon_rect(self, section_rect: QRect) -> QRect:
         y = section_rect.top() + (section_rect.height() - self.ICON_SIZE) // 2
         x = section_rect.left() + self.ICON_MARGIN
@@ -637,6 +662,18 @@ class _FilterHeaderView(QHeaderView):
 
     def paintSection(self, painter, rect, logical_index) -> None:
         super().paintSection(painter, rect, logical_index)
+        if logical_index == self._check_column:
+            # 행 QCheckBox와 같은 외형(Theme._indicator_qss) — 둥근 사각형, 체크 시 ACCENT 채움
+            border = self.theme.ACCENT if self._checked else self.theme.BORDER_LIGHT
+            fill = self.theme.ACCENT if self._checked else self.theme.BG_PRIMARY
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor(border), 1))
+            painter.setBrush(QColor(fill))
+            # 1px 테두리가 영역 안쪽에 그려지도록 반 픽셀 안쪽으로 줄인다
+            painter.drawRoundedRect(QRectF(self._check_rect(rect)).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+            painter.restore()
+            return
         if self._filter_enabled:
             icon = self._icon_active if logical_index in self._filtered_columns else self._icon_inactive
             icon.paint(painter, self._icon_rect(rect))
@@ -665,8 +702,15 @@ class _FilterHeaderView(QHeaderView):
         _draw_filled_triangle(painter, points, self.theme.ACCENT_LIGHT)
 
     def mousePressEvent(self, event) -> None:
-        if self._filter_enabled:
-            logical = self.logicalIndexAt(event.pos())
+        logical = self.logicalIndexAt(event.pos())
+        if logical >= 0 and logical == self._check_column:
+            section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
+            if self._check_rect(section_rect).contains(event.pos()):
+                self.set_checked(not self._checked)
+                self.checkToggled.emit(self._checked)
+                event.accept()
+                return
+        elif self._filter_enabled:
             if logical >= 0:
                 section_rect = QRect(self.sectionViewportPosition(logical), 0, self.sectionSize(logical), self.height())
                 if self._icon_rect(section_rect).contains(event.pos()):
@@ -713,6 +757,8 @@ class EqualSpacingTable(QTableWidget):
     fit_column(logical)          지정 컬럼 Auto-fit (더블클릭과 동일)
     matches_column_filters(row)  해당 행이 현재 활성 컬럼 필터를 모두 만족하는지
     clear_all_filters()          모든 컬럼 필터 초기화
+    enable_header_checkbox(col)  col 헤더를 전체 선택 체크박스로 전환(필터·정렬 제외, headerCheckToggled)
+    set_header_checked(bool)     헤더 체크박스 표시만 변경(시그널 없음)
     disable_column_filters()     컬럼별 필터(깔때기 아이콘) 자체를 끔 — 자체 검색창이 있는 테이블용
     apply_sort(column, order)    지정 컬럼을 order(Qt.SortOrder 또는 정렬 해제 시 None)로 정렬
     current_sort()               (정렬 중인 컬럼, Qt.SortOrder) — 정렬 없으면 (None, None)
@@ -751,6 +797,7 @@ class EqualSpacingTable(QTableWidget):
     columnFiltersChanged = pyqtSignal()
     sortStateChanged = pyqtSignal(int, object)  # (logical_column, Qt.SortOrder 또는 None)
     rowKeyNavigated = pyqtSignal(QTableWidgetItem)  # ↑/↓로 current 행이 바뀐 뒤, 그 행의 아이템
+    headerCheckToggled = pyqtSignal(bool)  # enable_header_checkbox 컬럼의 헤더 체크박스 클릭(새 상태)
 
     def __init__(
             self,
@@ -781,6 +828,7 @@ class EqualSpacingTable(QTableWidget):
         # 컬럼 인덱스 → 허용된 값 집합(고유값 필터). 컬럼이 dict에 없으면
         # 필터 없음(전체 허용).
         self._column_filters: dict = {}
+        self._header_check_column = None  # enable_header_checkbox로 지정한 컬럼(정렬 제외)
 
         # 0번 컬럼 아이템에 자동으로 찍는 삽입 순번(단조 증가) — "정렬 해제"
         # 시 원래 순서를 복원하는 데 쓴다(_NATURAL_ORDER_ROLE 참고).
@@ -1119,6 +1167,17 @@ class EqualSpacingTable(QTableWidget):
         self.clear_all_filters()
         self.horizontalHeader().set_filter_enabled(False)
 
+    def enable_header_checkbox(self, logical: int) -> None:
+        """logical 컬럼 헤더를 체크박스로 바꾼다 — 클릭 시 headerCheckToggled(새 상태)를
+        emit하며, 이 컬럼은 필터 아이콘과 헤더 클릭 정렬 대상에서 빠진다."""
+        self._header_check_column = logical
+        hdr = self.horizontalHeader()
+        hdr.set_check_column(logical)
+        hdr.checkToggled.connect(self.headerCheckToggled)
+
+    def set_header_checked(self, checked: bool) -> None:
+        self.horizontalHeader().set_checked(checked)
+
     # ── 컬럼 헤더 클릭 정렬 (오름차순 → 내림차순 → 정렬 해제) ────
     def current_sort(self):
         """(정렬 중인 컬럼, Qt.SortOrder) — 정렬 중이 아니면 (None, None).
@@ -1131,6 +1190,8 @@ class EqualSpacingTable(QTableWidget):
         self.horizontalHeader().set_sort_indicator(None, None)
 
     def _on_header_clicked(self, logical: int) -> None:
+        if logical == self._header_check_column:
+            return
         if self._sort_column != logical:
             new_order = Qt.SortOrder.AscendingOrder
         elif self._sort_order == Qt.SortOrder.AscendingOrder:
@@ -1292,11 +1353,68 @@ class EqualSpacingTable(QTableWidget):
         pos = hdr.mapToGlobal(QPoint(hdr.sectionViewportPosition(logical), hdr.height()))
         menu.exec(pos)
 
+    # ── 행 복사 ───────────────────────────────────────
+    def rows_as_text(self, rows: list) -> str:
+        """행 번호 목록을 클립보드용 문자열로 만든다 — 한 행은 셀 텍스트를 탭으로 이은 한 줄,
+        여러 행은 줄바꿈으로 잇는다(엑셀·메모장에 그대로 붙여넣을 수 있다). 숨겨진 행은 빼고,
+        정렬이 행을 실제로 재배치하므로 행 번호 순서가 곧 화면 순서다. 텍스트 아이템이 없는
+        셀(체크박스·버튼 같은 cellWidget 컬럼)은 빈 문자열이다."""
+        lines = []
+        for row in sorted(set(rows)):
+            if not 0 <= row < self.rowCount() or self.isRowHidden(row):
+                continue
+            cells = (self.item(row, col) for col in range(self.columnCount()))
+            lines.append("\t".join(item.text() if item else "" for item in cells))
+        return "\n".join(lines)
+
+    def _copy_target_rows(self, clicked_row: int | None = None) -> list:
+        """복사할 행 — 선택 모드가 있으면 선택된 행, 없으면(NoSelection) 우클릭한 행이나 현재 행."""
+        if self.selectionMode() != QTableWidget.SelectionMode.NoSelection:
+            selected = {index.row() for index in self.selectedIndexes()}
+            if selected:
+                return sorted(selected)
+        row = clicked_row if clicked_row is not None else self.currentRow()
+        return [row] if row >= 0 else []
+
+    def copy_text(self, text: str) -> None:
+        """텍스트를 클립보드에 복사하고 안내 툴팁을 띄운다 — 행 복사와 셀 복사가 공유한다."""
+        QApplication.clipboard().setText(text)
+        QToolTip.showText(QCursor.pos(), "클립보드에 복사되었습니다", self)
+
+    def copy_rows(self, rows: list | None = None) -> None:
+        """행을 클립보드에 복사한다 — rows를 생략하면 선택·현재 행이다.
+        복사할 텍스트가 없으면(대상 행 없음·숨김) 클립보드를 건드리지 않는다."""
+        text = self.rows_as_text(self._copy_target_rows() if rows is None else rows)
+        if text:
+            self.copy_text(text)
+
+    def add_copy_row_action(self, menu: QMenu, row: int) -> None:
+        """자체 우클릭 메뉴를 가진 표가 "행 복사" 항목을 덧붙인다 — 누르면 그 행을 바로 복사한다."""
+        menu.addAction("행 복사").triggered.connect(lambda: self.copy_rows([row]))
+
+    def contextMenuEvent(self, event):
+        """기본 우클릭 메뉴("행 복사") — CustomContextMenu를 쓰는 표는 이 이벤트를 받지 않고
+        자기 메뉴에서 add_copy_row_action()으로 같은 항목을 넣는다."""
+        index = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+        rows = self._copy_target_rows(index.row())
+        if index.row() not in rows:
+            rows = [index.row()]
+        menu = QMenu(self)
+        menu.setStyleSheet(self.theme.PROXY_CONTEXT_MENU_QSS)
+        label = "행 복사" if len(rows) == 1 else f"선택한 {len(rows)}개 행 복사"
+        menu.addAction(label).triggered.connect(lambda: self.copy_rows(rows))
+        menu.exec(event.globalPos())
+
     # ── Qt 이벤트 오버라이드 ──────────────────────────
     def keyPressEvent(self, event):
-        """↑/↓로 current 행이 바뀌면 rowKeyNavigated를 emit한다 — NoSelection
-        테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도 같은 핸들러를
-        재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        """Ctrl+C는 선택(없으면 현재) 행을 복사한다. ↑/↓로 current 행이 바뀌면 rowKeyNavigated를
+        emit한다 — NoSelection 테이블처럼 itemClicked로만 행 전환을 처리하는 화면이 키보드로도
+        같은 핸들러를 재사용할 수 있게 한다(current 셀 이동·스크롤은 Qt 기본 동작이 처리)."""
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self.copy_rows()
+            return
         previous_row = self.currentRow()
         super().keyPressEvent(event)
         if event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):

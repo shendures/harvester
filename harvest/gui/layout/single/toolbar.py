@@ -11,8 +11,8 @@ from .common import request_info
 class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
     """
     SidebarSingle 오른쪽 콘텐츠 영역 최상단에 고정 표시되는 공통 툴바.
-    - URL 라벨 / URL 입력창 / URL 복사 버튼 / 시작·중지 버튼
-    - start_requested : 시작 버튼 클릭 시 emit (request_info dict)
+    - URL 라벨 / URL 입력창 / URL 복사 버튼 / 수집 실행·중지 버튼
+    - start_requested : 수집 실행 버튼 클릭 시 emit (request_info dict)
     - stop_requested  : 중지 버튼 클릭 시 emit
     """
     start_requested = pyqtSignal(dict)
@@ -59,8 +59,8 @@ class GlobalToolbarSingle(QWidget, GlobalToolbarTriggers):
         """시작/중지 버튼 + 추출 설정 버튼 — GlobalToolbarMulti가 오버라이드해
         생략한다(다중 레이아웃은 이 두 기능을 "수집 목록" 테이블의 항목별
         ▶/⚙ 버튼으로 옮겼다)."""
-        self.run_btn = QPushButton("▶  시작")
-        self.run_btn.setFixedWidth(90)
+        self.run_btn = QPushButton("▶  수집 실행")
+        self.run_btn.setFixedWidth(112)
         self.run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.run_btn.clicked.connect(self._toggle_run)
         self._style_run_btn(False)

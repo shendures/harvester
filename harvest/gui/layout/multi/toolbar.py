@@ -1,6 +1,7 @@
 # layout/multi/toolbar.py
 
 from harvest.core.conf import BlueprintStorage
+from ..common import parts
 from ..single import GlobalToolbarSingle
 
 
@@ -23,9 +24,14 @@ class GlobalToolbarMulti(GlobalToolbarSingle):
         label.setFixedWidth(60)
 
     def _build_run_controls(self, lay):
-        """시작/중지·추출 설정 버튼을 만들지 않는다 — "수집 목록" 테이블의 항목별
-        ▶/⚙ 버튼으로 옮겨갔다(run_btn/_output_settings_btn 자체가 생성되지 않음)."""
-        pass
+        """시작/중지·추출 설정 버튼은 만들지 않는다 — "수집 목록" 테이블의 항목별
+        ▶/⚙ 버튼으로 옮겨갔다(run_btn/_output_settings_btn 자체가 생성되지 않음).
+        대신 'URL 복사' 오른쪽에 "수집 실행"/"전체 수집" 버튼을 둔다 — 실행 로직은
+        BlueprintListPage.attach_run_buttons로 주입돼 그쪽이 담당한다."""
+        self.collect_btn = parts.action_btn("수집 실행")
+        lay.addWidget(self.collect_btn)
+        self.batch_btn = parts.action_btn("전체 수집")
+        lay.addWidget(self.batch_btn)
 
     def _style_run_btn(self, running: bool):
         """run_btn이 없으므로 GlobalToolbarTriggers.set_running()이 호출해도

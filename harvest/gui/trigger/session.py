@@ -383,6 +383,7 @@ class SessionSettingsPageTriggers:
         ) if enabled_item else False
         toggle_txt = "비활성으로 전환" if is_enabled else "활성으로 전환"
         toggle_act = menu.addAction(toggle_txt)
+        self._proxy_table.add_copy_row_action(menu, row)
         menu.addSeparator()
         del_act = menu.addAction("🗑  이 행 삭제")
         del_act.setProperty("is_delete", True)

@@ -54,7 +54,7 @@ TREND_ALL_TIME_CAPTIONS = {
 OUTCOME_OK, OUTCOME_EMPTY = "정상 수집", "데이터 누락"
 OUTCOME_HTTP_ERR, OUTCOME_CONN_FAIL = "HTTP 오류", "연결 실패"
 OUTCOME_SEGMENTS = (
-    (OUTCOME_HTTP_ERR, RED), (OUTCOME_CONN_FAIL, TEXT_MUTED),
+    (OUTCOME_CONN_FAIL, TEXT_MUTED), (OUTCOME_HTTP_ERR, RED),
     (OUTCOME_OK, GREEN), (OUTCOME_EMPTY, AMBER),
 )
 
@@ -102,7 +102,7 @@ STATUS_OTHER_LABEL = "기타"
 
 # 상태 코드 분포 도움말 툴팁에 적는 코드별 쉬운 말 — 막대 라벨에는 코드만 표시한다
 STATUS_CODE_MEANINGS = {
-    "200": "정상", "301": "이동", "403": "접근 거부", "404": "페이지 없음",
+    "200": "정상", "301": "영구 이동(주소가 바뀌어 다른 주소로 안내)", "403": "접근 거부", "404": "페이지 없음",
     "429": "요청 과다", "500": "서버 오류",
 }
 
@@ -152,7 +152,7 @@ AXIS_YIELD = "수집 성과"
 AXIS_QUALITY = "데이터 품질"
 AXIS_PERFORMANCE = "응답 성능"
 
-# 지표별 최소 수집 횟수는 항목이 아니라 지표(MetricSpec.min_sessions·min_sessions_problem) 단위로
+# 지표별 최소 수집 횟수는 항목이 아니라 지표(MetricSpec.min_sessions) 단위로
 # 정의한다 — 같은 항목이라도 지표별로 세션 종속성·재현성이 달라 게이트를 다르게 둬야 하기 때문이다.
 
 # 종합 평가 표의 "평가 항목" 기본 정렬 순서
@@ -162,20 +162,19 @@ AXIS_RANK = {axis: i for i, axis in enumerate(AXIS_DISPLAY_ORDER)}
 
 class MetricSpec(NamedTuple):
     """지표 하나의 판정 기준 — 임계값을 여기에서만 정의해 배너·상세 표·툴팁이 같은 값을 읽는다.
-    higher_is_better면 값이 클수록 좋은 지표라 부등호를 뒤집고, percent면 백분율로 표시한다.
+    percent면 백분율로 표시한다.
     sample_unit은 지표마다 분모가 다르기 때문에 둔다(응답 / 추출된 행 / 회차).
     pattern_only면 절대 기준 없이 회차별 패턴으로만 판정하며, warn·problem은 회차 간 편차 기준이다.
     min_sessions는 등급 판정을 시작하는 최소 수집 횟수(그 전엔 값·구간만 계산해 두고 보류)이다.
-    full_bypass면 표본 전체가 이 지표에 해당할 때(예: 응답 전량이 데이터 누락·연결 실패, 값이 큰 게
-    좋은 지표는 전 행이 빈 행) 판정 시작 게이트를 건너뛴다.
-    point_ok면 관측값이 warn 이상이면 신뢰구간 없이 정상으로 매기고, warn 미만이면 100% 미달이므로
+    full_bypass면 표본 전체가 이 지표에 해당할 때(예: 응답 전량이 데이터 누락·연결 실패, 전 행이
+    결측) 판정 시작 게이트를 건너뛴다.
+    point_ok면 관측값이 주의 기준(warn) 미만이면 신뢰구간 없이 정상으로 매기고, warn 이상이면
     Wilson 신뢰구간으로 문제·주의·보류를 가른다 — 신뢰구간 기준만으로는 유한 표본에서 도달할 수
     없는 기준값을 요구할 수 있기 때문이다."""
     axis: str
     name: str
     warn: float
     problem: float
-    higher_is_better: bool
     percent: bool
     sample_unit: str
     cause: str
@@ -194,44 +193,44 @@ class MetricSpec(NamedTuple):
 # 임계값은 모두 경험적 기본값이다 — 상세 보기 표에 기준을 함께 노출해 실측 후 조정할 수 있게 한다.
 # min_sessions 근거는 docs/ARCHITECTURE.md §3.3 참고.
 SPEC_CONN_FAIL = MetricSpec(
-    AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, False, True, "건",
+    AXIS_CONNECTION, "연결 실패율", 0.05, 0.20, True, "건",
     "상태 코드 없이 요청이 실패해 사이트에 연결하지 못했습니다.",
     "'응답 결과 구성' 카드에서 연결 실패 비중을 확인하고, "
     "세션 설정의 프록시 옵션과 인터넷 연결을 점검하세요.",
     min_sessions=1, full_bypass=True)
 SPEC_BLOCKED = MetricSpec(
-    AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, False, True, "건",
+    AXIS_RESPONSE, "접근 차단율", 0.05, 0.20, True, "건",
     "403·429 응답으로 사이트가 접근을 막고 있습니다.",
     "수집 설정의 Delay(s)를 늘리거나 Threads를 줄이고, "
     "세션 설정에서 프록시를 사용하세요.",
     min_sessions=1)
 SPEC_HTTP_ERR = MetricSpec(
-    AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, False, True, "건",
+    AXIS_RESPONSE, "HTTP 오류율", 0.10, 0.30, True, "건",
     "일부 요청이 200이 아닌 상태 코드로 응답했습니다.",
     "'상태 코드 분포' 카드에서 어떤 코드가 몰려 있는지 확인하세요.",
     min_sessions=1)
 SPEC_EMPTY = MetricSpec(
-    AXIS_YIELD, "데이터 누락률", 0.30, 0.60, False, True, "건",
+    AXIS_YIELD, "데이터 누락률", 0.30, 0.60, True, "건",
     "200 응답을 받았지만 데이터를 찾지 못했거나 추출 중 예외가 발생했습니다.",
     "'① Raw 수집 결과' 탭에서 빈 응답을 확인하고, "
     "사이트 구조가 바뀌었을 수 있으니 수집 조건을 점검하세요.",
     min_sessions=1, full_bypass=True)
-# 정상은 관측값 95% 이상(point_ok), warn=95%/problem=80%는 그 미달 구간을 신뢰구간으로 가른다.
-# warn과 problem 임계값은 5%/20% 허용 오차(연결 실패율·접근 차단율과 동일 정책)를 뜻한다.
-SPEC_VALID = MetricSpec(
-    AXIS_QUALITY, "유효 데이터 비율", 0.95, 0.80, True, True, "행",
+# 값이 하나도 없는 행의 비율 — 정상은 관측값 20% 미만(point_ok), 20% 이상 구간은 신뢰구간으로 가른다.
+# 사이트에 따라 빈 행이 일부 섞이는 것이 흔해, 다른 지표보다 느슨하게 5곳 중 1곳부터 주의, 절반이면 문제로 둔다.
+SPEC_MISSING_VALUE = MetricSpec(
+    AXIS_QUALITY, "결측값 데이터 비율", 0.20, 0.50, True, "행",
     "값이 전혀 없는 행이 많이 수집됐습니다.",
     "'① Raw 수집 결과' 탭에서 값이 전부 빈 행을 확인하고, "
     "추출 규칙이 데이터를 놓치고 있는지 점검하세요.",
     min_sessions=1, full_bypass=True, point_ok=True)
 SPEC_SESSION_ITEMS = MetricSpec(
-    AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, False, "회차",
+    AXIS_QUALITY, "페이지당 수집량", PATTERN_SPREAD_WARN, PATTERN_SPREAD_PROBLEM, False, "회차",
     "수집 회차마다 페이지당 수집량이 달라졌습니다.",
     "'세션 이력' 표에서 회차별 성공·오류 건수를 비교해 "
     "사이트 구조 변경이나 페이지 누락 여부를 확인하세요.",
     pattern_only=True, min_sessions=PATTERN_MIN_SESSIONS)
 SPEC_SLOW = MetricSpec(
-    AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, False, True, "건",
+    AXIS_PERFORMANCE, "지연 응답 비율", 0.30, 0.60, True, "건",
     "응답 시간이 느린 쪽에 몰려 있습니다.",
     "'응답 속도 구간' 카드에서 지연 비율을 확인하고, "
     "수집 설정의 Delay(s)·Threads를 조정하세요.",
@@ -239,7 +238,7 @@ SPEC_SLOW = MetricSpec(
 
 # 도움말 텍스트가 지표별 게이트를 순회할 단일 소스 — 표시 순서는 카드 등장 순서를 따른다.
 METRIC_SPECS = (SPEC_CONN_FAIL, SPEC_BLOCKED, SPEC_HTTP_ERR, SPEC_EMPTY,
-                SPEC_VALID, SPEC_SESSION_ITEMS, SPEC_SLOW)
+                SPEC_MISSING_VALUE, SPEC_SESSION_ITEMS, SPEC_SLOW)
 
 # 종합 평가 팝업 체크리스트의 원인·해결 방법 문구는 이 구역에서만 정의한다 —
 # 아래 로직(_issue_notes/_result_count_notes/empty_data_notice 등)은 이름만 참조한다.
@@ -284,11 +283,7 @@ class MetricVerdict(NamedTuple):
     """지표 하나의 판정 결과 — 신뢰구간을 쓰지 않는 지표(페이지당 수집량)는 low/high가 None이고,
     pattern은 회차별 패턴을 판정할 수 있을 때(완료된 수집 PATTERN_MIN_SESSIONS회 이상)만 채운다.
     live는 진행 중이거나 중단된 수집의 응답이 절대 판정을 끌어올려 등급이 정해졌음을, absolved는
-    절대 판정은 "주의"였으나 회차 패턴이 일정해 정상으로 본 지표임을 뜻한다. capped는 절대 판정이
-    "문제"였으나 수집 횟수가 그 지표의 min_sessions_problem에 못 미쳐 "주의"로 낮춰 표시했음을
-    뜻한다(문제 확정에 반복 확인이 더 필요하다는 신호). 현재 상수값에서는 min_sessions_problem이
-    모두 PATTERN_MIN_SESSIONS 이하라 패턴 결합이 적용되는 시점(완료 수집 PATTERN_MIN_SESSIONS회
-    이상)에는 capped가 항상 False다 — absolved 판정과 섞이지 않는다."""
+    절대 판정은 "주의"였으나 회차 패턴이 일정해 정상으로 본 지표임을 뜻한다."""
     spec: MetricSpec
     level: str
     observed: float | None
@@ -298,7 +293,6 @@ class MetricVerdict(NamedTuple):
     pattern: PatternResult | None = None
     live: bool = False
     absolved: bool = False
-    capped: bool = False
 
 
 class Regression(NamedTuple):
@@ -338,6 +332,11 @@ class SessionTally:
     field_items: int = 0
     ok_pages: int = 0
     ok_items: int = 0
+
+    @property
+    def empty_rows(self) -> int:
+        """값이 하나도 없는 행 수 — 추출된 행에서 값이 하나라도 있는 행을 뺀 값."""
+        return self.field_items - self.non_empty_rows
 
     def add(self, facts: RowFacts) -> None:
         self.responses += 1
@@ -493,12 +492,6 @@ def _is_gate_pending(verdict: MetricVerdict, sessions: int) -> bool:
 
 def _ratio_level(spec: MetricSpec, low: float, high: float) -> str:
     """신뢰구간이 임계값 한쪽에 온전히 놓일 때만 등급을 매기고, 걸치면 보류한다."""
-    if spec.higher_is_better:
-        if high <= spec.problem:
-            return DIAG_PROBLEM
-        if high < spec.warn:
-            return DIAG_WARN
-        return DIAG_OK if low >= spec.warn else DIAG_HOLD
     if low >= spec.problem:
         return DIAG_PROBLEM
     if low >= spec.warn:
@@ -510,18 +503,18 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
     """비율 지표 하나를 판정한다. 표본이 0이면 보류하고, 수집 횟수가 모자라면 값·구간은 그대로
     계산해 두고 등급만 보류한다 — 화면 위 KPI 카드가 이미 같은 숫자를 보여주고 있어 상세 표에서
     "—"로 비면 카드와 어긋난다. 표본 전체가 이 지표에 해당하면 판정 시작 게이트를 건너뛴다.
-    point_ok 지표는 관측값(hits/sample)이 warn 이상이면 신뢰구간 없이 정상으로 매기고,
-    미만이면 Wilson 신뢰구간으로 문제·주의·보류를 가른다."""
+    point_ok 지표는 관측값(hits/sample)이 주의 기준 미만이면 신뢰구간 없이 정상으로 매기고,
+    이상이면 Wilson 신뢰구간으로 문제·주의·보류를 가른다."""
     if sample == 0:
         return MetricVerdict(spec, DIAG_HOLD, None, None, None, 0)
     observed = hits / sample
     low, high = _wilson_bounds(hits, sample)
     # 표본 전체가 이 지표에 해당하면 판정 시작 게이트를 건너뛴다
-    bypass = spec.full_bypass and hits == (0 if spec.higher_is_better else sample)
+    bypass = spec.full_bypass and hits == sample
     gated = _session_gated(spec, sessions) and not bypass
     if gated:
         level = DIAG_HOLD
-    elif spec.point_ok and observed >= spec.warn:
+    elif spec.point_ok and observed < spec.warn:
         level = DIAG_OK
     else:
         level = _ratio_level(spec, low, high)
@@ -530,7 +523,7 @@ def _judge_ratio(spec: MetricSpec, hits: int, sample: int, sessions: int) -> Met
 
 def _ratio_samples(total: int, agg: dict) -> list:
     """(지표, 해당 건수, 분모) 목록 — 분모가 지표마다 다르다는 점이 핵심이다.
-    유효 데이터 비율은 추출된 행, 지연 응답 비율은 응답 시간이 기록된 응답이 분모라
+    결측값 데이터 비율은 추출된 행, 지연 응답 비율은 응답 시간이 기록된 응답이 분모라
     전체 응답 수 하나로 표본 충분 여부를 판단할 수 없다."""
     outcome, speed = agg["outcome"], agg["speed"]
     return [
@@ -538,7 +531,7 @@ def _ratio_samples(total: int, agg: dict) -> list:
         (SPEC_BLOCKED, agg["blocked"], total),
         (SPEC_HTTP_ERR, outcome.get(OUTCOME_HTTP_ERR, 0), total),
         (SPEC_EMPTY, outcome.get(OUTCOME_EMPTY, 0), total),
-        (SPEC_VALID, agg["non_empty_rows"], agg["field_items"]),
+        (SPEC_MISSING_VALUE, agg["field_items"] - agg["non_empty_rows"], agg["field_items"]),
         (SPEC_SLOW, speed.get(SPEED_SLOW, 0) + speed.get(SPEED_VERY_SLOW, 0),
          sum(speed.values())),
     ]
@@ -550,7 +543,7 @@ SESSION_RATIO_FIELDS = {
     SPEC_BLOCKED: ("blocked", "responses"),
     SPEC_HTTP_ERR: ("http_err", "responses"),
     SPEC_EMPTY: ("empty", "responses"),
-    SPEC_VALID: ("non_empty_rows", "field_items"),
+    SPEC_MISSING_VALUE: ("empty_rows", "field_items"),
     SPEC_SLOW: ("slow", "timed"),
 }
 
@@ -681,7 +674,7 @@ def _absolved_text(absolved: list) -> str:
     """일정해서 정상으로 본 지표 중 절대 기준을 넘는 값의 안내 — 지표명·값·기준을
     BANNER_MAX_CAUSES개까지 적고 나머지는 개수로 줄인다."""
     shown = [f"{v.spec.name} {metric_value_text(v.spec, v.observed)}"
-             f"(주의 {_threshold_text(v.spec, v.spec.warn)} {_criteria_compare(v.spec)})"
+             f"(주의 {_threshold_text(v.spec, v.spec.warn)} 이상)"
              for v in absolved[:BANNER_MAX_CAUSES]]
     rest = len(absolved) - BANNER_MAX_CAUSES
     return "·".join(shown) + (f" 외 {rest}개" if rest > 0 else "")
@@ -798,11 +791,6 @@ def metric_sample_text(verdict: MetricVerdict) -> str:
     return f"{verdict.sample:,}{verdict.spec.sample_unit}"
 
 
-def _criteria_compare(spec: MetricSpec) -> str:
-    """임계값을 넘었다고 볼 방향 — 값이 클수록 좋은 지표는 부등호를 뒤집는다."""
-    return "미만" if spec.higher_is_better else "이상"
-
-
 def _threshold_text(spec: MetricSpec, value: float) -> str:
     """임계값 표기 — 회차별 패턴 전용 지표의 기준은 수집량이 아니라 편차 비율이라 백분율로 적는다."""
     return f"{value:.0%}" if spec.pattern_only else metric_value_text(spec, value)
@@ -813,7 +801,7 @@ def metric_criteria_text(spec: MetricSpec) -> str:
     if spec.pattern_only:
         return f"편차 {_threshold_text(spec, spec.warn)} / {_threshold_text(spec, spec.problem)}"
     return (f"{_threshold_text(spec, spec.warn)} / "
-            f"{_threshold_text(spec, spec.problem)} {_criteria_compare(spec)}")
+            f"{_threshold_text(spec, spec.problem)} 이상")
 
 
 def _pattern_range_text(verdict: MetricVerdict) -> str:
@@ -1201,14 +1189,13 @@ def _grade_breakdown(verdicts: list) -> list:
 
 def _issue_notes(verdict: MetricVerdict, empty_notice: list | None) -> list:
     """지표 하나의 이슈 항목 — 회차 불안정이면 그 사실을, 데이터 누락이면 원인 후보별 항목을, 그 밖에는
-    지표 고유의 원인과 해결 방법을 한 항목으로 적는다. 문제 확정 전(capped)이면 그 사실을 덧붙인다."""
+    지표 고유의 원인과 해결 방법을 한 항목으로 적는다."""
     spec = verdict.spec
     if _is_unstable(verdict):
         return [f"{_cause_text(verdict)} {PATTERN_ADVICE}"]
     if spec is SPEC_EMPTY and empty_notice:
         return empty_notice
-    note = f"{spec.cause} {spec.remedy}"
-    return [f"{note} {_capped_note(verdict)}" if verdict.capped else note]
+    return [f"{spec.cause} {spec.remedy}"]
 
 
 def _result_count_notes(result_counts: dict) -> list:
@@ -1401,15 +1388,16 @@ class StatisticsPageTriggers:
 
     def _refresh_process_kpis(self, agg: dict) -> None:
         """데이터 처리 카드를 갱신한다 — 페이지당 수집량(중앙값, 최소·최대 건수+비율)과
-        유효 데이터 비율(값이 하나라도 있는 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
+        결측값 데이터 비율(값이 하나도 없는 행). 페이지당 수집량은 데이터를 가져온 페이지("정상
         수집")만 대상으로 해 데이터 누락이 중앙값·최소값을 0으로 끌어내리지 않게 하며,
-        새 행 집계 기록이 없는 과거 응답만 있으면 유효 데이터 비율은 "—"로 둔다."""
+        새 행 집계 기록이 없는 과거 응답만 있으면 결측값 데이터 비율은 "—"로 둔다."""
         pages = agg["page_items"]
         self.kpi_page_median.update_value(f"{_count_text(_median(pages))}건" if pages else "—")
         self.kpi_item_range.update_value(_item_range_text(pages))
 
         field_items = agg["field_items"]
-        self.kpi_valid_rate.update_value(_percent(agg["non_empty_rows"], field_items) if field_items else "—")
+        self.kpi_missing_rate.update_value(
+            _percent(field_items - agg["non_empty_rows"], field_items) if field_items else "—")
 
     def _evaluation_window(self, rows, sessions, running: bool) -> EvalWindow:
         """배너가 판정할 최근 PATTERN_WINDOW회 수집 구간을 집계한다 — 초기화 이후 누적으로 보면
